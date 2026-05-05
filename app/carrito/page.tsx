@@ -2,14 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSesion, fragmentarCarrito, LISTAS, type ListaId } from '@/store/sesionVenta'
+import { useSesion, fragmentarCarrito, LISTAS } from '@/store/sesionVenta'
 import { supabase } from '@/lib/supabase'
 
 const AZUL = '#1E40AF'
 
 export default function CarritoPage() {
   const { cliente, vendedor, plazo, listaPrecioId, descuentos, descuentosPorLote,
-          setDescuentoLote, carrito, vaciarCarrito, desactivar, activa } = useSesion()
+          setDescuentoLote, carrito, desactivar, activa } = useSesion()
   const router = useRouter()
   const [enviando, setEnviando] = useState(false)
   const [exito,    setExito]    = useState<string | null>(null)
@@ -32,10 +32,9 @@ export default function CarritoPage() {
   }
 
   const lotes         = fragmentarCarrito(carrito, descuentos, descuentosPorLote)
-  const listaActiva = LISTAS.find(l => l.id === listaPrecioId) ?? LISTAS[0]
+  const listaActiva   = LISTAS.find(l => l.id === listaPrecioId) ?? LISTAS[0]
   const totalGenPares = lotes.reduce((s, l) => s + l.total_pares, 0)
   const totalGenMonto = lotes.reduce((s, l) => s + l.total_monto, 0)
-  const subtotalBruto = Object.values(carrito).reduce((s, i) => s + i.precio_base * i.pares, 0)
   const descLabel     = descuentos.length > 0 ? descuentos.map(d => `${d}%`).join(' + ') : 'Sin descuento'
 
   async function confirmarPedido() {
@@ -43,46 +42,96 @@ export default function CarritoPage() {
     setError(null)
     try {
       const [d1, d2, d3, d4] = [...descuentos, 0, 0, 0, 0]
-      const anio = new Date().getFullYear()
-      const nroPedido = `PVR-${anio}-${String(Date.now()).slice(-6)}`
 
+      // Construir payload con tipos primitivos garantizados (JSON válido)
       const payload = {
         cliente_id:      cliente!.id_cliente,
-        cliente_nombre:  cliente!.descp_cliente,
-        vendedor_id:     vendedor?.id_vendedor    ?? null,
-        vendedor_nombre: vendedor?.descp_vendedor ?? '—',
+        cliente_nombre:  String(cliente!.descp_cliente || ''),
+        vendedor_id:     vendedor?.id_vendedor ?? null,
+        vendedor_nombre: String(vendedor?.descp_vendedor || '—'),
         plazo_id:        plazo!.id_plazo,
-        plazo_nombre:    plazo!.descp_plazo,
+        plazo_nombre:    String(plazo!.descp_plazo || ''),
         lista_precio_id: listaPrecioId,
-        lista_nombre:    listaActiva.nombre,
-        descuento_1: d1, descuento_2: d2, descuento_3: d3, descuento_4: d4,
-        total_pares:  totalGenPares,
-        total_neto:   totalGenMonto,
+        lista_nombre:    String(listaActiva.nombre || ''),
+        descuento_1: Number(d1) || 0,
+        descuento_2: Number(d2) || 0,
+        descuento_3: Number(d3) || 0,
+        descuento_4: Number(d4) || 0,
+        total_pares:  Number(totalGenPares) || 0,
+        total_neto:   Number(totalGenMonto) || 0,
         fecha:        new Date().toISOString(),
-        lotes,
+        lotes:        lotes.map(lote => ({
+          pp_id:       Number(lote.pp_id),
+          pp_nro:      String(lote.pp_nro || ''),
+          quincena:    String(lote.quincena || ''),
+          eta:         lote.eta ? String(lote.eta) : null,
+          total_pares: Number(lote.total_pares) || 0,
+          total_monto: Number(lote.total_monto) || 0,
+          marcas:      lote.marcas.map(marca => ({
+            marca:       String(marca.marca || ''),
+            total_pares: Number(marca.total_pares) || 0,
+            total_monto: Number(marca.total_monto) || 0,
+            items:       marca.items.map(item => ({
+              det_id:       Number(item.det_id),
+              linea_codigo: String(item.linea_codigo || ''),
+              ref_codigo:   String(item.ref_codigo || ''),
+              color_nombre: String(item.color_nombre || ''),
+              gradas_fmt:   String(item.gradas_fmt || ''),
+              imagen_url:   String(item.imagen_url || ''),
+              cajas:        Number(item.cajas) || 0,
+              pares:        Number(item.pares) || 0,
+              precio_base:  Number(item.precio_base) || 0,
+              precio_neto:  Number(item.precio_neto) || 0,
+              subtotal:     Number(item.subtotal) || 0,
+            }))
+          }))
+        }))
       }
 
-      const { error: sbErr } = await supabase
-        .from('pedido_venta_rimec')
-        .insert({
-          nro_pedido:      nroPedido,
-          cliente_id:      cliente!.id_cliente,
-          vendedor_id:     vendedor?.id_vendedor    ?? null,
-          plazo_id:        plazo!.id_plazo,
-          lista_precio_id: listaPrecioId,
-          descuento_1: d1, descuento_2: d2, descuento_3: d3, descuento_4: d4,
-          total_pares:     totalGenPares,
-          total_monto:     totalGenMonto,
-          estado:          'PENDIENTE',
-          payload_json:    payload,
-        })
-      if (sbErr) throw new Error(sbErr.message)
+      // Llamar RPC que ejecuta todo en una transacción atómica:
+      // 1. Inserta pedido_venta_rimec
+      // 2. Crea factura_interna por cada PP en estado RESERVADA
+      // 3. Descuenta stock de mercadería en tránsito
+      const { data, error: rpcErr } = await supabase.rpc('confirmar_pedido_web', {
+        p_cliente_id:      cliente!.id_cliente,
+        p_vendedor_id:     vendedor?.id_vendedor ?? null,
+        p_plazo_id:        plazo!.id_plazo,
+        p_lista_precio_id: listaPrecioId,
+        p_descuento_1:     Number(d1) || 0,
+        p_descuento_2:     Number(d2) || 0,
+        p_descuento_3:     Number(d3) || 0,
+        p_descuento_4:     Number(d4) || 0,
+        p_total_pares:     totalGenPares,
+        p_total_monto:     totalGenMonto,
+        p_payload:         payload,
+      })
 
-      // Limpiar sesión y redirigir para nuevo cliente
+      if (rpcErr) {
+        throw new Error(rpcErr.message)
+      }
+
+      // Verificar respuesta de la función
+      const result = data as { 
+        success: boolean
+        error?: string
+        nro_pedido?: string
+        facturas?: Array<{ nro_factura: string; pp_id: number; total_pares: number }> 
+      }
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Error al procesar el pedido')
+      }
+
+      // Éxito: limpiar sesión y mostrar resultado
+      const facturasGeneradas = result.facturas?.map(f => f.nro_factura).join(', ') || ''
       desactivar()
-      setExito(`Pedido ${nroPedido} enviado. Preparando para nuevo cliente...`)
-      setTimeout(() => router.push('/'), 2500)
+      setExito(`Pedido ${result.nro_pedido} confirmado. Facturas: ${facturasGeneradas}`)
+      
+      // Redirigir después de mostrar el mensaje
+      setTimeout(() => router.push('/pedidos'), 2500)
+
     } catch (e: unknown) {
+      console.error('Error al confirmar pedido:', e)
       setError(e instanceof Error ? e.message : 'Error al confirmar')
     }
     setEnviando(false)
@@ -109,14 +158,21 @@ export default function CarritoPage() {
         </p>
       </div>
 
-      {/* Éxito / Error */}
+      {/* Éxito */}
       {exito && (
         <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 12,
                       padding: '16px 20px', marginBottom: 20 }}>
           <p style={{ color: '#166534', fontWeight: 700, fontSize: 16 }}>✅ {exito}</p>
-          <a href="/" style={{ color: AZUL, fontSize: 14 }}>← Volver al catálogo</a>
+          <p style={{ color: '#166534', fontSize: 14, marginTop: 8 }}>
+            Stock descontado. Las facturas están en estado RESERVADA esperando aprobación en el ERP.
+          </p>
+          <a href="/pedidos" style={{ color: AZUL, fontSize: 14, marginTop: 8, display: 'inline-block' }}>
+            → Ver mis pedidos
+          </a>
         </div>
       )}
+
+      {/* Error */}
       {error && (
         <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12,
                       padding: '16px 20px', marginBottom: 20 }}>
@@ -223,7 +279,7 @@ export default function CarritoPage() {
             fontWeight: 900, fontSize: 19, border: 'none',
             cursor: enviando ? 'not-allowed' : 'pointer',
           }}>
-          {enviando ? 'Enviando...' : 'CONFIRMAR PEDIDO →'}
+          {enviando ? 'Procesando...' : 'CONFIRMAR PEDIDO →'}
         </button>
         <a href="/" style={{ display: 'block', textAlign: 'center', marginTop: 14,
                               color: '#64748B', fontSize: 14 }}>← Seguir agregando</a>

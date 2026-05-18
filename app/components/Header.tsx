@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -199,6 +199,15 @@ type MegaKey = 'mujeres' | 'ninas' | 'ninos' | 'hombres' | null
 export default function Header({ data }: { data: HeaderData }) {
   const [open, setOpen]   = useState<MegaKey>(null)
   const closeTimer        = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [user, setUser]   = useState<{ name: string; categoria: string } | null>(null)
+  const router            = useRouter()
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => { if (d.user) setUser(d.user) })
+      .catch(() => {})
+  }, [])
 
   const enter = (key: MegaKey) => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
@@ -206,6 +215,14 @@ export default function Header({ data }: { data: HeaderData }) {
   }
   const leave = () => {
     closeTimer.current = setTimeout(() => setOpen(null), 120)
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      router.push('/login')
+      router.refresh()
+    } catch {}
   }
 
   const navItem = (key: MegaKey, label: string) => (
@@ -273,6 +290,19 @@ export default function Header({ data }: { data: HeaderData }) {
             >
               Estadísticas
             </Link>
+            {user && (
+              <>
+                <span className="text-xs text-gray-600 border-l pl-4 border-gray-300">
+                  {user.name}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs hover:text-red-600 transition-colors"
+                >
+                  Cerrar sesión
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

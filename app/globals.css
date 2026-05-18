@@ -1,17 +1,166 @@
 @import "tailwindcss";
 
 @theme {
-  --color-rimec-azul:    #1E40AF;
-  --color-rimec-celeste: #06B6D4;
-  --color-rimec-fondo:   #FFFFFF;
-  --color-rimec-gris:    #F8FAFC;
-  --color-rimec-texto:   #1E293B;
-  --color-rimec-muted:   #64748B;
-  --color-rimec-border:  #E2E8F0;
+  --color-rimec-blue:    #0F172A;  /* Midnight Blue */
+  --color-rimec-accent:  #0EA5E9;  /* Celeste Sky */
+  --color-rimec-light:   #F8FAFC;  /* Fondo claro */
+  --color-rimec-bg:      #FAFAFA;  /* Off-white elegance */
 }
 
 body {
-  background-color: #FFFFFF;
-  color: #1E293B;
-  font-family: Arial, Helvetica, sans-serif;
+  color: #0F172A;
+  background: #FAFAFA;
+  font-family: var(--font-sans), sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6, .font-serif {
+  font-family: var(--font-serif), serif;
+}
+
+/* ── Botones ── */
+.btn-primary {
+  background-color: #0EA5E9;
+  color: white;
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  transition: all 0.3s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  letter-spacing: 0.025em;
+}
+.btn-primary:hover {
+  background-color: #0284C7;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+}
+.btn-primary:active {
+  transform: scale(0.95);
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-rimec {
+  background-color: #0F172A;
+  color: white;
+  font-weight: 500;
+  padding: 0.75rem 2rem;
+  border-radius: 0;
+  transition: all 0.3s;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+}
+.btn-rimec:hover {
+  background-color: #1E293B;
+}
+.btn-rimec:active {
+  transform: scale(0.95);
+}
+
+.btn-ghost {
+  color: #0F172A;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  transition: all 0.3s;
+}
+.btn-ghost:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+
+/* ── Cards ── */
+.card {
+  background-color: white;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 0;
+  transition: all 0.5s;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+}
+.card:hover {
+  box-shadow: 0 12px 32px rgba(0,0,0,0.06);
+  transform: translateY(-4px);
+}
+
+/* ── Badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+/* ── Input ── */
+.input {
+  width: 100%;
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid #cbd5e1;
+  border-radius: 0;
+  padding: 0 0 0.625rem 0;
+  font-size: 0.875rem;
+  transition: border-color 0.3s;
+}
+.input::placeholder {
+  color: #94a3b8;
+}
+.input:focus {
+  outline: none;
+  border-bottom-color: #0F172A;
+}
+
+/* ── Talla chips ── */
+.talla-chip {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s;
+  cursor: pointer;
+  user-select: none;
+  color: #475569;
+}
+
+.talla-chip-active {
+  background-color: #0EA5E9;
+  color: white;
+  border-color: #0EA5E9;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.talla-chip-active:hover {
+  background-color: #0284C7;
+  border-color: #0284C7;
+}
+.talla-chip-active:active {
+  transform: scale(0.95);
+}
+
+.talla-chip-empty {
+  border-color: #f1f5f9;
+  background-color: #f8fafc;
+  color: #cbd5e1;
+  text-decoration: line-through;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ── Sombras custom ── */
+.shadow-drawer {
+  box-shadow: -10px 0 40px rgba(0,0,0,0.04);
+}
+
+.shadow-card {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+}
+
+.shadow-card-hover {
+  box-shadow: 0 12px 32px rgba(0,0,0,0.06);
 }

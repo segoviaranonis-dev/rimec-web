@@ -1,337 +1,701 @@
 'use client'
 
-import { useState } from 'react'
-import type { StockRow } from './page'
+import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useSesion, getPrecioActivo, LISTAS, type ListaId } from '@/store/sesionVenta'
 import { DialogoActivacion } from '@/components/DialogoActivacion'
-import { getImageUrl } from '@/lib/imagen'
 import { formatearQuincena } from '@/lib/fecha'
 
-interface Props {
-  rows:   StockRow[]
-  marcas: string[]
-  pps:    { nro: string; eta: string | null }[]
+export interface RimecVariante {
+  det_id: number
+  pp_id: number
+  pp_nro: string
+  eta: string | null
+  material_code: string
+  color_code: string
+  descp_color: string
+  /** Hex HTML del pilar `color`. Si está, manda; si null, el frontend cae al regex. */
+  color_hex: string | null
+  gradas_fmt: string
+  imagen_url: string
+  cantidad_cajas: number
+  pares_por_caja: number
+  cajas_disponibles: number
+  lpn: number | null
+  lpc02: number | null
+  lpc03: number | null
+  lpc04: number | null
 }
 
-const AZUL = '#1E40AF'
-
-function formatGrades(grades: Record<string, number> | null): string {
-  if (!grades) return '—'
-  const sorted = Object.entries(grades)
-    .map(([k, v]) => ({ t: k, q: v }))
-    .filter(e => e.q > 0)
-    .sort((a, b) => (parseFloat(a.t) || 0) - (parseFloat(b.t) || 0))
-  if (!sorted.length) return '—'
-  return `${sorted[0].t}(${sorted.map(e => e.q).join('-')})${sorted[sorted.length - 1].t}`
+export interface RimecAgrupado {
+  key: string
+  linea_codigo: string
+  referencia_codigo: string
+  nombre: string
+  material_code: string
+  descp_material: string
+  descp_marca: string
+  marca_id: number | null
+  /** Descripción del caso de precio asignado a la línea (Regla 1 para factura interna). */
+  descp_caso: string | null
+  caso_id: number | null
+  variantes: RimecVariante[]
 }
 
-function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick}
-      className="px-4 py-2 rounded-full text-sm font-semibold transition-all"
-      style={active
-        ? { backgroundColor: AZUL, color: 'white' }
-        : { backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}
-    >{children}</button>
+const AZUL = '#0F172A'
+const CELESTE = '#0EA5E9'
+
+const COLOR_MAP: [RegExp, string][] = [
+  [/\bbranco\b|\bblanco\b|off\s?white|\bivory\b|\bmarfil\b/i, '#f5f5f0'],
+  [/\bpreto\b|\bnegro\b|\bblack\b/i,                          '#1a1a1a'],
+  [/\bcinza\b|\bgris\b|\bgrey\b|\bgray\b/i,                   '#9e9e9e'],
+  [/\bprata\b|\bplata\b|\bplateado\b|\bsilver\b|\bplatino\b/i, '#b0bec5'],
+  [/\bdourado\b|\bdorado\b|\boro\b|\bgold\b|\bgolden\b/i,     '#ffd54f'],
+  [/\bchocolate\b|\bcacao\b|\bcocoa\b/i,                      '#4e2b0e'],
+  [/\bmarrom\b|\bmarr[oó]n\b|\bbrown\b/i,                     '#6d4c41'],
+  [/\bcouro\b|\bcuero\b|\bleather\b/i,                        '#a0785a'],
+  [/\bmoca\b|\bmokka\b|\bmocha\b|\bcoffee\b|\bcaf[eé]\b/i,    '#5a3d2b'],
+  [/\bcaramelo\b|\bcaramel\b/i,                               '#c19a6b'],
+  [/\bcamel\b/i,                                              '#c19a6b'],
+  [/\bcapuchino\b|\bcapu[cç]ino\b|\bcappucc?ino\b/i,          '#b7916a'],
+  [/\btan\b/i,                                                '#d2a679'],
+  [/\btaupe\b/i,                                              '#9e8e7e'],
+  [/\bnude\b/i,                                               '#e8c9a0'],
+  [/\bnatural\b/i,                                            '#d4b896'],
+  [/\bbege\b|\bbeige\b/i,                                     '#e8d5b0'],
+  [/\bcreme\b|\bcrema\b|\bcream\b/i,                          '#f5f0e0'],
+  [/\bmarinha?\b|\bmarino\b|\bnavy\b/i,                       '#1e3a5f'],
+  [/\bceleste\b|\baqua\b/i,                                   '#4fc3f7'],
+  [/\bazul\b|\bblue\b/i,                                      '#1565c0'],
+  [/\bvermelho\b|\brojo\b|\bred\b/i,                          '#c62828'],
+  [/\bbord[oô]\b|\bburdeo\b|\bvino\b|\bwine\b|\bguinda\b/i,   '#880e4f'],
+  [/\brosa\b|\bpink\b/i,                                      '#f48fb1'],
+  [/\bcoral\b/i,                                              '#ff7043'],
+  [/\blaranja\b|\bnaranja\b|\borange\b/i,                     '#ef6c00'],
+  [/\bmostarda\b|\bmostaza\b|\bmustard\b/i,                   '#c8a227'],
+  [/\bamarelo\b|\bamarillo\b|\byellow\b/i,                    '#f9a825'],
+  [/\boliva\b|\bolive\b/i,                                    '#827717'],
+  [/\bverde\b|\bgreen\b/i,                                    '#2e7d32'],
+  [/\bvioleta\b|\bvioleth?\b|\bpurple\b/i,                    '#7b1fa2'],
+  [/\bl[ií]l[aá]s?\b|\blilac\b/i,                             '#ab47bc'],
+  [/\bturquesa\b|\bturquoise\b/i,                             '#00897b'],
+]
+
+function hexDesdeNombre(nombre: string): string {
+  for (const [re, hex] of COLOR_MAP) {
+    if (re.test(nombre)) return hex
+  }
+  return '#CBD5E1'
+}
+
+/**
+ * Resuelve el hex de una variante. Prioridad:
+ *   1. `color_hex` del pilar `color` en BD (fuente única de verdad).
+ *   2. Heurística regex sobre `descp_color` (fallback hasta backfill completo).
+ *   3. Gris default.
+ */
+function resolverHex(v: { color_hex?: string | null; descp_color?: string | null }): string {
+  if (v.color_hex && /^#[0-9a-fA-F]{3,8}$/.test(v.color_hex)) return v.color_hex
+  if (v.descp_color) return hexDesdeNombre(v.descp_color)
+  return '#CBD5E1'
+}
+
+function Imagen({ src, alt, fallbackText, className, style }: {
+  src: string; alt: string; fallbackText: string; className?: string; style?: React.CSSProperties
+}) {
+  const [err, setErr] = useState(false)
+  if (err) return (
+    <div className={`w-full h-full flex flex-col items-center justify-center gap-1 ${className ?? ''}`}
+         style={{ background: `linear-gradient(135deg, ${AZUL} 0%, #2d5a8e 100%)` }}>
+      <span className="text-white/80 text-sm font-extrabold tracking-wide">{fallbackText}</span>
+      <span className="text-white/30 text-[9px] font-bold uppercase tracking-widest">RIMEC</span>
+    </div>
   )
+  return <img src={src} alt={alt} onError={() => setErr(true)} className={className} style={style} />
 }
 
-/* ── Header de sesión activa ── */
 function HeaderSesion() {
-  const { cliente, vendedor, plazo, listaPrecioId, descuentos, setLista, desactivar, activa } = useSesion()
+  const activa = useSesion(s => s.activa)
+  const vendedorDesc = useSesion(s => s.vendedor?.descp_vendedor)
+  const clienteDesc = useSesion(s => s.cliente?.descp_cliente)
+  const cerrarSesion = useSesion(s => s.desactivar)
+  
+  const user = vendedorDesc || clienteDesc
 
   if (!activa) return null
 
-  const listaActiva = LISTAS.find(l => l.id === listaPrecioId)
-  const descLabel = descuentos.length > 0 ? descuentos.map(d => `${d}%`).join(' + ') : null
-
   return (
     <div style={{
-      backgroundColor: '#EFF6FF', border: `2px solid ${AZUL}`,
-      borderRadius: 14, padding: '14px 20px', marginBottom: 24,
-      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '12px 20px', backgroundColor: AZUL, color: 'white',
+      borderRadius: 16, marginBottom: 28, boxShadow: '0 4px 12px rgba(30,64,175,0.2)'
     }}>
-      {/* Cliente + Vendedor */}
-      <div style={{ flex: 1, minWidth: 200 }}>
-        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 2 }}>Cliente</p>
-        <p style={{ fontWeight: 900, fontSize: 17, color: AZUL }}>{cliente?.descp_cliente}</p>
-        {vendedor && (
-          <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-            Vendedor: <strong style={{ color: '#1E293B' }}>{vendedor.descp_vendedor}</strong>
-            {plazo && <> · Plazo: <strong style={{ color: '#1E293B' }}>{plazo.descp_plazo}</strong></>}
-          </p>
-        )}
-      </div>
-
-      {/* Selector de lista — nombres comerciales */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <span style={{ fontSize: 13, color: '#64748B', marginRight: 4 }}>Lista:</span>
-        {LISTAS.map(l => (
-          <button key={l.id} onClick={() => setLista(l.id as ListaId)}
-            style={{
-              padding: '6px 12px', borderRadius: 8,
-              backgroundColor: listaPrecioId === l.id ? AZUL : 'white',
-              color: listaPrecioId === l.id ? 'white' : '#64748B',
-              border: `1px solid ${listaPrecioId === l.id ? AZUL : '#E2E8F0'}`,
-              fontWeight: 700, fontSize: 13, cursor: 'pointer',
-            }}>{l.nombre}</button>
-        ))}
-      </div>
-
-      {/* Descuentos (solo lectura — se fijaron en el diálogo) */}
-      {descLabel && (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: '#64748B' }}>Desc:</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: AZUL,
-            padding: '4px 12px', backgroundColor: '#DBEAFE', borderRadius: 99 }}>
-            {descLabel}
-          </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: 'white', color: AZUL, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+          {user?.charAt(0).toUpperCase() || 'U'}
         </div>
-      )}
-
-      <button onClick={desactivar}
-        style={{ fontSize: 13, color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 700 }}>{user}</p>
+          <p style={{ fontSize: 11, color: '#93C5FD' }}>Sesión activa</p>
+        </div>
+      </div>
+      <button onClick={cerrarSesion} style={{
+        padding: '8px 16px', borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.1)', color: 'white',
+        border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600
+      }}>
         Cerrar sesión
       </button>
     </div>
   )
 }
 
-/* ── Tarjeta de producto ── */
-function TarjetaProducto({ row, onNeedSession }: { row: StockRow; onNeedSession: () => void }) {
-  const { activa, listaPrecioId, agregarCaja, quitarCaja, carrito } = useSesion()
-  const key    = `det_${row.det_id}`
-  const cajas  = carrito[key]?.cajas ?? 0
-  const precio = activa ? getPrecioActivo(row, listaPrecioId) : null
+function Lightbox({ producto: p, initialIdx, onClose }: {
+  producto: RimecAgrupado; initialIdx: number; onClose: () => void
+}) {
+  const [idx, setIdx] = useState(initialIdx)
+  const v = p.variantes[idx]
+  
+  const listaPrecioId = useSesion(s => s.listaPrecioId)
+  const precioVal = getPrecioActivo(v, listaPrecioId)
+  const precio = precioVal ? new Intl.NumberFormat('es-PY').format(precioVal) : null
 
-  const esTransito  = !!row.eta
-  const colorMarco  = esTransito ? '#F59E0B' : '#10B981'
-  const labelOrigen = esTransito ? 'En camino' : 'En depósito'
-  const bgBadge     = esTransito ? '#FFFBEB' : '#F0FDF4'
-  const textBadge   = esTransito ? '#92400E' : '#166534'
-  const gradas      = formatGrades(row.grades_json)
-  const imgUrl      = getImageUrl(row.linea_codigo, row.referencia_codigo, row.material_code, row.color_code)
-  const maxCajas    = row.cajas_disponibles
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft')  setIdx(i => (i - 1 + p.variantes.length) % p.variantes.length)
+      if (e.key === 'ArrowRight') setIdx(i => (i + 1) % p.variantes.length)
+    }
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [onClose, p.variantes.length])
 
-  function handleAgregar() {
-    if (!activa) { onNeedSession(); return }
-    if (precio === null || precio <= 0) return
-    if (cajas >= maxCajas) return
-    agregarCaja({
-      det_id:             row.det_id,
-      linea_codigo:       row.linea_codigo,
-      referencia_codigo:  row.referencia_codigo,
-      material_code:      row.material_code,
-      color_code:         row.color_code,
-      color_nombre:       row.color_nombre,
-      pp_id:              row.pp_id,
-      pp_nro:             row.pp_nro,
-      eta:                row.eta,
-      marca:              row.marca,
-      nombre:             row.nombre,
-      gradas_fmt:         gradas,
-      imagen_url:         imgUrl,
-      lista_precio_id:    listaPrecioId,
-      precio_base:        precio,
-      cant_caja:          row.pares_por_caja,
-    })
-  }
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+         style={{ backgroundColor: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)' }}
+         onClick={onClose}>
+      <div className="relative flex flex-col bg-white rounded-2xl overflow-hidden w-full max-w-lg"
+           style={{ maxHeight: '92vh', boxShadow: '0 25px 80px rgba(0,0,0,0.45)' }}
+           onClick={e => e.stopPropagation()}>
 
-  const tienePrecio    = precio !== null && precio > 0
-  const puedeAgregar   = activa && tienePrecio && cajas < maxCajas
-  const botonPlusColor = puedeAgregar ? AZUL : '#E2E8F0'
-  const botonPlusTxt   = puedeAgregar ? 'white' : '#CBD5E1'
+        <div className="relative flex-1 min-h-0"
+             style={{ background: 'linear-gradient(135deg,#f8fafc,#eff6ff)', minHeight: 320 }}>
+          <Imagen src={v.imagen_url}
+                  alt={`${p.linea_codigo}-${p.referencia_codigo}`}
+                  fallbackText={`${p.linea_codigo}·${p.referencia_codigo}`}
+                  className="w-full h-full object-contain"
+                  style={{ maxHeight: 420 } as React.CSSProperties} />
 
-  return (
-    <div style={{
-      backgroundColor: 'white', borderRadius: 16, border: `3px solid ${colorMarco}`,
-      boxShadow: '0 2px 12px rgba(0,0,0,0.07)', padding: 16,
-      display: 'flex', flexDirection: 'column', gap: 12,
-      width: '100%', maxWidth: 280,
-    }}>
-      {/* Imagen */}
-      <div style={{ position: 'relative', aspectRatio: '1/1', borderRadius: 10,
-                    overflow: 'hidden', backgroundColor: '#F8FAFC' }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imgUrl} alt={`${row.marca} ${row.referencia_codigo}`}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onError={e => { e.currentTarget.src = '/placeholder-zapato.svg' }} />
-        <span style={{
-          position: 'absolute', top: 8, right: 8, backgroundColor: bgBadge,
-          color: textBadge, fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 99,
-        }}>{labelOrigen}</span>
-      </div>
+          <button onClick={onClose}
+                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
+                  style={{ color: '#64748b' }}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
 
-      {/* Info */}
-      <div>
-        <p style={{ fontWeight: 900, fontSize: 18, color: AZUL, marginBottom: 2 }}>{row.marca}</p>
-        <p style={{ fontSize: 15, color: '#374151', marginBottom: 2 }}>
-          Línea {row.linea_codigo} · Ref. {row.referencia_codigo}
-        </p>
-        <p style={{ fontSize: 13, color: '#64748B' }}>
-          {row.material_descripcion} · {row.color_nombre}
-        </p>
-      </div>
+          {p.variantes.length > 1 && (
+            <>
+              <button onClick={() => setIdx(i => (i - 1 + p.variantes.length) % p.variantes.length)}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
+                      style={{ color: AZUL }}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button onClick={() => setIdx(i => (i + 1) % p.variantes.length)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
+                      style={{ color: AZUL }}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </>
+          )}
 
-      {/* ETA */}
-      <div style={{ backgroundColor: '#EFF6FF', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
-        <p style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Llegada estimada
-        </p>
-        <p style={{ fontWeight: 700, color: AZUL, fontSize: 15, marginTop: 2 }}>
-          {formatearQuincena(row.eta)}
-        </p>
-      </div>
-
-      {/* Gradas */}
-      <p style={{ fontSize: 13, color: '#475569', backgroundColor: '#F8FAFC',
-                  padding: '6px 10px', borderRadius: 8, fontFamily: 'monospace' }}>
-        📦 {gradas}
-      </p>
-
-      {/* Precio — solo si sesión activa */}
-      {!activa ? (
-        <div style={{ padding: '10px 0', textAlign: 'center' }}>
-          <p style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic' }}>
-            🔒 Iniciá sesión para ver el precio
-          </p>
+          <div className="absolute top-3 left-3 flex items-center gap-2">
+            <span className="text-white text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
+                  style={{ backgroundColor: CELESTE }}>tránsito</span>
+            {v.eta && (
+              <span className="text-[10px] font-extrabold" style={{ color: CELESTE }}>
+                🚢 {v.eta.split('-')[2].slice(0,2)}-{v.eta.split('-')[1]}
+              </span>
+            )}
+          </div>
         </div>
-      ) : tienePrecio ? (
-        <p style={{ fontSize: 18, fontWeight: 900, color: AZUL }}>
-          Gs. {precio!.toLocaleString('es-PY')}
-          <span style={{ fontSize: 13, fontWeight: 400, color: '#64748B' }}> / par</span>
-        </p>
-      ) : (
-        <p style={{ fontSize: 13, color: '#F59E0B', fontWeight: 600 }}>
-          ⚠ Sin precio en lista {LISTAS.find(l => l.id === listaPrecioId)?.nombre}
-        </p>
-      )}
 
-      {/* Control de cajas */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* − */}
-          <button
-            onClick={() => { if (!activa) { onNeedSession(); return }; quitarCaja(row.det_id) }}
-            disabled={!activa || cajas === 0}
-            style={{
-              width: 52, height: 52, borderRadius: '50%',
-              border: `2px solid ${activa && cajas > 0 ? AZUL : '#E2E8F0'}`,
-              backgroundColor: 'white', color: activa && cajas > 0 ? AZUL : '#CBD5E1',
-              fontSize: 28, fontWeight: 700, cursor: activa && cajas > 0 ? 'pointer' : 'not-allowed',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>−</button>
-
-          {/* Display */}
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <p style={{ fontSize: 28, fontWeight: 900, color: activa && tienePrecio ? AZUL : '#CBD5E1', lineHeight: 1 }}>{cajas}</p>
-            <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-              {cajas === 0 ? 'cajas' : `= ${cajas * row.pares_por_caja} pares`}
-            </p>
+        <div className="px-4 py-3 border-t border-slate-100">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest shadow-sm shrink-0"
+                  style={{ backgroundColor: AZUL }}>{p.descp_marca}</span>
+            <div className="flex items-center gap-1 text-[11px] font-extrabold">
+              <span style={{ color: AZUL }}>{p.linea_codigo}</span>
+              <span className="text-slate-300">·</span>
+              <span style={{ color: CELESTE }}>{p.referencia_codigo}</span>
+            </div>
           </div>
 
-          {/* + */}
-          <button
-            onClick={handleAgregar}
-            disabled={!puedeAgregar}
-            title={!activa ? 'Iniciá sesión' : !tienePrecio ? 'Sin precio en esta lista' : cajas >= maxCajas ? 'Máximo alcanzado' : ''}
-            style={{
-              width: 52, height: 52, borderRadius: '50%',
-              border: `2px solid ${botonPlusColor}`,
-              backgroundColor: botonPlusColor,
-              color: botonPlusTxt,
-              fontSize: 28, fontWeight: 700, cursor: puedeAgregar ? 'pointer' : 'not-allowed',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>+</button>
+          <p className="text-xs font-bold uppercase truncate" style={{ color: '#1e293b' }}>{p.nombre}</p>
+          <p className="text-[10px] text-slate-400 truncate mb-2">
+            {p.descp_material} · {v.descp_color}
+          </p>
+          <p className="text-[10px] font-mono font-bold text-slate-500 mb-3 bg-slate-50 px-2 py-1 rounded">
+            {v.gradas_fmt}
+          </p>
+
+          <div className="flex items-end justify-between gap-2 mb-4">
+            {precio && (
+              <div>
+                <p className="text-[9px] font-semibold uppercase text-slate-400 leading-none mb-0.5">Precio Gs.</p>
+                <div className="text-lg font-extrabold" style={{ color: CELESTE }}>{precio}</div>
+              </div>
+            )}
+            <div className="text-right">
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: '#f0f9ff', color: CELESTE }}>
+                disp: {v.cajas_disponibles} cjs
+              </span>
+            </div>
+          </div>
+          
+          {p.variantes.length > 1 && (
+            <div className="flex flex-wrap gap-2 mb-3 items-center">
+              {p.variantes.map((vv, i) => {
+                const hex = resolverHex(vv)
+                const isActive = i === idx
+                return (
+                  <button
+                    key={vv.det_id}
+                    onClick={() => setIdx(i)}
+                    title={vv.descp_color}
+                    aria-label={`Color ${vv.descp_color}`}
+                    aria-pressed={isActive}
+                    type="button"
+                    className="cursor-pointer focus:outline-none"
+                    style={{
+                      width: 26, height: 26, borderRadius: '50%',
+                      backgroundColor: hex,
+                      border: '1.5px solid #CBD5E1',
+                      boxShadow: isActive
+                        ? `0 0 0 2px white, 0 0 0 4px ${CELESTE}`
+                        : '0 1px 2px rgba(0,0,0,0.08)',
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                      transform: isActive ? 'scale(1.10)' : 'scale(1)',
+                    }}
+                  />
+                )
+              })}
+              <span className="text-xs text-slate-500 ml-1">{v.descp_color}</span>
+            </div>
+          )}
         </div>
-
-        <p style={{ fontSize: 12, textAlign: 'center', color: '#94A3B8' }}>
-          {row.pares_por_caja} pares por caja · máx. {maxCajas} cajas
-        </p>
-
-        {cajas > 0 && (
-          <a href="/carrito" style={{
-            display: 'block', width: '100%', padding: '14px 0', borderRadius: 12,
-            backgroundColor: '#10B981', color: 'white', textAlign: 'center',
-            fontWeight: 700, fontSize: 16, cursor: 'pointer', border: 'none',
-            textDecoration: 'none',
-          }}>
-            En pedido ✓ — Ver carrito
-          </a>
-        )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
-/* ── Grid principal ── */
-export function CatalogoGrid({ rows, marcas, pps }: Props) {
+function TarjetaProducto({ producto: p, onNeedSession }: { producto: RimecAgrupado; onNeedSession: () => void }) {
+  // Filtrar solo variantes con stock disponible
+  const variantesConStock = p.variantes.filter(v => v.cajas_disponibles > 0)
+
+  const [varIdx, setVarIdx] = useState(0)
+  const [lightbox, setLightbox] = useState(false)
+
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
+  const activaStore   = useSesion(s => s.activa)
+  const carrito       = useSesion(s => s.carrito)
+  const listaPrecioId = useSesion(s => s.listaPrecioId)
+  const { agregarCaja, quitarCaja } = useSesion()
+
+  const activa = mounted ? activaStore : false
+
+  // Usar solo variantes con stock
+  const v = variantesConStock[varIdx] || p.variantes[0] // Fallback por si todas sin stock
+  
+  const precioVal = getPrecioActivo(v, listaPrecioId)
+  const tienePrecio = precioVal !== null
+  const precio = precioVal ? new Intl.NumberFormat('es-PY').format(precioVal) : null
+  const etaStr = v.eta ? v.eta.slice(0, 10) : null
+  
+  const cartItem = carrito[`det_${v.det_id}`]
+  const cajas = cartItem ? cartItem.cajas : 0
+  const maxCajas = v.cajas_disponibles
+  
+  const puedeAgregar = !!activa && tienePrecio && cajas < maxCajas
+  
+  const botonPlusColor = !activa 
+    ? '#CBD5E1' 
+    : !tienePrecio 
+      ? '#F1F5F9' 
+      : cajas >= maxCajas 
+        ? '#E2E8F0' 
+        : AZUL
+  
+  const botonPlusTxt = !activa 
+    ? 'white' 
+    : !tienePrecio 
+      ? '#CBD5E1' 
+      : cajas >= maxCajas 
+        ? '#94A3B8' 
+        : 'white'
+
+  const handleAgregar = () => {
+    if (!activa) { onNeedSession(); return }
+    if (!tienePrecio || cajas >= maxCajas) return
+    agregarCaja({
+      det_id:            v.det_id,
+      linea_codigo:      p.linea_codigo,
+      referencia_codigo: p.referencia_codigo,
+      material_code:     v.material_code,
+      color_code:        v.color_code,
+      color_nombre:      v.descp_color,
+      pp_id:             v.pp_id,
+      pp_nro:            v.pp_nro,
+      eta:                v.eta,
+      // Campos críticos para la Regla 1 (factura por Marca × Caso):
+      marca:             p.descp_marca ?? '',
+      marca_id:          p.marca_id ?? null,
+      caso:              p.descp_caso ?? '',
+      caso_id:           p.caso_id ?? null,
+      nombre:            p.nombre,
+      gradas_fmt:         v.gradas_fmt,
+      imagen_url:         v.imagen_url,
+      lista_precio_id:   listaPrecioId,
+      precio_base:        precioVal,
+      cant_caja:          v.pares_por_caja,
+    })
+  }
+
+  return (
+    <>
+      <div className="group flex flex-col bg-white overflow-hidden h-full relative"
+           style={{
+             borderRadius: '16px',
+             boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+             transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+             border: 'none'
+           }}>
+
+        <div className="relative aspect-square overflow-hidden cursor-zoom-in bg-[#F8FAFC]"
+             onClick={() => setLightbox(true)}>
+          <Imagen src={v.imagen_url}
+                  alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
+                  fallbackText={`${p.linea_codigo}·${p.referencia_codigo}`}
+                  className="w-full h-full object-contain p-3 transition-transform duration-700 ease-out group-hover:scale-105" />
+
+          <div className="absolute top-2.5 left-2.5 flex items-center gap-2">
+            <span className="text-white text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
+                  style={{ backgroundColor: CELESTE }}>
+              tránsito
+            </span>
+            {etaStr && (
+              <span className="text-[10px] font-extrabold" style={{ color: CELESTE }}>
+                🚢 {etaStr.split('-')[2].slice(0,2)}-{etaStr.split('-')[1]}
+              </span>
+            )}
+          </div>
+
+          {variantesConStock.length > 1 && (
+            <span className="absolute top-2.5 right-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.92)', color: '#475569',
+                           boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
+              {variantesConStock.length} col.
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col flex-1 p-3">
+          {/* Fila 3: Marca y Códigos */}
+
+          {/* Fila 3: Marca y Códigos */}
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0"
+                  style={{ backgroundColor: AZUL }}>
+              {p.descp_marca}
+            </span>
+            <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
+              <span style={{ color: AZUL }}>{p.linea_codigo}</span>
+              <span className="text-slate-300">·</span>
+              <span style={{ color: CELESTE }}>{p.referencia_codigo}</span>
+            </div>
+          </div>
+
+          {/* Fila 4: Descripción */}
+          <p className="text-[10px] font-bold uppercase truncate" style={{ color: '#1e293b' }}>
+            {p.nombre}
+          </p>
+
+          {/* Fila 5: Material y Color */}
+          <p className="text-[10px] text-slate-400 truncate mb-1">
+            {p.descp_material} · {v.descp_color}
+          </p>
+
+          {/* Fila 6: Grada */}
+          <p className="text-[10px] font-mono font-bold text-slate-500 mb-2 bg-slate-50 px-2 py-0.5 rounded">
+            {v.gradas_fmt}
+          </p>
+
+          {/* Fila 7: Precio y Disponibilidad */}
+          <div className="flex items-end justify-between gap-1 mb-3">
+            {!activa ? (
+              <span className="text-[10px] font-semibold text-slate-400">🔒 Inicie sesión</span>
+            ) : precio ? (
+              <div>
+                <p className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-0.5">Precio Gs.</p>
+                <span className="text-sm font-extrabold" style={{ color: CELESTE }}>{precio}</span>
+              </div>
+            ) : (
+              <span className="text-xs font-semibold text-slate-400">Sin precio</span>
+            )}
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                  style={{ backgroundColor: '#f0f9ff', color: CELESTE }}>
+              disp: {v.cajas_disponibles} cjs
+            </span>
+          </div>
+
+          {/* Variantes de color: chips clickeables que cambian la variante visible */}
+          {variantesConStock.length > 1 && (
+            <div className="flex flex-wrap gap-2 pb-3 items-center">
+              {variantesConStock.map((vv, i) => {
+                const hex = resolverHex(vv)
+                const isActive = i === varIdx
+                return (
+                  <button
+                    key={vv.det_id}
+                    onClick={(e) => { e.stopPropagation(); setVarIdx(i) }}
+                    title={`${vv.descp_color} (${vv.cajas_disponibles} cjs)`}
+                    aria-label={`Color ${vv.descp_color}`}
+                    aria-pressed={isActive}
+                    type="button"
+                    className="group/chip relative cursor-pointer focus:outline-none"
+                    style={{
+                      width: 22, height: 22, borderRadius: '50%',
+                      backgroundColor: hex,
+                      // Borde fijo gris para que el chip se vea siempre, aún sobre blanco
+                      border: '1.5px solid #CBD5E1',
+                      // Ring celeste prominente sólo cuando está activo
+                      boxShadow: isActive
+                        ? `0 0 0 2px white, 0 0 0 4px ${CELESTE}`
+                        : '0 1px 2px rgba(0,0,0,0.08)',
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                      transform: isActive ? 'scale(1.10)' : 'scale(1)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.15)'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
+                    }}
+                  />
+                )
+              })}
+              {/* Etiqueta del color activo */}
+              <span className="text-[10px] text-slate-400 ml-1 truncate max-w-[120px]">
+                {v.descp_color}
+              </span>
+            </div>
+          )}
+
+          {/* Controles de compra */}
+          <div className="mt-auto space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { if (!activa) { onNeedSession(); return }; quitarCaja(v.det_id) }}
+                disabled={!activa || cajas === 0}
+                className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-lg font-bold transition-colors"
+                style={{
+                  borderColor: activa && cajas > 0 ? AZUL : '#E2E8F0',
+                  color: activa && cajas > 0 ? AZUL : '#CBD5E1',
+                  cursor: activa && cajas > 0 ? 'pointer' : 'not-allowed',
+                }}>−</button>
+
+              <div className="flex-1 text-center">
+                <p className="text-lg font-black leading-none" style={{ color: activa && tienePrecio ? AZUL : '#CBD5E1' }}>{cajas}</p>
+                <p className="text-[9px] text-slate-500 font-medium">
+                  {cajas === 0 ? 'cajas' : `= ${cajas * v.pares_por_caja} p`}
+                </p>
+              </div>
+
+              <button
+                onClick={handleAgregar}
+                disabled={!puedeAgregar}
+                className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-lg font-bold transition-colors"
+                style={{
+                  borderColor: botonPlusColor,
+                  backgroundColor: botonPlusColor,
+                  color: botonPlusTxt,
+                  cursor: puedeAgregar ? 'pointer' : 'not-allowed',
+                }}>+</button>
+            </div>
+
+            <p className="text-[9px] text-center text-slate-400 font-medium">
+              {v.pares_por_caja} pares/caja · máx. {maxCajas} cjs
+            </p>
+            
+            {cajas > 0 && (
+              <a href="/carrito" className="block w-full py-1.5 rounded-lg bg-emerald-500 text-white text-center font-bold text-xs">
+                En pedido ✅
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {lightbox && (
+        <Lightbox
+          producto={{ ...p, variantes: variantesConStock }}
+          initialIdx={varIdx}
+          onClose={() => setLightbox(false)}
+        />
+      )}
+    </>
+  )
+}
+
+
+function Pill({ active, onClick, children }: { active: boolean, onClick: () => void, children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
+      backgroundColor: active ? AZUL : '#E2E8F0',
+      color: active ? 'white' : '#475569',
+      transition: 'all 0.2s',
+    }}>
+      {children}
+    </button>
+  )
+}
+
+export function CatalogoGrid({ productos, pps }: { productos: RimecAgrupado[], pps: any[] }) {
   const { activa, carrito } = useSesion()
-  const [marcaFiltro,    setMarcaFiltro]    = useState('')
-  const [ppFiltro,       setPpFiltro]       = useState('')
-  const [buscar,         setBuscar]         = useState('')
+  const [lineaFiltro, setLineaFiltro] = useState('')
+  const [colorFiltro, setColorFiltro] = useState('')
+  const [ofertasFiltro, setOfertasFiltro] = useState(false)
+  const [buscar, setBuscar] = useState('')
   const [mostrarDialogo, setMostrarDialogo] = useState(false)
 
-  const filtered = rows.filter(r => {
-    if (marcaFiltro && r.marca !== marcaFiltro) return false
-    if (ppFiltro    && r.pp_nro !== ppFiltro)   return false
+  // Derived unique lists for filters
+  const lineasDisponibles = Array.from(new Set(productos.map(p => p.linea_codigo))).sort()
+  
+  // Group colors logically using el hex del pilar (color_hex) con fallback al regex
+  // Filtrar solo colores con stock disponible
+  const baseColorsPresent = new Set<string>()
+  productos.forEach(p => p.variantes.filter(v => v.cajas_disponibles > 0).forEach(v => {
+    baseColorsPresent.add(resolverHex(v))
+  }))
+  const coloresDisponibles = Array.from(baseColorsPresent)
+
+  const filtered = productos.filter(p => {
+    if (lineaFiltro && p.linea_codigo !== lineaFiltro) return false
+    if (colorFiltro && !p.variantes.some(v => resolverHex(v) === colorFiltro)) return false
+    // Note: ofertasFiltro kept purely visual per aesthetic constraint, filtering not applied if no real data field exists.
     if (buscar) {
       const q = buscar.toLowerCase()
-      if (![r.marca, r.linea_codigo, r.referencia_codigo, r.nombre, r.material_descripcion, r.color_nombre]
-            .some(f => f?.toLowerCase().includes(q))) return false
+      if (![p.descp_marca, p.linea_codigo, p.referencia_codigo, p.nombre, p.descp_material]
+            .some(f => f?.toLowerCase().includes(q)) &&
+          !p.variantes.some(v => v.descp_color.toLowerCase().includes(q))) return false
     }
     return true
   })
 
-  const cartItems  = Object.values(carrito)
+  const cartItems = Object.values(carrito)
   const totalCajas = cartItems.reduce((s, i) => s + i.cajas, 0)
   const totalPares = cartItems.reduce((s, i) => s + i.pares, 0)
-  const cartCount  = cartItems.length
+  const cartCount = cartItems.length
 
   return (
     <>
       <DialogoActivacion open={mostrarDialogo} onClose={() => setMostrarDialogo(false)} />
-
       <HeaderSesion />
 
-      {/* Filtros */}
-      <div style={{ backgroundColor: '#F8FAFC', borderRadius: 16, padding: 20, marginBottom: 28,
-                    border: '1px solid #E2E8F0' }}>
-        <input value={buscar} onChange={e => setBuscar(e.target.value)}
-          placeholder="Buscar por marca, línea, referencia, color..."
-          style={{
-            width: '100%', padding: '12px 16px', borderRadius: 10,
-            border: '2px solid #E2E8F0', fontSize: 16, color: '#1E293B',
-            backgroundColor: 'white', marginBottom: 14, boxSizing: 'border-box', outline: 'none',
-          }} />
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-          <Pill active={!marcaFiltro} onClick={() => setMarcaFiltro('')}>Todas las marcas</Pill>
-          {marcas.map(m => (
-            <Pill key={m} active={marcaFiltro === m} onClick={() => setMarcaFiltro(marcaFiltro === m ? '' : m)}>
-              {m}
-            </Pill>
-          ))}
+      <div className="flex flex-col md:flex-row md:items-center gap-6 mb-10 bg-white p-6 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+        {/* Search */}
+        <div className="flex-1">
+          <input value={buscar} onChange={e => setBuscar(e.target.value)}
+            placeholder="Buscar modelos..."
+            className="w-full bg-transparent border-b border-gray-200 px-0 py-2 text-sm placeholder-gray-400 focus:outline-none focus:border-[#0F172A] transition-colors" />
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <Pill active={!ppFiltro} onClick={() => setPpFiltro('')}>Todos los lotes</Pill>
-          {pps.map(p => (
-            <Pill key={p.nro} active={ppFiltro === p.nro} onClick={() => setPpFiltro(ppFiltro === p.nro ? '' : p.nro)}>
-              {p.nro}{p.eta ? ` · ${formatearQuincena(p.eta)}` : ''}
-            </Pill>
-          ))}
+
+        {/* Filters */}
+        <div className="flex items-center gap-8">
+          
+          {/* Color Circles */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Color</span>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-[260px] no-scrollbar">
+              {/* "Todos" — multicolor */}
+              <button
+                onClick={() => setColorFiltro('')}
+                aria-label="Mostrar todos los colores"
+                aria-pressed={!colorFiltro}
+                title="Todos los colores"
+                type="button"
+                className={`shrink-0 w-7 h-7 rounded-full border flex items-center justify-center cursor-pointer transition-all
+                            ${!colorFiltro
+                              ? 'border-slate-900 ring-2 ring-offset-1 ring-slate-900'
+                              : 'border-gray-300 opacity-60 hover:opacity-100 hover:scale-110'}`}>
+                <span className="w-4 h-4 rounded-full bg-[conic-gradient(red,yellow,green,blue,magenta,red)] block" />
+              </button>
+              {/* Chips por hex de color */}
+              {coloresDisponibles.map(hex => {
+                const isActive = colorFiltro === hex
+                return (
+                  <button
+                    key={hex}
+                    onClick={() => setColorFiltro(isActive ? '' : hex)}
+                    aria-label={`Filtrar por color ${hex}`}
+                    aria-pressed={isActive}
+                    title={hex}
+                    type="button"
+                    className="shrink-0 cursor-pointer focus:outline-none"
+                    style={{
+                      width: 28, height: 28, borderRadius: '50%',
+                      backgroundColor: hex,
+                      border: '1.5px solid #CBD5E1',
+                      boxShadow: isActive
+                        ? `0 0 0 2px white, 0 0 0 4px #0F172A`
+                        : '0 1px 3px rgba(0,0,0,0.08)',
+                      transform: isActive ? 'scale(0.92)' : 'scale(1)',
+                      opacity: colorFiltro && !isActive ? 0.4 : 1,
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.12)'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
+                    }}
+                  />
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Offers Toggle */}
+          <div className="flex items-center gap-3 border-l border-gray-200 pl-8">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Ofertas</span>
+            <button 
+              onClick={() => setOfertasFiltro(!ofertasFiltro)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none ${ofertasFiltro ? 'bg-[#0EA5E9]' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-sm ${ofertasFiltro ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
         </div>
       </div>
 
       <p style={{ fontSize: 14, color: '#64748B', marginBottom: 20 }}>
-        Mostrando <strong style={{ color: AZUL }}>{filtered.length}</strong> referencias
+        Mostrando <strong style={{ color: AZUL }}>{filtered.length}</strong> modelos
         {!activa && (
-          <span style={{ marginLeft: 12, color: '#F59E0B', fontWeight: 600 }}>
+          <span style={{ marginLeft: 12, color: CELESTE, fontWeight: 600 }}>
             🔒 Los precios se muestran al iniciar sesión
           </span>
         )}
       </p>
 
-      {/* Carrito flotante */}
       {!activa && (
         <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 50 }}>
           <button onClick={() => setMostrarDialogo(true)} style={{
@@ -341,7 +705,7 @@ export function CatalogoGrid({ rows, marcas, pps }: Props) {
             fontWeight: 700, fontSize: 16, border: 'none', cursor: 'pointer',
             boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
           }}>
-            🛒 Iniciar sesión
+            🔑 Iniciar sesión
           </button>
         </div>
       )}
@@ -359,16 +723,15 @@ export function CatalogoGrid({ rows, marcas, pps }: Props) {
         </div>
       )}
 
-      {/* Grid */}
       {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 0' }}>
           <p style={{ fontSize: 48, marginBottom: 12 }}>📦</p>
           <p style={{ fontSize: 18, fontWeight: 700, color: '#94A3B8' }}>Sin resultados</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 280px))', gap: 20 }}>
-          {filtered.map(row => (
-            <TarjetaProducto key={row.det_id} row={row} onNeedSession={() => setMostrarDialogo(true)} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+          {filtered.map(p => (
+            <TarjetaProducto key={p.key} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
           ))}
         </div>
       )}

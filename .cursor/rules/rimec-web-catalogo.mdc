@@ -1,0 +1,29 @@
+---
+description: Web RIMEC catálogo, filtros pilar y estadísticas
+alwaysApply: true
+---
+
+# Web RIMEC (rimec-web)
+
+## Catálogo y filtros
+
+- Estilo y Tipo 1 vienen de **`linea_referencia`** (par línea+referencia), no de `linea.caso_id`.
+- Enriquecer filas con `lib/atributosLinea.ts` (`cargarAtributosDesdePilar`) antes de armar filtros en `lib/filtros.ts`.
+- La vista `v_stock_rimec`: 1 fila por `ppd.id` (DISTINCT ON); JOIN `linea`/`material`/`color` con `proveedor_id` del PP; columna `cajas_disponibles` (no duplicar chips). Recrear con `scripts/fix_v_stock_rimec.py` o `APLICAR_VISTA_CATALOGO.bat`.
+- `agruparProductos` deduplica por `det_id` y solo variantes con `cajas_disponibles > 0`.
+
+## Estadísticas
+
+- Ruta `/estadisticas` — árbol PP → género → marca → estilo → hoja (5 pilares); columnas Inicial / Vendido / Saldo.
+- API: `app/api/estadisticas/route.ts`, lógica en `lib/controlStock/`.
+- Antes del árbol: `normalizarFilasMolecula` (misma molécula en un PP → 1 fila, suma pares). Evita claves React duplicadas si `ppd` tiene filas repetidas.
+
+## Operación
+
+- Dev: `npm run dev` → http://localhost:3001
+- Si `EADDRINUSE` en 3001, hay otra instancia corriendo o usar 3002.
+
+## Alineación con política RIMEC
+
+- Precio/caso en operación importadora viven en **Motor + PP + evento** (`ventas_por_mes_rimec-main`), no en `linea.caso_id`.
+- Report (Sales) no consume pilares; esta web sí usa pilares para catálogo/filtros.

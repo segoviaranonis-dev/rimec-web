@@ -9,7 +9,8 @@ const AZUL = '#1E40AF'
 
 export default function CarritoPage() {
   const { cliente, vendedor, plazo, listaPrecioId, descuentos, descuentosPorLote,
-          setDescuentoLote, carrito, desactivar, activa } = useSesion()
+          setDescuentoLote, carrito, desactivar, activa,
+          setCajas, eliminarItem } = useSesion()
   const router = useRouter()
   const [enviando, setEnviando] = useState(false)
   const [exito,    setExito]    = useState<string | null>(null)
@@ -37,13 +38,18 @@ export default function CarritoPage() {
   const totalGenMonto = lotes.reduce((s, l) => s + l.total_monto, 0)
   const descLabel     = descuentos.length > 0 ? descuentos.map(d => `${d}%`).join(' + ') : 'Sin descuento'
 
+  // Cantidad total de facturas internas que se van a generar.
+  // Regla 1: una factura por cada combinación (PP × Marca × Caso).
+  const totalFacturas = lotes.reduce((s, l) => s + l.cantidad_facturas, 0)
+
   async function confirmarPedido() {
     setEnviando(true)
     setError(null)
     try {
       const [d1, d2, d3, d4] = [...descuentos, 0, 0, 0, 0]
 
-      // Construir payload con tipos primitivos garantizados (JSON válido)
+      // Construir payload con tipos primitivos garantizados (JSON válido).
+      // Cada elemento de `facturas` se traduce en UNA factura_interna del backend.
       const payload = {
         cliente_id:      cliente!.id_cliente,
         cliente_nombre:  String(cliente!.descp_cliente || ''),
@@ -67,24 +73,31 @@ export default function CarritoPage() {
           eta:         lote.eta ? String(lote.eta) : null,
           total_pares: Number(lote.total_pares) || 0,
           total_monto: Number(lote.total_monto) || 0,
-          marcas:      lote.marcas.map(marca => ({
-            marca:       String(marca.marca || ''),
-            total_pares: Number(marca.total_pares) || 0,
-            total_monto: Number(marca.total_monto) || 0,
-            items:       marca.items.map(item => ({
-              det_id:       Number(item.det_id),
-              linea_codigo: String(item.linea_codigo || ''),
-              ref_codigo:   String(item.ref_codigo || ''),
-              color_nombre: String(item.color_nombre || ''),
-              gradas_fmt:   String(item.gradas_fmt || ''),
-              imagen_url:   String(item.imagen_url || ''),
-              cajas:        Number(item.cajas) || 0,
-              pares:        Number(item.pares) || 0,
-              precio_base:  Number(item.precio_base) || 0,
-              precio_neto:  Number(item.precio_neto) || 0,
-              subtotal:     Number(item.subtotal) || 0,
+          // Aplanamos lote.marcas[].facturas[] -> lote.facturas[] enriqueciendo
+          // cada factura con su marca de pertenencia (Regla 1: 1 FI por PP×Marca×Caso).
+          facturas:    lote.marcas.flatMap(m =>
+            m.facturas.map(f => ({
+              marca:       String(m.marca || ''),
+              marca_id:    m.marca_id,
+              caso:        String(f.caso || ''),
+              caso_id:     f.caso_id,
+              total_pares: Number(f.total_pares) || 0,
+              total_monto: Number(f.total_monto) || 0,
+              items:       f.items.map(item => ({
+                det_id:       Number(item.det_id),
+                linea_codigo: String(item.linea_codigo || ''),
+                ref_codigo:   String(item.ref_codigo || ''),
+                color_nombre: String(item.color_nombre || ''),
+                gradas_fmt:   String(item.gradas_fmt || ''),
+                imagen_url:   String(item.imagen_url || ''),
+                cajas:        Number(item.cajas) || 0,
+                pares:        Number(item.pares) || 0,
+                precio_base:  Number(item.precio_base) || 0,
+                precio_neto:  Number(item.precio_neto) || 0,
+                subtotal:     Number(item.subtotal) || 0,
+              }))
             }))
-          }))
+          ),
         }))
       }
 
@@ -124,11 +137,14 @@ export default function CarritoPage() {
 
       // Éxito: limpiar sesión y mostrar resultado
       const facturasGeneradas = result.facturas?.map(f => f.nro_factura).join(', ') || ''
+      const nroPedido = result.nro_pedido || ''
       desactivar()
-      setExito(`Pedido ${result.nro_pedido} confirmado. Facturas: ${facturasGeneradas}`)
-      
-      // Redirigir después de mostrar el mensaje
-      setTimeout(() => router.push('/pedidos'), 2500)
+      setExito(`Pedido ${nroPedido} confirmado. Facturas: ${facturasGeneradas}`)
+
+      // Redirigir destacando el pedido recién creado
+      setTimeout(() => {
+        router.push(nroPedido ? `/pedidos?destacar=${encodeURIComponent(nroPedido)}` : '/pedidos')
+      }, 2500)
 
     } catch (e: unknown) {
       console.error('Error al confirmar pedido:', e)
@@ -225,23 +241,156 @@ export default function CarritoPage() {
               </div>
             </div>
 
-            {/* Marcas */}
+            {/* Aviso de Regla 1 si este PP va a generar más de 1 factura */}
+            {lote.cantidad_facturas > 1 && (
+              <div style={{
+                padding: '10px 20px', backgroundColor: '#FEFCE8',
+                borderBottom: '1px solid #FDE68A',
+                fontSize: 12, color: '#854D0E',
+              }}>
+                ⚖ <strong>Regla 1 — Factura Interna:</strong> este lote se dividirá en{' '}
+                <strong>{lote.cantidad_facturas} facturas internas</strong>{' '}
+                (una por cada Marca · una adicional por cada Caso extra dentro de una marca).
+              </div>
+            )}
+
+            {/* Nivel 2: MARCA */}
             {lote.marcas.map(marca => (
-              <div key={marca.marca} style={{ padding: '14px 20px', borderBottom: '1px solid #F1F5F9' }}>
-                <p style={{ fontWeight: 700, fontSize: 15, color: AZUL, marginBottom: 10 }}>
-                  {marca.marca} — {marca.total_pares.toLocaleString('es-PY')} pares
-                  &nbsp;·&nbsp;Gs. {marca.total_monto.toLocaleString('es-PY')}
-                </p>
-                {marca.items.map(item => (
+              <div key={`${lote.pp_id}__${marca.marca}`}
+                   style={{ borderBottom: '1px solid #F1F5F9' }}>
+
+                {/* Cabecera de la marca */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                              flexWrap: 'wrap', padding: '14px 20px 8px 20px' }}>
+                  <p style={{ fontWeight: 700, fontSize: 15, color: AZUL, margin: 0 }}>
+                    🏷️ {marca.marca}
+                  </p>
+                  {marca.cantidad_facturas > 1 && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                      borderRadius: 99, backgroundColor: '#FEF3C7', color: '#92400E',
+                    }}>
+                      {marca.cantidad_facturas} casos · {marca.cantidad_facturas} facturas
+                    </span>
+                  )}
+                  <p style={{ fontSize: 13, color: '#64748B', margin: 0, marginLeft: 'auto' }}>
+                    {marca.total_pares.toLocaleString('es-PY')} pares · Gs.{' '}
+                    {marca.total_monto.toLocaleString('es-PY')}
+                  </p>
+                </div>
+
+                {/* Nivel 2.5: facturas dentro de la marca (1 por caso). Sólo se muestra
+                    el sub-header de caso si la marca tiene MÁS DE UNO. */}
+                {marca.facturas.map((fact, idx) => (
+                  <div key={fact.grupo_key}
+                       style={{
+                         padding: marca.cantidad_facturas > 1 ? '8px 20px 14px 20px'
+                                                              : '0 20px 12px 20px',
+                         borderLeft: marca.cantidad_facturas > 1 ? `3px solid ${AZUL}` : 'none',
+                         backgroundColor: marca.cantidad_facturas > 1 ? '#FAFAFA' : 'transparent',
+                         marginLeft: marca.cantidad_facturas > 1 ? 12 : 0,
+                       }}>
+                    {marca.cantidad_facturas > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                    marginBottom: 8 }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, padding: '2px 7px',
+                          borderRadius: 99, backgroundColor: AZUL, color: 'white',
+                          letterSpacing: 0.5,
+                        }}>
+                          FI {idx + 1}/{marca.cantidad_facturas}
+                        </span>
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, padding: '2px 10px',
+                          borderRadius: 99, backgroundColor: '#E0E7FF', color: '#3730A3',
+                        }}>
+                          Caso: {fact.caso}
+                        </span>
+                        <span style={{ fontSize: 12, color: '#64748B', marginLeft: 'auto' }}>
+                          {fact.total_pares.toLocaleString('es-PY')} pares · Gs.{' '}
+                          {fact.total_monto.toLocaleString('es-PY')}
+                        </span>
+                      </div>
+                    )}
+                    {/* Nivel 3: items con foto miniatura */}
+                    {fact.items.map(item => (
                   <div key={item.det_id} style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '8px 0', borderTop: '1px solid #F8FAFC', fontSize: 14,
                   }}>
+                    {/* Foto miniatura */}
+                    {item.imagen_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imagen_url}
+                        alt={`${item.linea_codigo}-${item.ref_codigo}`}
+                        style={{
+                          width: 42, height: 42, borderRadius: 8, objectFit: 'contain',
+                          backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0',
+                          flexShrink: 0,
+                        }}
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: 42, height: 42, borderRadius: 8, backgroundColor: '#F1F5F9',
+                        flexShrink: 0, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', color: '#CBD5E1', fontSize: 18,
+                      }}>👟</div>
+                    )}
+
                     <span style={{ color: '#374151', flex: 2 }}>
                       L{item.linea_codigo}·R{item.ref_codigo}
                       <span style={{ color: '#94A3B8', marginLeft: 6 }}>{item.gradas_fmt}</span>
+                      {item.color_nombre && (
+                        <span style={{
+                          display: 'block', fontSize: 11, color: '#64748B',
+                          marginTop: 2,
+                        }}>{item.color_nombre}</span>
+                      )}
                     </span>
-                    <span style={{ color: '#64748B', flex: 1 }}>{item.cajas} caj · {item.pares} p</span>
+
+                    {/* Editor de cajas con +/-  */}
+                    <span style={{ flex: 1, display: 'flex', alignItems: 'center',
+                                   gap: 4, color: '#64748B' }}>
+                      <button
+                        type="button"
+                        aria-label="Restar caja"
+                        onClick={() => setCajas(item.det_id, item.cajas - 1)}
+                        style={{
+                          width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
+                          background: '#F8FAFC', cursor: 'pointer', fontWeight: 700,
+                          color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
+                        }}
+                      >−</button>
+                      <input
+                        type="number"
+                        min={0}
+                        value={item.cajas}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          setCajas(item.det_id, Number.isFinite(v) ? v : 0)
+                        }}
+                        aria-label="Cantidad de cajas"
+                        style={{
+                          width: 48, height: 26, textAlign: 'center', borderRadius: 6,
+                          border: '1px solid #CBD5E1', fontSize: 14, color: '#1E293B',
+                          fontWeight: 600, padding: 0,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-label="Sumar caja"
+                        onClick={() => setCajas(item.det_id, item.cajas + 1)}
+                        style={{
+                          width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
+                          background: '#F8FAFC', cursor: 'pointer', fontWeight: 700,
+                          color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
+                        }}
+                      >+</button>
+                      <span style={{ marginLeft: 4, fontSize: 12 }}>caj · {item.pares} p</span>
+                    </span>
+
                     <span style={{ color: '#64748B', flex: 1 }}>
                       Base: {item.precio_base.toLocaleString('es-PY')}
                     </span>
@@ -251,6 +400,42 @@ export default function CarritoPage() {
                     <span style={{ color: '#1E293B', fontWeight: 700, flex: 1, textAlign: 'right' }}>
                       Gs. {item.subtotal.toLocaleString('es-PY')}
                     </span>
+
+                    {/* Basurero — eliminar item del carrito */}
+                    <button
+                      type="button"
+                      aria-label="Eliminar item del carrito"
+                      title={`Eliminar L${item.linea_codigo}·R${item.ref_codigo}`}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        console.log('[carrito] eliminarItem click', { det_id: item.det_id, linea: item.linea_codigo, ref: item.ref_codigo })
+                        if (item.det_id == null || Number.isNaN(Number(item.det_id))) {
+                          console.error('[carrito] det_id inválido, no se elimina:', item)
+                          window.alert('det_id inválido — abrí la consola y avisame.')
+                          return
+                        }
+                        eliminarItem(Number(item.det_id))
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid #FCA5A5',
+                        cursor: 'pointer',
+                        fontSize: 16, lineHeight: 1, padding: '6px 10px',
+                        borderRadius: 8, color: '#DC2626',
+                        marginLeft: 8,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#FEE2E2'
+                        e.currentTarget.style.borderColor = '#DC2626'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.borderColor = '#FCA5A5'
+                      }}
+                    >🗑️ Quitar</button>
+                  </div>
+                ))}
                   </div>
                 ))}
               </div>

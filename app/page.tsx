@@ -5,6 +5,7 @@ import { getFiltros } from '@/lib/filtros'
 import { cargarAtributosDesdePilar, enriquecerMetaConPilar } from '@/lib/atributosLinea'
 import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
+import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 
 export const revalidate = 60
 
@@ -59,21 +60,6 @@ function formatearEtaLabel(isoFecha: string): string {
   return `${dia}-${mes}`
 }
 
-/** Cajas vendibles: usa columna de la vista o calcula desde saldo de pares. */
-function cajasDisponiblesDeFila(item: StockRow): number {
-  if (item.cajas_disponibles != null && !Number.isNaN(Number(item.cajas_disponibles))) {
-    return Math.max(0, Number(item.cajas_disponibles))
-  }
-  const saldoPares = Math.max(
-    0,
-    Number(item.saldo_pares ?? (item.cantidad_pares - (item.pares_vendidos ?? 0))),
-  )
-  const ppc = Number(item.pares_por_caja)
-    || (item.cantidad_cajas > 0 ? item.cantidad_pares / item.cantidad_cajas : 0)
-  if (ppc <= 0) return saldoPares > 0 ? Math.max(0, item.cantidad_cajas) : 0
-  return Math.max(0, Math.floor(saldoPares / ppc))
-}
-
 export default async function HomePage({ searchParams }: {
   searchParams: Promise<{ grupo_estilo_id?: string; marca_id?: string; linea_ids?: string; tipo_ids?: string; colores?: string; eta_fechas?: string }>
 }) {
@@ -95,9 +81,10 @@ export default async function HomePage({ searchParams }: {
   if (error) console.error('[rimec-web]', error.message)
 
   const rawRows = (data ?? []) as StockRow[]
+  const activeRawRows = rawRows.filter(r => cajasDisponiblesDeFila(r) > 0)
   const paresCodigo = [
     ...new Map(
-      rawRows.map(r => {
+      activeRawRows.map(r => {
         const lc = String(r.linea_codigo ?? '').trim()
         const rc = String(r.referencia_codigo ?? '').trim()
         return [`${lc}:${rc}`, { linea_codigo: lc, referencia_codigo: rc }] as const
@@ -105,7 +92,7 @@ export default async function HomePage({ searchParams }: {
     ).values(),
   ]
   const pilar = await cargarAtributosDesdePilar({ paresCodigo })
-  const allRows = enriquecerMetaConPilar(rawRows, pilar) as StockRow[]
+  const allRows = enriquecerMetaConPilar(activeRawRows, pilar) as StockRow[]
 
   // Obtener filtros normalizados
   const filtros = await getFiltros()

@@ -10,7 +10,8 @@ alwaysApply: true
 - Estilo y Tipo 1 vienen de **`linea_referencia`** (par línea+referencia), no de `linea.caso_id`.
 - Enriquecer filas con `lib/atributosLinea.ts` (`cargarAtributosDesdePilar`) antes de armar filtros en `lib/filtros.ts`.
 - La vista `v_stock_rimec`: 1 fila por `ppd.id` (DISTINCT ON); JOIN `linea`/`material`/`color` con `proveedor_id` del PP; columna `cajas_disponibles` (no duplicar chips). Recrear con `scripts/fix_v_stock_rimec.py` o `APLICAR_VISTA_CATALOGO.bat`.
-- `agruparProductos` deduplica por `det_id` y solo variantes con `cajas_disponibles > 0`.
+- **Tarjetas multi-origen:** `lib/agruparTarjetasCatalogo.ts` agrupa por `cardKey = sku_id + origen_tipo + origen_referencia_id` (ver `lib/catalogoOrigen.ts`). Mismo SKU con distinto ETA/PP → dos tarjetas DOM independientes; dentro de cada tarjeta, variantes = colores (`det_id`) del mismo origen. Solo `cajas_disponibles > 0`.
+- Paleta reactiva: `catalogoOrigen.ts` → `shell` (fondo, borde, badge, acento) según quincena ETA o tipo stock/depósito.
 
 ## Estadísticas
 

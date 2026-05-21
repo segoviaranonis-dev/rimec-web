@@ -8,12 +8,18 @@ interface FilterItem {
   label: string
 }
 
+interface EtaItem {
+  id: string
+  label: string
+}
+
 interface Props {
   estilos: FilterItem[]
   marcas:  FilterItem[]
   lineas:  FilterItem[]
   tipos:   FilterItem[]
   colores: string[]
+  etas:    EtaItem[]
   totalModelos: number
   totalPares:   number
 }
@@ -21,18 +27,19 @@ interface Props {
 const RIMEC_BLUE   = '#1E40AF'
 const RIMEC_CELESTE = '#0EA5E9'
 
-export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, totalModelos, totalPares }: Props) {
+export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, etas, totalModelos, totalPares }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
 
   const estiloIdActual = searchParams.get('grupo_estilo_id') ?? ''
   const marcaIdActual  = searchParams.get('marca_id')        ?? ''
 
-  const lineasSelIds = searchParams.get('linea_ids') ? searchParams.get('linea_ids')!.split(',').filter(Boolean).map(Number) : []
-  const tiposSelIds  = searchParams.get('tipo_ids')  ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : []
-  const colorsSel    = searchParams.get('colores')   ? searchParams.get('colores')!.split(',').filter(Boolean) : []
+  const lineasSelIds = searchParams.get('linea_ids')   ? searchParams.get('linea_ids')!.split(',').filter(Boolean).map(Number) : []
+  const tiposSelIds  = searchParams.get('tipo_ids')    ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : []
+  const colorsSel    = searchParams.get('colores')     ? searchParams.get('colores')!.split(',').filter(Boolean) : []
+  const etasSel      = searchParams.get('eta_fechas')  ? searchParams.get('eta_fechas')!.split(',').filter(Boolean) : []
 
-  const aplicar = useCallback((opts: { grupo_estilo_id?: string; marca_id?: string; linea_ids?: number[]; tipo_ids?: number[]; cols?: string[] }) => {
+  const aplicar = useCallback((opts: { grupo_estilo_id?: string; marca_id?: string; linea_ids?: number[]; tipo_ids?: number[]; cols?: string[]; eta_fechas?: string[] }) => {
     const params = new URLSearchParams()
 
     const estId = opts.grupo_estilo_id !== undefined ? opts.grupo_estilo_id : estiloIdActual
@@ -40,17 +47,19 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, total
     const lns   = opts.linea_ids       !== undefined ? opts.linea_ids       : lineasSelIds
     const tps   = opts.tipo_ids        !== undefined ? opts.tipo_ids        : tiposSelIds
     const cls   = opts.cols            !== undefined ? opts.cols            : colorsSel
+    const ets   = opts.eta_fechas      !== undefined ? opts.eta_fechas      : etasSel
 
     if (estId)      params.set('grupo_estilo_id', estId)
     if (marId)      params.set('marca_id',        marId)
     if (lns.length) params.set('linea_ids',       lns.join(','))
     if (tps.length) params.set('tipo_ids',        tps.join(','))
     if (cls.length) params.set('colores',         cls.join(','))
+    if (ets.length) params.set('eta_fechas',      ets.join(','))
 
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, router])
+  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, etasSel, router])
 
-  const hayFiltros = !!(estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length || colorsSel.length)
+  const hayFiltros = !!(estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length || colorsSel.length || etasSel.length)
 
   const activeEstiloLabel = estilos.find(e => String(e.id) === estiloIdActual)?.label
   const activeMarcaLabel  = marcas.find(m => String(m.id) === marcaIdActual)?.label
@@ -167,6 +176,15 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, total
             onChange={tps => aplicar({ tipo_ids: tps })}
             placeholder="Buscar tipo 1…"
             showSearch={true}
+          />
+
+          <DropdownFilterEta
+            label="ETA"
+            options={etas}
+            selected={etasSel}
+            onChange={ets => aplicar({ eta_fechas: ets })}
+            placeholder="Buscar fecha arribo…"
+            showSearch={false}
           />
 
           {/* Ofertas toggle */}
@@ -352,6 +370,94 @@ function DropdownFilter({ label, options, selected, onChange, placeholder, showS
                     {sel && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
                   </span>
                   <span className={sel ? 'font-bold text-sky-600' : 'text-slate-600'}>{o}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="p-3 flex items-center justify-between border-t" style={{ borderColor: '#f1f5f9' }}>
+            <button onClick={() => setTemp([])} className="text-[10px] font-bold text-slate-400 hover:text-red-500">Limpiar</button>
+            <button onClick={() => { onChange(temp); setOpen(false) }}
+                    className="text-xs font-bold px-4 py-2 rounded-xl text-white bg-sky-500 hover:bg-sky-600">Aplicar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DropdownFilterEta({ label, options, selected, onChange, placeholder, showSearch = false }: {
+  label: string; options: EtaItem[]; selected: string[]; onChange: (vals: string[]) => void; placeholder: string; showSearch?: boolean
+}) {
+  const [open, setOpen]   = useState(false)
+  const [query, setQuery] = useState('')
+  const [temp, setTemp]   = useState<string[]>(selected)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setTemp(selected) }, [selected])
+
+  useEffect(() => {
+    function h(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const filtered = query.length >= 2
+    ? options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()))
+    : options
+
+  function toggle(id: string) {
+    setTemp(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl border-2 transition-all"
+        style={{
+          borderColor: selected.length ? RIMEC_CELESTE : '#e2e8f0',
+          color:       selected.length ? RIMEC_CELESTE : '#64748b',
+          backgroundColor: selected.length ? '#f0f9ff' : '#fafafa',
+        }}
+      >
+        {label}
+        {selected.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-md bg-white text-[10px] border border-sky-100">{selected.length}</span>}
+        <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-2 z-30 bg-white rounded-2xl w-64 overflow-hidden"
+             style={{ boxShadow: '0 16px 48px rgba(30,64,175,0.18)', border: '1px solid #f1f5f9' }}>
+
+          {showSearch && (
+            <div className="p-3 border-b" style={{ borderColor: '#f1f5f9' }}>
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder={placeholder}
+                className="w-full px-3 py-2 text-xs rounded-xl border outline-none bg-slate-50 focus:border-sky-400"
+              />
+            </div>
+          )}
+
+          <div className="max-h-56 overflow-y-auto">
+            {filtered.map(o => {
+              const sel = temp.includes(o.id)
+              return (
+                <button key={o.id} onClick={() => toggle(o.id)}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-xs text-left hover:bg-slate-50 transition-colors">
+                  <span className="w-4 h-4 rounded border flex items-center justify-center flex-shrink-0"
+                        style={{
+                          borderColor: sel ? RIMEC_CELESTE : '#cbd5e1',
+                          backgroundColor: sel ? RIMEC_CELESTE : 'white',
+                        }}>
+                    {sel && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
+                  </span>
+                  <span className={sel ? 'font-bold text-sky-600' : 'text-slate-600'}>{o.label}</span>
                 </button>
               )
             })}

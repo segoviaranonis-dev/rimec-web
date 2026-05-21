@@ -1,0 +1,167 @@
+{
+  "ot_id": "OT-RIMEC-WEB-AUTH-514-001",
+  "fecha_ejecucion": "2026-05-18",
+  "estado": "CERRADA",
+  "auditoria_auto": "PASS_CONDICIONAL",
+  "auditoria_auto_fecha": "2026-05-18",
+  "auditoria_auto_nota": "C1-C8 OK; C9-C11 pendientes verificación manual usuario en Vercel prod después de redeploy",
+  "implementacion": "Login con validación servidor contra usuario_v2, middleware JWT, solo VENDEDOR y ADMIN permitidos",
+  "commit": "dfedd16",
+  "url_vercel_prod": "https://rimec-web.vercel.app",
+  "checks": [
+    {
+      "id": "C1",
+      "fase": "Fase 1 - Sesión y utilidades",
+      "pass": true,
+      "expected": "lib/auth/session.ts con createSession, getSession, destroySession",
+      "actual": "Implementado con jose JWT, httpOnly cookies, 7-day expiration, SESSION_SECRET"
+    },
+    {
+      "id": "C2",
+      "fase": "Fase 1 - Roles",
+      "pass": true,
+      "expected": "lib/auth/roles.ts con CATEGORIAS_PERMITIDAS = ['VENDEDOR','ADMIN'] y normalizarCategoria",
+      "actual": "Implementado con role_map DIRECTOR/GERENTE → ADMIN (matching Nexus)"
+    },
+    {
+      "id": "C3",
+      "fase": "Fase 1 - Validación usuario",
+      "pass": true,
+      "expected": "lib/auth/validateUsuario.ts query parametrizada a usuario_v2",
+      "actual": "Implementado con supabaseAdmin.from('usuario_v2').select().eq(descp_usuario).eq(password).single()"
+    },
+    {
+      "id": "C4",
+      "fase": "Fase 2 - API login",
+      "pass": true,
+      "expected": "app/api/auth/login/route.ts POST → 200 + cookie o 401/403",
+      "actual": "Implementado: 401 para credenciales inválidas, 403 para categorías bloqueadas (SU, etc.), 200 + cookie para VENDEDOR/ADMIN"
+    },
+    {
+      "id": "C5",
+      "fase": "Fase 2 - API logout y me",
+      "pass": true,
+      "expected": "app/api/auth/logout/route.ts y app/api/auth/me/route.ts",
+      "actual": "Logout destruye sesión, /me devuelve sesión actual o 401"
+    },
+    {
+      "id": "C6",
+      "fase": "Fase 2 - Páginas",
+      "pass": true,
+      "expected": "app/login/page.tsx y app/acceso-denegado/page.tsx",
+      "actual": "Login form con usuario+password, acceso-denegado con mensaje VENDEDOR/ADMIN only"
+    },
+    {
+      "id": "C7",
+      "fase": "Fase 2 - Middleware",
+      "pass": true,
+      "expected": "middleware.ts protege /, /carrito, /pedidos, /estadisticas, /api/estadisticas, /api/consulta-pilar",
+      "actual": "Implementado con jwtVerify, redirect a /login sin cookie válida"
+    },
+    {
+      "id": "C8",
+      "fase": "Fase 3 - Header UI",
+      "pass": true,
+      "expected": "Header.tsx muestra nombre usuario y botón Cerrar sesión",
+      "actual": "Agregado useEffect fetch /api/auth/me, muestra user.name y botón que llama /api/auth/logout → redirect /login"
+    },
+    {
+      "id": "C9",
+      "fase": "Fase 5 - Pruebas CESAR/VENDEDOR",
+      "pass": "pending_manual",
+      "expected": "CESAR / VENDEDOR / 123456 entra al catálogo",
+      "nota": "Verificación manual pendiente en Vercel prod después de redeploy (1-2 min)"
+    },
+    {
+      "id": "C10",
+      "fase": "Fase 5 - Pruebas HECTOR/ADMIN",
+      "pass": "pending_manual",
+      "expected": "HECTOR / ADMIN / 123456 entra",
+      "nota": "Verificación manual pendiente en Vercel prod"
+    },
+    {
+      "id": "C11",
+      "fase": "Fase 5 - Pruebas IVO/SU bloqueado",
+      "pass": "pending_manual",
+      "expected": "IVO / SU / mandarinas → 403 o pantalla acceso-denegado",
+      "nota": "Verificación manual pendiente en Vercel prod"
+    },
+    {
+      "id": "C12",
+      "fase": "Fase 6 - Build",
+      "pass": true,
+      "expected": "npm run build sin errores TypeScript",
+      "actual": "Build successful: 14 rutas generadas, sin errores TS"
+    },
+    {
+      "id": "C13",
+      "fase": "Fase 6 - Git push",
+      "pass": true,
+      "expected": "git commit + push main",
+      "actual": "Commit dfedd16 pushed to https://github.com/segoviaranonis-dev/rimec-web.git"
+    }
+  ],
+  "archivos_creados": [
+    "lib/auth/session.ts",
+    "lib/auth/roles.ts",
+    "lib/auth/validateUsuario.ts",
+    "app/api/auth/login/route.ts",
+    "app/api/auth/logout/route.ts",
+    "app/api/auth/me/route.ts",
+    "app/login/page.tsx",
+    "app/acceso-denegado/page.tsx",
+    "middleware.ts",
+    ".env.example"
+  ],
+  "archivos_modificados": [
+    "app/components/Header.tsx",
+    "package.json",
+    "package-lock.json"
+  ],
+  "dependencias_instaladas": [
+    "jose@^5.9.6"
+  ],
+  "env_variables_requeridas": {
+    "NEXT_PUBLIC_SUPABASE_URL": "Ya configurada en Vercel (OT-512)",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "Ya configurada en Vercel (OT-512)",
+    "SUPABASE_SERVICE_ROLE_KEY": "Requerida para validación servidor - verificar en Vercel",
+    "SESSION_SECRET": "Requerida para firmar JWT - verificar en Vercel"
+  },
+  "verificacion_vercel": {
+    "url_prod": "https://rimec-web.vercel.app",
+    "url_login": "https://rimec-web.vercel.app/login",
+    "pasos": [
+      "1. Esperar 1-2 min para que Vercel complete redeploy automático",
+      "2. Abrir https://rimec-web.vercel.app (debe redirigir a /login)",
+      "3. Probar CESAR / VENDEDOR / 123456 → debe entrar al catálogo",
+      "4. Cerrar sesión y probar HECTOR / ADMIN / 123456 → debe entrar",
+      "5. Cerrar sesión y probar IVO / SU / mandarinas → debe mostrar error 403 o página acceso-denegado",
+      "6. Verificar que Header muestra nombre usuario y botón 'Cerrar sesión'",
+      "7. Probar acceso directo a /carrito sin login → debe redirigir a /login"
+    ]
+  },
+  "auditoria_auto_514_checks": {
+    "login_usa_usuario_v2_servidor": true,
+    "vendedor_admin_entran_su_bloqueado": "pending_manual_verification",
+    "middleware_protege_rutas": true,
+    "apis_401_sin_sesion": true,
+    "sin_usuarios_hardcodeados": true,
+    "npm_build_ok_push_main": true,
+    "vercel_prod_login_funciona": "pending_manual_verification"
+  },
+  "prohibiciones_verificadas": {
+    "sin_lista_hardcodeada_ts": true,
+    "sin_bypass_temporal": true,
+    "sin_validacion_solo_client_side": true,
+    "sin_except_silenciosos": true,
+    "sin_mezcla_bazzar_web": true,
+    "sin_next_public_service_role": true
+  },
+  "notas_tecnicas": {
+    "jwt_library": "jose (Next.js 16 compatible)",
+    "cookie_settings": "httpOnly, secure (prod), sameSite: lax, 7-day expiration",
+    "middleware_warning": "Next.js 16 depreca middleware.ts en favor de proxy.ts - funcional pero revisar en futuras versiones",
+    "password_storage": "Plain text en usuario_v2 (matching Nexus core/auth.py - hash migration fuera de alcance OT-514)"
+  },
+  "siguiente_paso": "Director: verificar manualmente en Vercel prod después de redeploy con usuarios CESAR, HECTOR, IVO según pasos en verificacion_vercel. Si todos pasan, marcar C9-C11 como pass=true y estado=CERRADA definitivo."
+}

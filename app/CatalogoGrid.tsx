@@ -5,42 +5,13 @@ import { createPortal } from 'react-dom'
 import { useSesion, getPrecioActivo, LISTAS, type ListaId } from '@/store/sesionVenta'
 import { DialogoActivacion } from '@/components/DialogoActivacion'
 import { formatearQuincena } from '@/lib/fecha'
+import { estiloBadgeMarca } from '@/lib/marcaBadge'
+import { origenBadgeText } from '@/lib/catalogoOrigen'
+import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 
-export interface RimecVariante {
-  det_id: number
-  pp_id: number
-  pp_nro: string
-  eta: string | null
-  material_code: string
-  color_code: string
-  descp_color: string
-  /** Hex HTML del pilar `color`. Si está, manda; si null, el frontend cae al regex. */
-  color_hex: string | null
-  gradas_fmt: string
-  imagen_url: string
-  cantidad_cajas: number
-  pares_por_caja: number
-  cajas_disponibles: number
-  lpn: number | null
-  lpc02: number | null
-  lpc03: number | null
-  lpc04: number | null
-}
-
-export interface RimecAgrupado {
-  key: string
-  linea_codigo: string
-  referencia_codigo: string
-  nombre: string
-  material_code: string
-  descp_material: string
-  descp_marca: string
-  marca_id: number | null
-  /** Descripción del caso de precio asignado a la línea (Regla 1 para factura interna). */
-  descp_caso: string | null
-  caso_id: number | null
-  variantes: RimecVariante[]
-}
+export type { RimecVariante, TarjetaCatalogo }
+/** @deprecated Usar TarjetaCatalogo — alias para compatibilidad interna */
+export type RimecAgrupado = TarjetaCatalogo
 
 const AZUL = '#0F172A'
 const CELESTE = '#0EA5E9'
@@ -149,12 +120,44 @@ function HeaderSesion() {
   )
 }
 
+function ChipEta({
+  label,
+  shell,
+  className = '',
+}: {
+  label: string
+  shell: TarjetaCatalogo['shell']
+  className?: string
+}) {
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-1',
+        'text-[13px] sm:text-sm font-extrabold leading-none whitespace-nowrap',
+        'px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg shrink-0',
+        'shadow-sm',
+        className,
+      ].join(' ')}
+      style={{
+        color: shell.accentColor,
+        backgroundColor: shell.shellBackground,
+        border: shell.shellBorder,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+      }}
+      title={`ETA ${label}`}
+    >
+      {label}
+    </span>
+  )
+}
+
 function Lightbox({ producto: p, initialIdx, onClose }: {
-  producto: RimecAgrupado; initialIdx: number; onClose: () => void
+  producto: TarjetaCatalogo; initialIdx: number; onClose: () => void
 }) {
   const [idx, setIdx] = useState(initialIdx)
   const v = p.variantes[idx]
-  
+  const shell = p.shell
+
   const listaPrecioId = useSesion(s => s.listaPrecioId)
   const precioVal = getPrecioActivo(v, listaPrecioId)
   const precio = precioVal ? new Intl.NumberFormat('es-PY').format(precioVal) : null
@@ -214,25 +217,29 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
           )}
 
           <div className="absolute top-3 left-3 flex items-center gap-2">
-            <span className="text-white text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
-                  style={{ backgroundColor: CELESTE }}>tránsito</span>
-            {v.eta && (
-              <span className="text-[10px] font-extrabold" style={{ color: CELESTE }}>
-                🚢 {v.eta.split('-')[2].slice(0,2)}-{v.eta.split('-')[1]}
-              </span>
-            )}
+            <span className="text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
+                  style={{ backgroundColor: shell.badgeBackground, color: shell.badgeColor }}>
+              {origenBadgeText(p.origen_tipo)}
+            </span>
           </div>
         </div>
 
         <div className="px-4 py-3 border-t border-slate-100">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest shadow-sm shrink-0"
-                  style={{ backgroundColor: AZUL }}>{p.descp_marca}</span>
-            <div className="flex items-center gap-1 text-[11px] font-extrabold">
-              <span style={{ color: AZUL }}>{p.linea_codigo}</span>
-              <span className="text-slate-300">·</span>
-              <span style={{ color: CELESTE }}>{p.referencia_codigo}</span>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest shadow-sm shrink-0"
+                    style={estiloBadgeMarca(p.descp_marca)}>
+                {p.descp_marca}
+              </span>
+              <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
+                <span style={{ color: AZUL }}>{p.linea_codigo}</span>
+                <span className="text-slate-300">·</span>
+                <span style={{ color: shell.accentColor }}>{p.referencia_codigo}</span>
+              </div>
             </div>
+
+            {/* ETA */}
+            <ChipEta label={p.origen_label} shell={shell} />
           </div>
 
           <p className="text-xs font-bold uppercase truncate" style={{ color: '#1e293b' }}>{p.nombre}</p>
@@ -294,7 +301,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
   )
 }
 
-function TarjetaProducto({ producto: p, onNeedSession }: { producto: RimecAgrupado; onNeedSession: () => void }) {
+function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCatalogo; onNeedSession: () => void }) {
   // Filtrar solo variantes con stock disponible
   const variantesConStock = p.variantes.filter(v => v.cajas_disponibles > 0)
 
@@ -317,8 +324,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: RimecAgrupa
   const precioVal = getPrecioActivo(v, listaPrecioId)
   const tienePrecio = precioVal !== null
   const precio = precioVal ? new Intl.NumberFormat('es-PY').format(precioVal) : null
-  const etaStr = v.eta ? v.eta.slice(0, 10) : null
-  
+  const shell = p.shell
   const cartItem = carrito[`det_${v.det_id}`]
   const cajas = cartItem ? cartItem.cajas : 0
   const maxCajas = v.cajas_disponibles
@@ -370,12 +376,13 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: RimecAgrupa
 
   return (
     <>
-      <div className="group flex flex-col bg-white overflow-hidden h-full relative"
+      <div className="group flex flex-col overflow-hidden h-full relative"
            style={{
              borderRadius: '16px',
-             boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+             backgroundColor: shell.shellBackground,
+             border: shell.shellBorder,
+             boxShadow: shell.boxShadow,
              transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-             border: 'none'
            }}>
 
         <div className="relative aspect-square overflow-hidden cursor-zoom-in bg-[#F8FAFC]"
@@ -386,15 +393,10 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: RimecAgrupa
                   className="w-full h-full object-contain p-3 transition-transform duration-700 ease-out group-hover:scale-105" />
 
           <div className="absolute top-2.5 left-2.5 flex items-center gap-2">
-            <span className="text-white text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
-                  style={{ backgroundColor: CELESTE }}>
-              tránsito
+            <span className="text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
+                  style={{ backgroundColor: shell.badgeBackground, color: shell.badgeColor }}>
+              {origenBadgeText(p.origen_tipo)}
             </span>
-            {etaStr && (
-              <span className="text-[10px] font-extrabold" style={{ color: CELESTE }}>
-                🚢 {etaStr.split('-')[2].slice(0,2)}-{etaStr.split('-')[1]}
-              </span>
-            )}
           </div>
 
           {variantesConStock.length > 1 && (
@@ -408,18 +410,21 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: RimecAgrupa
 
         <div className="flex flex-col flex-1 p-3">
           {/* Fila 3: Marca y Códigos */}
-
-          {/* Fila 3: Marca y Códigos */}
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0"
-                  style={{ backgroundColor: AZUL }}>
-              {p.descp_marca}
-            </span>
-            <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
-              <span style={{ color: AZUL }}>{p.linea_codigo}</span>
-              <span className="text-slate-300">·</span>
-              <span style={{ color: CELESTE }}>{p.referencia_codigo}</span>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0"
+                    style={estiloBadgeMarca(p.descp_marca)}>
+                {p.descp_marca}
+              </span>
+              <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
+                <span style={{ color: AZUL }}>{p.linea_codigo}</span>
+                <span className="text-slate-300">·</span>
+                <span style={{ color: shell.accentColor }}>{p.referencia_codigo}</span>
+              </div>
             </div>
+
+            {/* ETA — nueva ubicación pedida por el Director */}
+            <ChipEta label={p.origen_label} shell={shell} />
           </div>
 
           {/* Fila 4: Descripción */}
@@ -450,7 +455,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: RimecAgrupa
               <span className="text-xs font-semibold text-slate-400">Sin precio</span>
             )}
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                  style={{ backgroundColor: '#f0f9ff', color: CELESTE }}>
+                  style={{ backgroundColor: shell.shellBackground, color: shell.accentColor, border: shell.shellBorder }}>
               disp: {v.cajas_disponibles} cjs
             </span>
           </div>
@@ -568,7 +573,7 @@ function Pill({ active, onClick, children }: { active: boolean, onClick: () => v
   )
 }
 
-export function CatalogoGrid({ productos, pps }: { productos: RimecAgrupado[], pps: any[] }) {
+export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[], pps: any[] }) {
   const { activa, carrito } = useSesion()
   const [lineaFiltro, setLineaFiltro] = useState('')
   const [colorFiltro, setColorFiltro] = useState('')
@@ -731,7 +736,7 @@ export function CatalogoGrid({ productos, pps }: { productos: RimecAgrupado[], p
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
           {filtered.map(p => (
-            <TarjetaProducto key={p.key} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
+            <TarjetaProducto key={p.cardKey} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
           ))}
         </div>
       )}

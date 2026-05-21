@@ -3,6 +3,7 @@ import { CatalogoGrid } from './CatalogoGrid'
 import { FiltrosCatalogo } from './components/FiltrosCatalogo'
 import { getFiltros } from '@/lib/filtros'
 import { cargarAtributosDesdePilar, enriquecerMetaConPilar } from '@/lib/atributosLinea'
+import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
 
 export const revalidate = 60
 
@@ -43,9 +44,19 @@ export interface StockRow {
   tipo_1_id:            number
   descp_tipo_1:         string | null
   imagen_url:           string | null
+  origen_tipo?:          string | null
+  deposito_id?:         number | null
+  clasificacion_stock_id?: number | null
+  pp_estado?:           string | null
 }
 
 const BUCKET = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/productos`
+
+/** Formatea fecha ISO YYYY-MM-DD a DD-MM para display. */
+function formatearEtaLabel(isoFecha: string): string {
+  const [, mes, dia] = isoFecha.split('-')
+  return `${dia}-${mes}`
+}
 
 /** Cajas vendibles: usa columna de la vista o calcula desde saldo de pares. */
 function cajasDisponiblesDeFila(item: StockRow): number {
@@ -62,76 +73,8 @@ function cajasDisponiblesDeFila(item: StockRow): number {
   return Math.max(0, Math.floor(saldoPares / ppc))
 }
 
-function agruparProductos(items: StockRow[]) {
-  const prodMap = new Map<string, any>()
-  const detIdsPorProd = new Map<string, Set<number>>()
-
-  for (const item of items) {
-    const cajasDisp = cajasDisponiblesDeFila(item)
-    if (cajasDisp <= 0) continue
-
-    const prodKey = `${item.linea_id}-${item.referencia_id}-${item.material_code}`
-
-    if (!prodMap.has(prodKey)) {
-      prodMap.set(prodKey, {
-        key:                  prodKey,
-        linea_id:             item.linea_id,
-        linea_codigo:         item.linea_codigo,
-        referencia_id:        item.referencia_id,
-        referencia_codigo:    item.referencia_codigo,
-        nombre:               item.nombre,
-        material_code:        item.material_code,
-        descp_material:       item.descp_material,
-        descp_marca:          item.descp_marca,
-        marca_id:             item.marca_id,
-        descp_caso:           item.descp_caso,
-        caso_id:              item.caso_id,
-        descp_grupo_estilo:   item.descp_grupo_estilo,
-        variantes:            [],
-      })
-      detIdsPorProd.set(prodKey, new Set())
-    }
-
-    const seen = detIdsPorProd.get(prodKey)!
-    if (seen.has(item.det_id)) continue
-    seen.add(item.det_id)
-
-    let gradas_fmt = ""
-    if (item.grades_json) {
-      const g = item.grades_json
-      const keys = Object.keys(g).sort((a,b) => parseFloat(a.split('/')[0]) - parseFloat(b.split('/')[0]))
-      if (keys.length > 0) {
-        gradas_fmt = `${keys[0]}(${keys.map(k => g[k]).join('-')})${keys[keys.length-1]}`
-      }
-    }
-
-    prodMap.get(prodKey)!.variantes.push({
-      det_id:            item.det_id,
-      pp_id:             item.pp_id,
-      pp_nro:            item.pp_nro,
-      eta:               item.eta,
-      material_code:     item.material_code,
-      color_code:        item.color_code,
-      descp_color:       item.descp_color,
-      color_hex:         item.color_hex,
-      gradas_fmt,
-      imagen_url:        item.imagen_url
-                         ?? `${BUCKET}/${item.linea_codigo}-${item.referencia_codigo}-${item.material_code}-${item.color_code}.jpg`,
-      cantidad_cajas:    item.cantidad_cajas,
-      pares_por_caja:    item.pares_por_caja,
-      cajas_disponibles: cajasDisp,
-      lpn:               item.lpn,
-      lpc02:             item.lpc02,
-      lpc03:             item.lpc03,
-      lpc04:             item.lpc04,
-    })
-  }
-
-  return Array.from(prodMap.values()).filter(p => p.variantes.length > 0)
-}
-
 export default async function HomePage({ searchParams }: {
-  searchParams: Promise<{ grupo_estilo_id?: string; marca_id?: string; linea_ids?: string; tipo_ids?: string; colores?: string }>
+  searchParams: Promise<{ grupo_estilo_id?: string; marca_id?: string; linea_ids?: string; tipo_ids?: string; colores?: string; eta_fechas?: string }>
 }) {
   const params = await searchParams
   const estiloId  = params.grupo_estilo_id ?? ''
@@ -139,6 +82,7 @@ export default async function HomePage({ searchParams }: {
   const lineasIds = params.linea_ids ? params.linea_ids.split(',').filter(Boolean).map(Number) : []
   const tiposIds  = params.tipo_ids  ? params.tipo_ids.split(',').filter(Boolean).map(Number) : []
   const coloresFiltro = params.colores ? params.colores.split(',').filter(Boolean) : []
+  const etasSel = params.eta_fechas?.split(',').filter(Boolean) ?? []
 
   const { data, error } = await supabase
     .from('v_stock_rimec')
@@ -187,8 +131,16 @@ export default async function HomePage({ searchParams }: {
   if (coloresFiltro.length > 0) {
     rows = rows.filter(r => coloresFiltro.includes(r.descp_color))
   }
+  if (etasSel.length > 0) {
+    rows = rows.filter(r => {
+      const etaFecha = r.eta?.slice(0, 10)
+      return etaFecha && etasSel.includes(etaFecha)
+    })
+  }
 
-  const productos = agruparProductos(rows)
+  const productos = agruparTarjetasCatalogo(rows, BUCKET, cajasDisponiblesDeFila)
+  const filasVista = rawRows.length
+  const filasConCajas = rows.filter(r => cajasDisponiblesDeFila(r) > 0).length
   // Limpiar colores: descartar null/undefined/empty y trimear para evitar
   // duplicados visuales (ej. "NEGRO" vs "NEGRO ") y `key={null}` en el dropdown.
   const todosColores = Array.from(
@@ -198,6 +150,20 @@ export default async function HomePage({ searchParams }: {
         .filter((c): c is string => c.length > 0)
     )
   ).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+
+  // Opciones ETA: fechas únicas ordenadas cronológicamente
+  const todasEtas = Array.from(
+    new Set(
+      allRows
+        .map(r => r.eta?.slice(0, 10))
+        .filter((e): e is string => !!e)
+    )
+  )
+    .sort()
+    .map(isoFecha => ({
+      id: isoFecha,
+      label: formatearEtaLabel(isoFecha)
+    }))
 
   const pps = Array.from(
     new Map(rows.map(r => [r.pp_nro, { nro: r.pp_nro, eta: r.eta }])).values()
@@ -213,9 +179,31 @@ export default async function HomePage({ searchParams }: {
         lineas={todasLineas}
         tipos={todosTipos}
         colores={todosColores}
+        etas={todasEtas}
         totalModelos={productos.length}
         totalPares={totalPares}
       />
+      {productos.length === 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold mb-1">Catálogo vacío — diagnóstico rápido</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Filas en <code className="text-xs">v_stock_rimec</code>: <strong>{filasVista}</strong></li>
+            <li>Tras filtros URL: <strong>{rows.length}</strong> · con cajas &gt; 0: <strong>{filasConCajas}</strong> · tarjetas: <strong>{productos.length}</strong></li>
+            <li>App catálogo: <strong>http://localhost:3001</strong> (no :3000)</li>
+            {error && <li>Supabase: {error.message}</li>}
+            {filasVista === 0 && (
+              <li>
+                Si la vista está en 0: ejecutar migración{' '}
+                <code className="text-xs">061_fix_v_stock_rimec_estados_catalogo.sql</code> en Supabase.
+                Los PP deben estar <strong>ABIERTO</strong> o <strong>ENVIADO</strong> (no solo «aprobado»).
+              </li>
+            )}
+            {etasSel.length > 0 && filasVista > 0 && productos.length === 0 && (
+              <li>Probá quitar filtro ETA en la URL (<code className="text-xs">eta_fechas</code>).</li>
+            )}
+          </ul>
+        </div>
+      )}
       <CatalogoGrid productos={productos} pps={pps} />
     </div>
   )

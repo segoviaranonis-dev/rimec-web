@@ -1,4 +1,6 @@
-const BUCKET = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/productos`
+import { resolveSupabaseUrl } from './supabaseEnv'
+
+const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/productos`
 
 export function getImageUrl(
   linea:     string,
@@ -8,3 +10,4 @@ export function getImageUrl(
 ): string {
   return `${BUCKET}/${linea}-${referencia}-${material}-${color}.jpg`
 }
+

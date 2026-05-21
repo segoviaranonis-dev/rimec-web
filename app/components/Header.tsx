@@ -205,8 +205,8 @@ export default function Header({ data }: { data: HeaderData }) {
   useEffect(() => {
     fetch('/api/auth/me')
       .then(r => r.json())
-      .then(d => { if (d.user) setUser(d.user) })
-      .catch(() => {})
+      .then(d => { setUser(d.user || null) })
+      .catch(() => setUser(null))
   }, [])
 
   const enter = (key: MegaKey) => {
@@ -219,10 +219,14 @@ export default function Header({ data }: { data: HeaderData }) {
 
   async function handleLogout() {
     try {
+      setUser(null)
       await fetch('/api/auth/logout', { method: 'POST' })
       router.push('/login')
       router.refresh()
-    } catch {}
+    } catch {
+      setUser(null)
+      router.push('/login')
+    }
   }
 
   const navItem = (key: MegaKey, label: string) => (

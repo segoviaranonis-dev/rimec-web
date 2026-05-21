@@ -4,6 +4,7 @@ import { FiltrosCatalogo } from './components/FiltrosCatalogo'
 import { getFiltros } from '@/lib/filtros'
 import { cargarAtributosDesdePilar, enriquecerMetaConPilar } from '@/lib/atributosLinea'
 import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
 
 export const revalidate = 60
 
@@ -50,7 +51,7 @@ export interface StockRow {
   pp_estado?:           string | null
 }
 
-const BUCKET = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/productos`
+const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/productos`
 
 /** Formatea fecha ISO YYYY-MM-DD a DD-MM para display. */
 function formatearEtaLabel(isoFecha: string): string {

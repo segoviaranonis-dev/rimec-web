@@ -4,9 +4,12 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { resolveSupabaseAnonKey, resolveSupabaseUrl } from '@/lib/supabaseEnv'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
+const serviceKey =
+  resolveSupabaseAnonKey(process.env.SUPABASE_SERVICE_ROLE_KEY) ||
+  resolveSupabaseAnonKey(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
 // Cliente con permisos server-side
 const supabaseAdmin = createClient(supabaseUrl, serviceKey, {

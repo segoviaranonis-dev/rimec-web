@@ -93,12 +93,13 @@ export function getPrecioActivo(
   },
   listaId: ListaId,
 ): number | null {
-  switch (listaId) {
+  switch (Number(listaId)) {
     // OT-509 W3: Lista 1 (Bazar/LPN) usa precio_web si existe, fallback lpn
     case 1: return row.precio_web ?? row.lpn ?? null
     case 2: return row.lpc02 ?? null
     case 3: return row.lpc03 ?? null
     case 4: return row.lpc04 ?? null
+    default: return null
   }
 }
 

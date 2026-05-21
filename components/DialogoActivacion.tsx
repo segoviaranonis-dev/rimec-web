@@ -59,30 +59,38 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
     const descuentos = descs.map(d => parseFloat(d)).filter(d => !isNaN(d) && d > 0)
 
     // Resolver vendedor desde sesión Auth actual
-    const { data: { user } } = await supabase.auth.getUser()
     let vendedor = null
+    try {
+      const res = await fetch('/api/auth/me')
+      if (res.ok) {
+        const { user } = await res.json()
+        if (user && user.name) {
+          // Buscar vendedor vinculado a este usuario por descripción (case-insensitive)
+          const { data: vends } = await supabase
+            .from('vendedor_v2')
+            .select('id_vendedor, descp_vendedor')
+            .ilike('descp_vendedor', user.name)
+            .limit(1)
 
-    if (user) {
-      // Buscar vendedor vinculado a este usuario
-      const { data: vendExistente } = await supabase
-        .from('vendedor_v2')
-        .select('id_vendedor, descp_vendedor')
-        .eq('usuario_id', user.id)
-        .single()
-
-      if (vendExistente) {
-        vendedor = vendExistente
-      } else {
-        // Crear vendedor automáticamente con el email como nombre
-        const nombre = user.user_metadata?.full_name ?? user.email ?? 'Sin nombre'
-        const { data: nuevo } = await supabase
-          .from('vendedor_v2')
-          .insert({ descp_vendedor: nombre, usuario_id: user.id, activo: true })
-          .select('id_vendedor, descp_vendedor')
-          .single()
-        vendedor = nuevo
+          if (vends && vends.length > 0) {
+            vendedor = vends[0]
+          } else {
+            // Crear vendedor automáticamente con el nombre del usuario
+            const { data: nuevo, error: insErr } = await supabase
+              .from('vendedor_v2')
+              .insert({ descp_vendedor: user.name.toUpperCase(), activo: true })
+              .select('id_vendedor, descp_vendedor')
+              .single()
+            if (!insErr && nuevo) {
+              vendedor = nuevo
+            }
+          }
+        }
       }
+    } catch (err) {
+      console.error('Error al resolver vendedor:', err)
     }
+
 
     activar(selCliente, vendedor as never, selPlazo, listaId, descuentos)
     onClose()

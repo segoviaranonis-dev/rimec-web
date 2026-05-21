@@ -184,14 +184,27 @@ export default async function HomePage({ searchParams }: {
         totalModelos={productos.length}
         totalPares={totalPares}
       />
-      {productos.length === 0 && (
+      {productos.length === 0 && process.env.NODE_ENV === 'development' && (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold mb-1">Catálogo vacío — diagnóstico rápido</p>
+          <p className="font-semibold mb-1">Catálogo vacío — diagnóstico rápido (DEV)</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>Filas en <code className="text-xs">v_stock_rimec</code>: <strong>{filasVista}</strong></li>
             <li>Tras filtros URL: <strong>{rows.length}</strong> · con cajas &gt; 0: <strong>{filasConCajas}</strong> · tarjetas: <strong>{productos.length}</strong></li>
             <li>App catálogo: <strong>http://localhost:3001</strong> (no :3000)</li>
-            {error && <li>Supabase: {error.message}</li>}
+            {error && (
+              <li>
+                Supabase: {error.message}
+                {error.message.includes('invalid header value') && (
+                  <span className="block mt-1 text-xs">
+                    La clave ANON llegó duplicada en el entorno (no en el código). Revisá{' '}
+                    <code className="text-xs">rimec-web/.env.local</code>: una sola línea{' '}
+                    <code className="text-xs">NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...</code> sin repetir el nombre.
+                    Reiniciá <code className="text-xs">npm run dev</code>. Si persiste, borrá la variable en Windows
+                    (Variables de entorno del usuario).
+                  </span>
+                )}
+              </li>
+            )}
             {filasVista === 0 && (
               <li>
                 Si la vista está en 0: ejecutar migración{' '}
@@ -203,6 +216,22 @@ export default async function HomePage({ searchParams }: {
               <li>Probá quitar filtro ETA en la URL (<code className="text-xs">eta_fechas</code>).</li>
             )}
           </ul>
+        </div>
+      )}
+
+      {productos.length === 0 && process.env.NODE_ENV === 'production' && (
+        <div className="mb-6 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+          <span className="mb-4 text-5xl" aria-hidden>📦</span>
+          <h2 className="mb-2 text-xl font-semibold text-slate-900">Catálogo sin existencias por el momento</h2>
+          <p className="mb-6 max-w-md text-sm text-slate-500">
+            No hay artículos disponibles con los filtros aplicados. Probá quitar filtros o reintentá la carga.
+          </p>
+          <a
+            href="/"
+            className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800"
+          >
+            Reintentar
+          </a>
         </div>
       )}
       <CatalogoGrid productos={productos} pps={pps} />

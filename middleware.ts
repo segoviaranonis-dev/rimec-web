@@ -32,7 +32,15 @@ export async function middleware(request: NextRequest) {
 
   try {
     // Verificar token válido
-    await jwtVerify(token, SECRET)
+    const { payload } = await jwtVerify(token, SECRET)
+    const role = payload.role as string
+
+    // Si no es VENDEDOR ni ADMIN, denegar acceso
+    if (role !== 'VENDEDOR' && role !== 'ADMIN') {
+      const deniedUrl = new URL('/acceso-denegado', request.url)
+      return NextResponse.redirect(deniedUrl)
+    }
+
     return NextResponse.next()
   } catch {
     // Token inválido → redirect login

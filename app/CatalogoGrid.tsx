@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useSesion, getPrecioActivo, LISTAS, type ListaId } from '@/store/sesionVenta'
+import { useSesion, getPrecioActivo, LISTAS, esSesionDeOtroDia, type ListaId } from '@/store/sesionVenta'
+import { useRouter } from 'next/navigation'
 import { DialogoActivacion } from '@/components/DialogoActivacion'
 import { formatearQuincena } from '@/lib/fecha'
 import { estiloBadgeMarca } from '@/lib/marcaBadge'
@@ -86,36 +87,130 @@ function Imagen({ src, alt, fallbackText, className, style }: {
 }
 
 function HeaderSesion() {
-  const activa = useSesion(s => s.activa)
-  const vendedorDesc = useSesion(s => s.vendedor?.descp_vendedor)
-  const clienteDesc = useSesion(s => s.cliente?.descp_cliente)
-  const cerrarSesion = useSesion(s => s.desactivar)
-  
-  const user = vendedorDesc || clienteDesc
+  const activa        = useSesion(s => s.activa)
+  const cliente       = useSesion(s => s.cliente)
+  const vendedorDesc  = useSesion(s => s.vendedor?.descp_vendedor)
+  const plazoDesc     = useSesion(s => s.plazo?.descp_plazo)
+  const listaPrecioId = useSesion(s => s.listaPrecioId)
+  const activatedAt   = useSesion(s => s.activatedAt)
+  const cerrarVenta   = useSesion(s => s.desactivar)
+  const router        = useRouter()
+
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   if (!activa) return null
 
+  const clienteNombre = cliente?.descp_cliente || 'Cliente no asignado'
+  const listaNombre   = LISTAS.find(l => l.id === listaPrecioId)?.nombre ?? '—'
+  // Sesión activada en un día calendario anterior: precios pueden haber cambiado en Nexus Core.
+  const sesionVieja   = mounted && esSesionDeOtroDia(activatedAt)
+  const fechaActiv    = activatedAt ? new Date(activatedAt) : null
+  const fechaActivStr = fechaActiv
+    ? fechaActiv.toLocaleString('es-PY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : null
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '12px 20px', backgroundColor: AZUL, color: 'white',
-      borderRadius: 16, marginBottom: 28, boxShadow: '0 4px 12px rgba(30,64,175,0.2)'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: 'white', color: AZUL, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
-          {user?.charAt(0).toUpperCase() || 'U'}
-        </div>
-        <div>
-          <p style={{ fontSize: 14, fontWeight: 700 }}>{user}</p>
-          <p style={{ fontSize: 11, color: '#93C5FD' }}>Sesión activa</p>
-        </div>
-      </div>
-      <button onClick={cerrarSesion} style={{
-        padding: '8px 16px', borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.1)', color: 'white',
-        border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600
+    <div style={{ marginBottom: 28 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 20px', backgroundColor: AZUL, color: 'white',
+        borderRadius: sesionVieja ? '16px 16px 0 0' : 16,
+        boxShadow: '0 4px 12px rgba(30,64,175,0.2)',
+        gap: 16, flexWrap: 'wrap',
       }}>
-        Cerrar sesión
-      </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: '50%',
+            backgroundColor: 'white', color: AZUL,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 800, fontSize: 16, flexShrink: 0,
+          }}>
+            {clienteNombre.charAt(0).toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 10, color: '#93C5FD', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 2 }}>
+              Venta a cliente
+            </p>
+            <p style={{ fontSize: 15, fontWeight: 800, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {clienteNombre}
+            </p>
+            <p style={{ fontSize: 11, color: '#93C5FD', marginTop: 2 }}>
+              Lista <strong style={{ color: 'white' }}>{listaNombre}</strong>
+              {plazoDesc ? <> · Plazo <strong style={{ color: 'white' }}>{plazoDesc}</strong></> : null}
+              {vendedorDesc ? <> · Vendedor <strong style={{ color: 'white' }}>{vendedorDesc}</strong></> : null}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={cerrarVenta}
+          title="Cerrar la sesión de venta (sigue logueado como vendedor)"
+          style={{
+            padding: '8px 16px', borderRadius: 8,
+            backgroundColor: 'rgba(255,255,255,0.12)', color: 'white',
+            border: '1px solid rgba(255,255,255,0.18)',
+            cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Cerrar venta
+        </button>
+      </div>
+
+      {sesionVieja && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 16, flexWrap: 'wrap',
+            padding: '12px 20px',
+            backgroundColor: '#FEF3C7',
+            color: '#78350F',
+            border: '1px solid #FCD34D',
+            borderTop: 'none',
+            borderRadius: '0 0 16px 16px',
+            fontSize: 13,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontWeight: 800 }}>
+                Sesión iniciada el {fechaActivStr}
+              </p>
+              <p style={{ fontSize: 12, marginTop: 2 }}>
+                Los precios o disponibilidad pueden haber cambiado desde anoche. Refrescá el catálogo;
+                las tarjetas que aparezcan como <em>Sin precio</em> ya no están vigentes en la lista <strong>{listaNombre}</strong>.
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={() => router.refresh()}
+              style={{
+                padding: '8px 14px', borderRadius: 8,
+                backgroundColor: '#78350F', color: 'white',
+                border: 'none', cursor: 'pointer',
+                fontSize: 12, fontWeight: 700,
+              }}
+            >
+              Refrescar catálogo
+            </button>
+            <button
+              onClick={cerrarVenta}
+              title="Descarta sesión y carrito vencidos para empezar de cero"
+              style={{
+                padding: '8px 14px', borderRadius: 8,
+                backgroundColor: 'transparent', color: '#78350F',
+                border: '1px solid #B45309', cursor: 'pointer',
+                fontSize: 12, fontWeight: 700,
+              }}
+            >
+              Iniciar venta nueva
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -445,14 +540,29 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
           {/* Fila 7: Precio y Disponibilidad */}
           <div className="flex items-end justify-between gap-1 mb-3">
             {!activa ? (
-              <span className="text-[10px] font-semibold text-slate-400">🔒 Inicie sesión</span>
+              <span className="text-[10px] font-semibold text-slate-400">🔒 Activar venta</span>
             ) : precio ? (
               <div>
                 <p className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-0.5">Precio Gs.</p>
                 <span className="text-sm font-extrabold" style={{ color: CELESTE }}>{precio}</span>
               </div>
             ) : (
-              <span className="text-xs font-semibold text-slate-400">Sin precio</span>
+              <span
+                title={
+                  cartItem
+                    ? 'Este ítem está en tu carrito pero hoy no tiene precio en la lista activa. ' +
+                      'Probablemente el listado fue cambiado desde Nexus Core. Quitalo del carrito y volvé a agregarlo cuando tenga precio.'
+                    : 'Este SKU no tiene precio en la lista de precios activa. Cambiá de lista o consultá con administración.'
+                }
+                className="text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded-md"
+                style={{
+                  backgroundColor: cartItem ? '#FEE2E2' : '#F1F5F9',
+                  color: cartItem ? '#991B1B' : '#94A3B8',
+                  cursor: 'help',
+                }}
+              >
+                {cartItem ? '⚠ Sin precio (en carrito)' : 'Sin precio'}
+              </span>
             )}
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                   style={{ backgroundColor: shell.shellBackground, color: shell.accentColor, border: shell.shellBorder }}>
@@ -696,7 +806,7 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
         Mostrando <strong style={{ color: AZUL }}>{filtered.length}</strong> modelos
         {!activa && (
           <span style={{ marginLeft: 12, color: CELESTE, fontWeight: 600 }}>
-            🔒 Los precios se muestran al iniciar sesión
+            🔒 Precios visibles tras activar venta (cliente + lista)
           </span>
         )}
       </p>
@@ -710,7 +820,7 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
             fontWeight: 700, fontSize: 16, border: 'none', cursor: 'pointer',
             boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
           }}>
-            🔑 Iniciar sesión
+            🔑 Activar venta
           </button>
         </div>
       )}

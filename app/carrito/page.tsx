@@ -1,20 +1,69 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSesion, fragmentarCarrito, LISTAS } from '@/store/sesionVenta'
+import { useSesion, fragmentarCarrito, LISTAS, getPrecioActivo } from '@/store/sesionVenta'
 import { supabase } from '@/lib/supabase'
 
 const AZUL = '#1E40AF'
 
+interface PrecioActualRow {
+  det_id: number
+  lpn:    number | null
+  lpc02:  number | null
+  lpc03:  number | null
+  lpc04:  number | null
+  precio_web: number | null
+}
+
 export default function CarritoPage() {
   const { cliente, vendedor, plazo, listaPrecioId, descuentos, descuentosPorLote,
           setDescuentoLote, carrito, desactivar, activa,
-          setCajas, eliminarItem } = useSesion()
+          setCajas, eliminarItem, eliminarItems } = useSesion()
   const router = useRouter()
   const [enviando, setEnviando] = useState(false)
   const [exito,    setExito]    = useState<string | null>(null)
   const [error,    setError]    = useState<string | null>(null)
+  /** det_ids en el carrito que actualmente NO tienen precio en la lista activa. */
+  const [huerfanos, setHuerfanos] = useState<number[]>([])
+  const [validandoPrecios, setValidandoPrecios] = useState(false)
+
+  // Al abrir el carrito, revalidar precios contra v_stock_rimec con la lista activa.
+  // Esto detecta carritos persistidos de días anteriores cuyos SKUs perdieron precio.
+  useEffect(() => {
+    const detIds = Object.values(carrito).map(it => it.det_id).filter(n => Number.isFinite(n))
+    if (!activa || detIds.length === 0) {
+      setHuerfanos([])
+      return
+    }
+    let cancelado = false
+    setValidandoPrecios(true)
+    ;(async () => {
+      const { data, error: errPrecio } = await supabase
+        .from('v_stock_rimec')
+        .select('det_id, lpn, lpc02, lpc03, lpc04, precio_web')
+        .in('det_id', detIds)
+      if (cancelado) return
+      if (errPrecio) {
+        console.error('[carrito] error validando precios:', errPrecio.message)
+        setHuerfanos([])
+        setValidandoPrecios(false)
+        return
+      }
+      const map = new Map<number, PrecioActualRow>()
+      for (const r of (data ?? []) as PrecioActualRow[]) map.set(Number(r.det_id), r)
+      const sinPrecio: number[] = []
+      for (const id of detIds) {
+        const row = map.get(id)
+        if (!row) { sinPrecio.push(id); continue }
+        const p = getPrecioActivo(row, listaPrecioId)
+        if (p == null || p <= 0) sinPrecio.push(id)
+      }
+      setHuerfanos(sinPrecio)
+      setValidandoPrecios(false)
+    })()
+    return () => { cancelado = true }
+  }, [activa, listaPrecioId, carrito])
 
   if (!activa || Object.keys(carrito).length === 0) {
     return (
@@ -173,6 +222,42 @@ export default function CarritoPage() {
           &nbsp;·&nbsp;<strong>Plazo:</strong> {plazo?.descp_plazo ?? '—'}
         </p>
       </div>
+
+      {/* Aviso de items huérfanos: SKUs en el carrito que ya no tienen precio en la lista activa. */}
+      {huerfanos.length > 0 && !exito && (
+        <div
+          role="alert"
+          style={{
+            backgroundColor: '#FEF3C7', border: '1px solid #FCD34D',
+            borderRadius: 12, padding: '14px 18px', marginBottom: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 16, flexWrap: 'wrap', color: '#78350F',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}>
+              ⚠ {huerfanos.length} {huerfanos.length === 1 ? 'ítem perdió' : 'ítems perdieron'} su precio
+            </p>
+            <p style={{ fontSize: 12 }}>
+              Estos SKUs estaban en tu carrito pero ya no tienen precio en la lista{' '}
+              <strong>{listaActiva.nombre}</strong>. Probablemente el listado fue cambiado en Nexus Core.
+              No se pueden facturar — quitalos para continuar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => eliminarItems(huerfanos)}
+            style={{
+              padding: '10px 16px', borderRadius: 10,
+              backgroundColor: '#78350F', color: 'white',
+              border: 'none', cursor: 'pointer',
+              fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap',
+            }}
+          >
+            Quitar {huerfanos.length} ítem{huerfanos.length === 1 ? '' : 's'} sin precio
+          </button>
+        </div>
+      )}
 
       {/* Éxito */}
       {exito && (
@@ -457,14 +542,30 @@ export default function CarritoPage() {
           <span style={{ color: '#64748B' }}>Monto total</span>
           <span style={{ fontWeight: 900, color: AZUL }}>Gs. {totalGenMonto.toLocaleString('es-PY')}</span>
         </div>
-        <button onClick={confirmarPedido} disabled={enviando}
+        <button
+          onClick={confirmarPedido}
+          disabled={enviando || huerfanos.length > 0 || validandoPrecios}
+          title={
+            huerfanos.length > 0
+              ? `Tenés ${huerfanos.length} ítem(s) sin precio. Quitalos antes de confirmar.`
+              : validandoPrecios
+                ? 'Validando precios contra el catálogo...'
+                : 'Confirmar pedido'
+          }
           style={{
             width: '100%', padding: '18px 0', borderRadius: 14,
-            backgroundColor: enviando ? '#94A3B8' : AZUL, color: 'white',
+            backgroundColor: enviando || huerfanos.length > 0 || validandoPrecios ? '#94A3B8' : AZUL,
+            color: 'white',
             fontWeight: 900, fontSize: 19, border: 'none',
-            cursor: enviando ? 'not-allowed' : 'pointer',
+            cursor: enviando || huerfanos.length > 0 || validandoPrecios ? 'not-allowed' : 'pointer',
           }}>
-          {enviando ? 'Procesando...' : 'CONFIRMAR PEDIDO →'}
+          {enviando
+            ? 'Procesando...'
+            : validandoPrecios
+              ? 'Validando precios...'
+              : huerfanos.length > 0
+                ? `Resolvé ${huerfanos.length} ítem(s) sin precio`
+                : 'CONFIRMAR PEDIDO →'}
         </button>
         <a href="/" style={{ display: 'block', textAlign: 'center', marginTop: 14,
                               color: '#64748B', fontSize: 14 }}>← Seguir agregando</a>

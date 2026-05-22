@@ -29,7 +29,11 @@ export default function LoginPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || data.message || 'Error al iniciar sesión')
+        if (res.status === 403) {
+          setError(data.message || data.error || 'Acceso denegado')
+        } else {
+          setError(data.error || data.message || 'Error al iniciar sesión')
+        }
         setLoading(false)
         return
       }

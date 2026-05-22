@@ -71,9 +71,11 @@ export default async function HomePage({ searchParams }: {
   const coloresFiltro = params.colores ? params.colores.split(',').filter(Boolean) : []
   const etasSel = params.eta_fechas?.split(',').filter(Boolean) ?? []
 
+  // Solo filas con stock vendible: evita descargar decenas de miles de filas agotadas.
   const { data, error } = await supabase
     .from('v_stock_rimec')
     .select('*')
+    .gt('cajas_disponibles', 0)
     .order('descp_marca')
     .order('linea_codigo')
     .order('referencia_codigo')

@@ -64,26 +64,10 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
       const res = await fetch('/api/auth/me')
       if (res.ok) {
         const { user } = await res.json()
-        if (user && user.name) {
-          // Buscar vendedor vinculado a este usuario por descripción (case-insensitive)
-          const { data: vends } = await supabase
-            .from('vendedor_v2')
-            .select('id_vendedor, descp_vendedor')
-            .ilike('descp_vendedor', user.name)
-            .limit(1)
-
-          if (vends && vends.length > 0) {
-            vendedor = vends[0]
-          } else {
-            // Crear vendedor automáticamente con el nombre del usuario
-            const { data: nuevo, error: insErr } = await supabase
-              .from('vendedor_v2')
-              .insert({ descp_vendedor: user.name.toUpperCase(), activo: true })
-              .select('id_vendedor, descp_vendedor')
-              .single()
-            if (!insErr && nuevo) {
-              vendedor = nuevo
-            }
+        if (user && user.id_usuario) {
+          vendedor = {
+            id_vendedor: user.id_usuario,
+            descp_vendedor: user.name
           }
         }
       }

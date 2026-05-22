@@ -1,8 +1,23 @@
+'use client'
+
 /**
  * OT-514: Página de acceso denegado
  */
 
+import { useRouter } from 'next/navigation'
+
 export default function AccesoDenegadoPage() {
+  const router = useRouter()
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch (e) {
+      console.error(e)
+    }
+    window.location.assign('/login')
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4"
          style={{ background: 'linear-gradient(135deg, #0F172A 0%, #7f1d1d 100%)' }}>
@@ -30,12 +45,12 @@ export default function AccesoDenegadoPage() {
             </ul>
           </div>
 
-          <a
-            href="/login"
+          <button
+            onClick={handleLogout}
             className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
             Volver al login
-          </a>
+          </button>
         </div>
       </div>
     </div>

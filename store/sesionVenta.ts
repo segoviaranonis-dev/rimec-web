@@ -66,6 +66,8 @@ export interface SesionVenta {
   descuentosPorLote: Record<number, number[]>  // pp_id → descuentos específicos
   carrito:           Record<string, ItemCarrito>
   activa:            boolean
+  /** ISO timestamp del momento en que se activó la sesión. Usado para detectar sesiones obsoletas. */
+  activatedAt:       string | null
 
   // Acciones
   activar:          (cliente: Cliente, vendedor: Vendedor, plazo: Plazo, listaId: ListaId, descuentos: number[]) => void
@@ -79,7 +81,34 @@ export interface SesionVenta {
   setCajas:         (det_id: number, cajas: number) => void
   /** Quita por completo el item del carrito (botón basurero). */
   eliminarItem:     (det_id: number) => void
+  /** Quita en bloque todos los items pasados (uso: limpiar items huérfanos sin precio). */
+  eliminarItems:    (detIds: number[]) => void
   vaciarCarrito:    () => void
+}
+
+/**
+ * Devuelve true si la sesión fue activada en un día calendario anterior (zona horaria local).
+ * Una sesión de hoy a las 23:30 vista mañana 00:01 ya cuenta como "stale", porque los precios
+ * en `v_stock_rimec` los maneja el director en Streamlit y pueden moverse entre días.
+ */
+export function esSesionDeOtroDia(activatedAt: string | null | undefined): boolean {
+  if (!activatedAt) return false
+  const t = new Date(activatedAt)
+  if (Number.isNaN(t.getTime())) return false
+  const now = new Date()
+  return (
+    t.getFullYear() !== now.getFullYear() ||
+    t.getMonth()    !== now.getMonth()    ||
+    t.getDate()     !== now.getDate()
+  )
+}
+
+/** Devuelve true si pasaron más de N horas desde la activación. */
+export function esSesionAntigua(activatedAt: string | null | undefined, horas = 12): boolean {
+  if (!activatedAt) return false
+  const t = new Date(activatedAt).getTime()
+  if (Number.isNaN(t)) return false
+  return (Date.now() - t) > horas * 3600 * 1000
 }
 
 /* ── Helpers ── */
@@ -123,12 +152,25 @@ export const useSesion = create<SesionVenta>()(persist((set, get) => ({
   descuentosPorLote: {},
   carrito:           {},
   activa:            false,
+  activatedAt:       null,
 
   activar: (cliente, vendedor, plazo, listaId, descuentos) =>
-    set({ cliente, vendedor, plazo, listaPrecioId: listaId, descuentos: descuentos.slice(0, 4), activa: true }),
+    set({
+      cliente,
+      vendedor,
+      plazo,
+      listaPrecioId: listaId,
+      descuentos: descuentos.slice(0, 4),
+      activa: true,
+      activatedAt: new Date().toISOString(),
+    }),
 
   desactivar: () =>
-    set({ cliente: null, vendedor: null, plazo: null, activa: false, carrito: {}, descuentos: [], descuentosPorLote: {} }),
+    set({
+      cliente: null, vendedor: null, plazo: null,
+      activa: false, activatedAt: null,
+      carrito: {}, descuentos: [], descuentosPorLote: {},
+    }),
 
   setLista: (id) => {
     const carrito = get().carrito
@@ -202,6 +244,13 @@ export const useSesion = create<SesionVenta>()(persist((set, get) => ({
     set({ carrito: next })
   },
 
+  eliminarItems: (detIds) => {
+    if (!detIds.length) return
+    const next = { ...get().carrito }
+    for (const id of detIds) delete next[`det_${id}`]
+    set({ carrito: next })
+  },
+
   vaciarCarrito: () => set({ carrito: {} }),
 }), {
   name: 'rimec_sesion_venta',
@@ -214,6 +263,7 @@ export const useSesion = create<SesionVenta>()(persist((set, get) => ({
     descuentosPorLote: s.descuentosPorLote,
     carrito:           s.carrito,
     activa:            s.activa,
+    activatedAt:       s.activatedAt,
   }),
 }))
 

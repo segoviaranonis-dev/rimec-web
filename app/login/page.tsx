@@ -39,8 +39,7 @@ export default function LoginPage() {
       }
 
       // Login exitoso
-      router.push('/')
-      router.refresh()
+      window.location.href = '/'
     } catch (err) {
       setError('Error de conexión')
       setLoading(false)

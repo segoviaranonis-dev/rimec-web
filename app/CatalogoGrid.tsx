@@ -142,19 +142,34 @@ function HeaderSesion() {
             </p>
           </div>
         </div>
-        <button
-          onClick={cerrarVenta}
-          title="Cerrar la sesión de venta (sigue logueado como vendedor)"
-          style={{
-            padding: '8px 16px', borderRadius: 8,
-            backgroundColor: 'rgba(255,255,255,0.12)', color: 'white',
-            border: '1px solid rgba(255,255,255,0.18)',
-            cursor: 'pointer', fontSize: 13, fontWeight: 600,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Cerrar venta
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => router.refresh()}
+            title="Volver a consultar precios y stock al servidor"
+            style={{
+              padding: '8px 14px', borderRadius: 8,
+              backgroundColor: 'rgba(255,255,255,0.16)', color: 'white',
+              border: '1px solid rgba(255,255,255,0.22)',
+              cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            🔄 Revalidar
+          </button>
+          <button
+            onClick={cerrarVenta}
+            title="Cerrar la sesión de venta (sigue logueado como vendedor)"
+            style={{
+              padding: '8px 16px', borderRadius: 8,
+              backgroundColor: 'rgba(255,255,255,0.12)', color: 'white',
+              border: '1px solid rgba(255,255,255,0.18)',
+              cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Cerrar venta
+          </button>
+        </div>
       </div>
 
       {sesionVieja && (

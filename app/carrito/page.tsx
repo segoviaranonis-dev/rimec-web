@@ -13,7 +13,7 @@ interface PrecioActualRow {
   lpc02:  number | null
   lpc03:  number | null
   lpc04:  number | null
-  precio_web: number | null
+  precio_web?: number | null
 }
 
 export default function CarritoPage() {
@@ -24,46 +24,82 @@ export default function CarritoPage() {
   const [enviando, setEnviando] = useState(false)
   const [exito,    setExito]    = useState<string | null>(null)
   const [error,    setError]    = useState<string | null>(null)
-  /** det_ids en el carrito que actualmente NO tienen precio en la lista activa. */
+  /**
+   * Estado tri-modal de la validación de precios.
+   * - `idle`         : aún no se intentó (carrito vacío o sesión inactiva)
+   * - `validating`   : query en curso
+   * - `verified`     : DB respondió OK; `huerfanos` contiene la lista real
+   * - `unverifiable` : la query falló (red, RLS, timeout). NO sabemos si hay
+   *                   huérfanos o no. Bloqueamos confirmación y ofrecemos
+   *                   reintento. Esto NO es lo mismo que "sin precio".
+   */
+  type EstadoValid = 'idle' | 'validating' | 'verified' | 'unverifiable'
+  const [estadoValid, setEstadoValid] = useState<EstadoValid>('idle')
+  /** det_ids en el carrito que actualmente NO tienen precio (solo válido si estadoValid === 'verified'). */
   const [huerfanos, setHuerfanos] = useState<number[]>([])
-  const [validandoPrecios, setValidandoPrecios] = useState(false)
+  const [errorValid, setErrorValid] = useState<string | null>(null)
+  /** Trigger manual para revalidar (botón "Revalidar precios"). */
+  const [revalToken, setRevalToken] = useState(0)
 
-  // Al abrir el carrito, revalidar precios contra v_stock_rimec con la lista activa.
-  // Esto detecta carritos persistidos de días anteriores cuyos SKUs perdieron precio.
+  // Si otra pestaña modifica localStorage, forzamos revalidación.
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== 'rimec_sesion_venta') return
+      setRevalToken(t => t + 1)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  // Al abrir el carrito (o tras revalToken) preguntamos precios actuales.
+  // CRÍTICO: si la red falla → estado 'unverifiable', NO 'verified' con huerfanos vacíos.
   useEffect(() => {
     const detIds = Object.values(carrito).map(it => it.det_id).filter(n => Number.isFinite(n))
     if (!activa || detIds.length === 0) {
+      setEstadoValid('idle')
       setHuerfanos([])
+      setErrorValid(null)
       return
     }
     let cancelado = false
-    setValidandoPrecios(true)
+    setEstadoValid('validating')
+    setErrorValid(null)
     ;(async () => {
-      const { data, error: errPrecio } = await supabase
-        .from('v_stock_rimec')
-        .select('det_id, lpn, lpc02, lpc03, lpc04, precio_web')
-        .in('det_id', detIds)
-      if (cancelado) return
-      if (errPrecio) {
-        console.error('[carrito] error validando precios:', errPrecio.message)
-        setHuerfanos([])
-        setValidandoPrecios(false)
-        return
+      try {
+        const { data, error: errPrecio } = await supabase
+          .from('v_stock_rimec')
+          .select('det_id, lpn, lpc02, lpc03, lpc04')
+          .in('det_id', detIds)
+        if (cancelado) return
+        if (errPrecio) {
+          console.error('[carrito] supabase error validando precios:', errPrecio.message)
+          setEstadoValid('unverifiable')
+          setErrorValid(errPrecio.message)
+          return
+        }
+        const map = new Map<number, PrecioActualRow>()
+        for (const r of (data ?? []) as PrecioActualRow[]) map.set(Number(r.det_id), r)
+        const sinPrecio: number[] = []
+        for (const id of detIds) {
+          const row = map.get(id)
+          if (!row) { sinPrecio.push(id); continue }
+          const p = getPrecioActivo(row, listaPrecioId)
+          if (p == null || p <= 0) sinPrecio.push(id)
+        }
+        setHuerfanos(sinPrecio)
+        setEstadoValid('verified')
+      } catch (e: unknown) {
+        if (cancelado) return
+        const msg = e instanceof Error ? e.message : 'Error desconocido'
+        console.error('[carrito] excepción validando precios:', msg)
+        setEstadoValid('unverifiable')
+        setErrorValid(msg)
       }
-      const map = new Map<number, PrecioActualRow>()
-      for (const r of (data ?? []) as PrecioActualRow[]) map.set(Number(r.det_id), r)
-      const sinPrecio: number[] = []
-      for (const id of detIds) {
-        const row = map.get(id)
-        if (!row) { sinPrecio.push(id); continue }
-        const p = getPrecioActivo(row, listaPrecioId)
-        if (p == null || p <= 0) sinPrecio.push(id)
-      }
-      setHuerfanos(sinPrecio)
-      setValidandoPrecios(false)
     })()
     return () => { cancelado = true }
-  }, [activa, listaPrecioId, carrito])
+  }, [activa, listaPrecioId, carrito, revalToken])
+
+  const revalidar = () => setRevalToken(t => t + 1)
 
   if (!activa || Object.keys(carrito).length === 0) {
     return (
@@ -223,8 +259,47 @@ export default function CarritoPage() {
         </p>
       </div>
 
-      {/* Aviso de items huérfanos: SKUs en el carrito que ya no tienen precio en la lista activa. */}
-      {huerfanos.length > 0 && !exito && (
+      {/* Estado 'unverifiable' — Supabase no respondió.
+          IMPORTANTE: no es lo mismo que "sin precio". Solo dice que NO PUDIMOS verificar.
+          Bloqueamos confirmación porque no tenemos evidencia de que los precios estén vigentes. */}
+      {estadoValid === 'unverifiable' && !exito && (
+        <div
+          role="alert"
+          style={{
+            backgroundColor: '#FFEDD5', border: '1px solid #FB923C',
+            borderRadius: 12, padding: '14px 18px', marginBottom: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 16, flexWrap: 'wrap', color: '#7C2D12',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}>
+              🔌 No se pudo verificar el precio ahora
+            </p>
+            <p style={{ fontSize: 12 }}>
+              Probablemente hay un problema de red o el servicio de catálogo no respondió.
+              No podemos confirmar el pedido hasta validar que los {Object.keys(carrito).length} ítems
+              de tu carrito tengan precio vigente.
+              {errorValid ? <span style={{ display: 'block', marginTop: 4, fontSize: 11, opacity: 0.8 }}>Detalle técnico: {errorValid}</span> : null}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={revalidar}
+            style={{
+              padding: '10px 16px', borderRadius: 10,
+              backgroundColor: '#7C2D12', color: 'white',
+              border: 'none', cursor: 'pointer',
+              fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap',
+            }}
+          >
+            Reintentar verificación
+          </button>
+        </div>
+      )}
+
+      {/* Estado 'verified' con huérfanos confirmados. */}
+      {estadoValid === 'verified' && huerfanos.length > 0 && !exito && (
         <div
           role="alert"
           style={{
@@ -244,18 +319,33 @@ export default function CarritoPage() {
               No se pueden facturar — quitalos para continuar.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => eliminarItems(huerfanos)}
-            style={{
-              padding: '10px 16px', borderRadius: 10,
-              backgroundColor: '#78350F', color: 'white',
-              border: 'none', cursor: 'pointer',
-              fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap',
-            }}
-          >
-            Quitar {huerfanos.length} ítem{huerfanos.length === 1 ? '' : 's'} sin precio
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={revalidar}
+              title="Volver a consultar precios actuales"
+              style={{
+                padding: '10px 14px', borderRadius: 10,
+                backgroundColor: 'transparent', color: '#78350F',
+                border: '1px solid #B45309', cursor: 'pointer',
+                fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap',
+              }}
+            >
+              Revalidar
+            </button>
+            <button
+              type="button"
+              onClick={() => eliminarItems(huerfanos)}
+              style={{
+                padding: '10px 16px', borderRadius: 10,
+                backgroundColor: '#78350F', color: 'white',
+                border: 'none', cursor: 'pointer',
+                fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap',
+              }}
+            >
+              Quitar {huerfanos.length} ítem{huerfanos.length === 1 ? '' : 's'} sin precio
+            </button>
+          </div>
         </div>
       )}
 
@@ -542,31 +632,55 @@ export default function CarritoPage() {
           <span style={{ color: '#64748B' }}>Monto total</span>
           <span style={{ fontWeight: 900, color: AZUL }}>Gs. {totalGenMonto.toLocaleString('es-PY')}</span>
         </div>
-        <button
-          onClick={confirmarPedido}
-          disabled={enviando || huerfanos.length > 0 || validandoPrecios}
-          title={
-            huerfanos.length > 0
-              ? `Tenés ${huerfanos.length} ítem(s) sin precio. Quitalos antes de confirmar.`
-              : validandoPrecios
-                ? 'Validando precios contra el catálogo...'
-                : 'Confirmar pedido'
-          }
-          style={{
-            width: '100%', padding: '18px 0', borderRadius: 14,
-            backgroundColor: enviando || huerfanos.length > 0 || validandoPrecios ? '#94A3B8' : AZUL,
-            color: 'white',
-            fontWeight: 900, fontSize: 19, border: 'none',
-            cursor: enviando || huerfanos.length > 0 || validandoPrecios ? 'not-allowed' : 'pointer',
-          }}>
-          {enviando
-            ? 'Procesando...'
-            : validandoPrecios
-              ? 'Validando precios...'
-              : huerfanos.length > 0
-                ? `Resolvé ${huerfanos.length} ítem(s) sin precio`
-                : 'CONFIRMAR PEDIDO →'}
-        </button>
+        {(() => {
+          // Bloqueo del botón con 3 motivos posibles (orden de precedencia):
+          //   1. enviando → procesando, no doble-click
+          //   2. estadoValid === 'unverifiable' → no sabemos si los precios sirven
+          //   3. estadoValid === 'verified' && huerfanos > 0 → DB confirmó que perdieron precio
+          //   4. estadoValid === 'validating' → esperar respuesta
+          const motivoBloqueo =
+            enviando ? 'procesando' :
+            estadoValid === 'unverifiable' ? 'no_verificado' :
+            estadoValid === 'verified' && huerfanos.length > 0 ? 'huerfanos' :
+            estadoValid === 'validating' || estadoValid === 'idle' ? 'validando' :
+            null
+
+          const label = (() => {
+            switch (motivoBloqueo) {
+              case 'procesando':     return 'Procesando...'
+              case 'no_verificado':  return 'Verificación pendiente — reintentá arriba'
+              case 'huerfanos':      return `Resolvé ${huerfanos.length} ítem(s) sin precio`
+              case 'validando':      return 'Validando precios...'
+              default:               return 'CONFIRMAR PEDIDO →'
+            }
+          })()
+
+          const titulo = (() => {
+            switch (motivoBloqueo) {
+              case 'no_verificado':  return 'No pudimos verificar precios con el servidor. Hacé click en "Reintentar verificación" arriba.'
+              case 'huerfanos':      return `Tenés ${huerfanos.length} ítem(s) sin precio. Quitalos antes de confirmar.`
+              case 'validando':      return 'Validando precios contra el catálogo...'
+              case 'procesando':     return 'Procesando pedido, esperá...'
+              default:               return 'Confirmar pedido'
+            }
+          })()
+
+          return (
+            <button
+              onClick={confirmarPedido}
+              disabled={motivoBloqueo !== null}
+              title={titulo}
+              style={{
+                width: '100%', padding: '18px 0', borderRadius: 14,
+                backgroundColor: motivoBloqueo !== null ? '#94A3B8' : AZUL,
+                color: 'white',
+                fontWeight: 900, fontSize: 19, border: 'none',
+                cursor: motivoBloqueo !== null ? 'not-allowed' : 'pointer',
+              }}>
+              {label}
+            </button>
+          )
+        })()}
         <a href="/" style={{ display: 'block', textAlign: 'center', marginTop: 14,
                               color: '#64748B', fontSize: 14 }}>← Seguir agregando</a>
       </div>

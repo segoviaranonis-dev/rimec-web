@@ -142,7 +142,16 @@ function recalcularItem(item: ItemCarrito, listaId: ListaId): ItemCarrito {
   return { ...item, lista_precio_id: listaId, subtotal: item.precio_base * item.pares }
 }
 
-/* ── Store (persiste en localStorage) ── */
+/* ── Store (persiste en localStorage) ──
+ *
+ * Sincronización entre pestañas: la API `storage` del navegador dispara un
+ * evento `storage` en TODAS las pestañas que NO hicieron el setItem. Cuando
+ * eso pasa, llamamos a `useSesion.persist.rehydrate()` para que la pestaña
+ * pasiva recargue el estado desde localStorage. Esto evita que la pestaña B
+ * confirme un pedido mientras la pestaña A acaba de limpiar huérfanos.
+ */
+export const STORAGE_KEY_SESION = 'rimec_sesion_venta'
+
 export const useSesion = create<SesionVenta>()(persist((set, get) => ({
   cliente:           null,
   vendedor:          null,
@@ -253,7 +262,7 @@ export const useSesion = create<SesionVenta>()(persist((set, get) => ({
 
   vaciarCarrito: () => set({ carrito: {} }),
 }), {
-  name: 'rimec_sesion_venta',
+  name: STORAGE_KEY_SESION,
   partialize: (s) => ({
     cliente:           s.cliente,
     vendedor:          s.vendedor,

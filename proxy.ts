@@ -1,5 +1,5 @@
 /**
- * OT-514: Middleware de autenticación
+ * Next.js 16: Proxy de autenticación (migrado de middleware.ts)
  * Protege rutas que requieren login
  */
 
@@ -13,7 +13,7 @@ const SECRET = new TextEncoder().encode(
 
 const PUBLIC_PATHS = ['/login', '/acceso-denegado', '/api/auth/login', '/api/auth/logout']
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Rutas públicas

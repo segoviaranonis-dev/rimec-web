@@ -1,8 +1,18 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import { formatearQuincena } from '@/lib/fecha'
+import {
+  carritoDeleteItem,
+  carritoDeleteSesion,
+  carritoGet,
+  carritoPatchItem,
+  carritoPutSesion,
+  carritoUpsertItem,
+  carritoVaciarItems,
+  type CarritoItemBD,
+  type CarritoSesionBD,
+} from '@/lib/carritoApi'
 
 /* ── Tipos ── */
 export interface Cliente {
@@ -40,10 +50,8 @@ export interface ItemCarrito {
   pp_id:           number
   pp_nro:          string
   eta:             string | null
-  /** Descripción de la marca (descp_marca). Necesario para partir facturas por marca (Regla 1). */
   marca:           string
   marca_id:        number | null
-  /** Descripción del caso (descp_caso). Necesario para partir facturas por caso (Regla 1). */
   caso:            string
   caso_id:         number | null
   nombre:          string
@@ -57,40 +65,58 @@ export interface ItemCarrito {
   subtotal:        number
 }
 
+export type ItemCarritoMeta = Omit<ItemCarrito, 'cajas' | 'pares' | 'subtotal'>
+
 export interface SesionVenta {
   cliente:           Cliente | null
   vendedor:          Vendedor | null
   plazo:             Plazo | null
   listaPrecioId:     ListaId
-  descuentos:        number[]           // hasta 4 descuentos cabecera
-  descuentosPorLote: Record<number, number[]>  // pp_id → descuentos específicos
+  descuentos:        number[]
+  descuentosPorLote: Record<number, number[]>
   carrito:           Record<string, ItemCarrito>
   activa:            boolean
-  /** ISO timestamp del momento en que se activó la sesión. Usado para detectar sesiones obsoletas. */
   activatedAt:       string | null
+  /** True mientras el store está sincronizándose con la BD por primera vez. */
+  hydrating:         boolean
+  /** True cuando ya hubo al menos un fetch desde la BD. */
+  hydrated:          boolean
+  /** Snapshot de validación más reciente (`carrito_validar` RPC). */
+  validacion: {
+    estado: 'IDLE' | 'OK' | 'DIFERENCIAS' | 'BLOQUEADO' | 'ERROR'
+    token: string | null
+    expiraEn: string | null
+    items: Array<{
+      det_id: number
+      ok: boolean
+      motivo: string | null
+      cajas_actuales: number
+      precio_actual: number | null
+    }>
+  }
 
-  // Acciones
-  activar:          (cliente: Cliente, vendedor: Vendedor, plazo: Plazo, listaId: ListaId, descuentos: number[]) => void
-  desactivar:       () => void
-  setLista:         (id: ListaId) => void
-  setDescuentos:    (desc: number[]) => void
-  setDescuentoLote: (ppId: number, desc: number[]) => void
-  agregarCaja:      (item: Omit<ItemCarrito, 'cajas' | 'pares' | 'subtotal'>) => void
-  quitarCaja:       (det_id: number) => void
-  /** Setea la cantidad de cajas a un valor exacto. Si cajas <= 0, elimina el item. */
-  setCajas:         (det_id: number, cajas: number) => void
-  /** Quita por completo el item del carrito (botón basurero). */
-  eliminarItem:     (det_id: number) => void
-  /** Quita en bloque todos los items pasados (uso: limpiar items huérfanos sin precio). */
-  eliminarItems:    (detIds: number[]) => void
-  vaciarCarrito:    () => void
+  // Acciones (todas async — golpean /api/carrito/*).
+  activar:          (cliente: Cliente, vendedor: Vendedor, plazo: Plazo, listaId: ListaId, descuentos: number[]) => Promise<void>
+  desactivar:       () => Promise<void>
+  setLista:         (id: ListaId) => Promise<void>
+  setDescuentos:    (desc: number[]) => Promise<void>
+  setDescuentoLote: (ppId: number, desc: number[]) => Promise<void>
+  agregarCaja:      (item: ItemCarritoMeta) => Promise<void>
+  quitarCaja:       (det_id: number) => Promise<void>
+  setCajas:         (det_id: number, cajas: number) => Promise<void>
+  eliminarItem:     (det_id: number) => Promise<void>
+  eliminarItems:    (detIds: number[]) => Promise<void>
+  vaciarCarrito:    () => Promise<void>
+
+  // Sync (lo usa SesionSyncProvider).
+  cargarDesdeBD:    () => Promise<void>
+  aplicarSnapshot:  (sesion: CarritoSesionBD | null, items: CarritoItemBD[]) => void
+  setVendedor:      (v: Vendedor | null) => void
+  setValidacion:    (val: SesionVenta['validacion']) => void
+  limpiarValidacion: () => void
 }
 
-/**
- * Devuelve true si la sesión fue activada en un día calendario anterior (zona horaria local).
- * Una sesión de hoy a las 23:30 vista mañana 00:01 ya cuenta como "stale", porque los precios
- * en `v_stock_rimec` los maneja el director en Streamlit y pueden moverse entre días.
- */
+/* ── Helpers ── */
 export function esSesionDeOtroDia(activatedAt: string | null | undefined): boolean {
   if (!activatedAt) return false
   const t = new Date(activatedAt)
@@ -103,7 +129,6 @@ export function esSesionDeOtroDia(activatedAt: string | null | undefined): boole
   )
 }
 
-/** Devuelve true si pasaron más de N horas desde la activación. */
 export function esSesionAntigua(activatedAt: string | null | undefined, horas = 12): boolean {
   if (!activatedAt) return false
   const t = new Date(activatedAt).getTime()
@@ -111,7 +136,6 @@ export function esSesionAntigua(activatedAt: string | null | undefined, horas = 
   return (Date.now() - t) > horas * 3600 * 1000
 }
 
-/* ── Helpers ── */
 export function getPrecioActivo(
   row: {
     lpn: number | null;
@@ -123,7 +147,6 @@ export function getPrecioActivo(
   listaId: ListaId,
 ): number | null {
   switch (Number(listaId)) {
-    // OT-509 W3: Lista 1 (Bazar/LPN) usa precio_web si existe, fallback lpn
     case 1: return row.precio_web ?? row.lpn ?? null
     case 2: return row.lpc02 ?? null
     case 3: return row.lpc03 ?? null
@@ -138,21 +161,83 @@ export function calcularPrecioNeto(precioBase: number, descuentos: number[]): nu
   return Math.floor(precio / 100) * 100
 }
 
-function recalcularItem(item: ItemCarrito, listaId: ListaId): ItemCarrito {
-  return { ...item, lista_precio_id: listaId, subtotal: item.precio_base * item.pares }
+function paresCalc(item: ItemCarritoMeta, cajas: number): number {
+  return cajas * item.cant_caja
 }
 
-/* ── Store (persiste en localStorage) ──
- *
- * Sincronización entre pestañas: la API `storage` del navegador dispara un
- * evento `storage` en TODAS las pestañas que NO hicieron el setItem. Cuando
- * eso pasa, llamamos a `useSesion.persist.rehydrate()` para que la pestaña
- * pasiva recargue el estado desde localStorage. Esto evita que la pestaña B
- * confirme un pedido mientras la pestaña A acaba de limpiar huérfanos.
- */
-export const STORAGE_KEY_SESION = 'rimec_sesion_venta'
+function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, listaId: ListaId): ItemCarrito | null {
+  const base = meta.get(row.det_id)
+  if (!base) {
+    // Sin metadatos (catálogo) usamos lo que tenemos en BD.
+    return {
+      det_id: row.det_id,
+      linea_codigo: '',
+      referencia_codigo: '',
+      material_code: '',
+      color_code: '',
+      color_nombre: '',
+      pp_id: row.pp_id,
+      pp_nro: '',
+      eta: null,
+      marca: row.marca_snapshot,
+      marca_id: row.marca_id_snapshot,
+      caso: row.caso_snapshot,
+      caso_id: row.caso_id_snapshot,
+      nombre: '',
+      gradas_fmt: '',
+      imagen_url: '',
+      lista_precio_id: listaId,
+      precio_base: row.precio_snapshot,
+      cant_caja: 0,
+      cajas: row.cantidad_cajas,
+      pares: 0,
+      subtotal: row.precio_snapshot * 0,
+    }
+  }
+  const pares = paresCalc(base, row.cantidad_cajas)
+  return {
+    ...base,
+    lista_precio_id: listaId,
+    precio_base: row.precio_snapshot,
+    cajas: row.cantidad_cajas,
+    pares,
+    subtotal: row.precio_snapshot * pares,
+  }
+}
 
-export const useSesion = create<SesionVenta>()(persist((set, get) => ({
+/**
+ * Cache local de metadatos de cada item (línea, color, imagen, gradas, etc.).
+ * Se llena cuando el usuario agrega desde el catálogo, así podemos repoblar
+ * el shape `ItemCarrito` aunque la BD solo guarde precio + snapshot mínimo.
+ */
+const META_CACHE: Map<number, ItemCarritoMeta> = new Map()
+
+function persistMeta(item: ItemCarritoMeta) {
+  META_CACHE.set(item.det_id, item)
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem('rimec_meta_cache') ?? '{}'
+      const obj = JSON.parse(raw) as Record<string, ItemCarritoMeta>
+      obj[String(item.det_id)] = item
+      window.localStorage.setItem('rimec_meta_cache', JSON.stringify(obj))
+    } catch {}
+  }
+}
+
+function hydrateMetaFromLocal() {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem('rimec_meta_cache')
+    if (!raw) return
+    const obj = JSON.parse(raw) as Record<string, ItemCarritoMeta>
+    for (const v of Object.values(obj)) {
+      if (v && typeof v.det_id === 'number') META_CACHE.set(v.det_id, v)
+    }
+  } catch {}
+}
+
+/* ── Store ── */
+export const useSesion = create<SesionVenta>()((set, get) => ({
   cliente:           null,
   vendedor:          null,
   plazo:             null,
@@ -162,139 +247,243 @@ export const useSesion = create<SesionVenta>()(persist((set, get) => ({
   carrito:           {},
   activa:            false,
   activatedAt:       null,
+  hydrating:         false,
+  hydrated:          false,
+  validacion: {
+    estado: 'IDLE',
+    token: null,
+    expiraEn: null,
+    items: [],
+  },
 
-  activar: (cliente, vendedor, plazo, listaId, descuentos) =>
+  setVendedor: (v) => set({ vendedor: v }),
+  setValidacion: (val) => set({ validacion: val }),
+  limpiarValidacion: () =>
+    set({ validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } }),
+
+  aplicarSnapshot: (sesion, items) => {
+    hydrateMetaFromLocal()
+    const listaId = (sesion?.lista_precio_id as ListaId) ?? 1
+    const carrito: Record<string, ItemCarrito> = {}
+    for (const row of items) {
+      const it = itemFromBD(META_CACHE, row, listaId)
+      if (it) carrito[`det_${row.det_id}`] = it
+    }
+    set((s) => ({
+      cliente: sesion
+        ? { id_cliente: sesion.cliente_id, descp_cliente: sesion.cliente_nombre, email: null }
+        : null,
+      plazo: sesion && sesion.plazo_id
+        ? { id_plazo: sesion.plazo_id, descp_plazo: sesion.plazo_nombre ?? '' }
+        : null,
+      listaPrecioId: listaId,
+      descuentos: sesion?.descuentos ?? [],
+      descuentosPorLote: (sesion?.descuentos_lote as Record<number, number[]> | undefined) ?? {},
+      carrito,
+      activa: Boolean(sesion),
+      activatedAt: sesion?.iniciada_en ?? null,
+      vendedor: s.vendedor,
+      hydrated: true,
+      hydrating: false,
+      validacion:
+        sesion?.validacion_estado === 'OK' && sesion?.validacion_token
+          ? {
+              estado: 'OK',
+              token: sesion.validacion_token,
+              expiraEn: sesion.validada_en
+                ? new Date(new Date(sesion.validada_en).getTime() + 60_000).toISOString()
+                : null,
+              items: [],
+            }
+          : { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+    }))
+  },
+
+  cargarDesdeBD: async () => {
+    if (typeof window === 'undefined') return
+    set({ hydrating: true })
+    try {
+      const data = await carritoGet()
+      get().aplicarSnapshot(data.sesion, data.items)
+    } catch (err) {
+      console.warn('[sesionVenta] cargarDesdeBD falló:', err)
+      set({ hydrating: false, hydrated: true })
+    }
+  },
+
+  activar: async (cliente, vendedor, plazo, listaId, descuentos) => {
+    await carritoPutSesion({
+      cliente_id: cliente.id_cliente,
+      cliente_nombre: cliente.descp_cliente,
+      plazo_id: plazo.id_plazo,
+      plazo_nombre: plazo.descp_plazo,
+      lista_precio_id: listaId,
+      descuentos: descuentos.slice(0, 4),
+      descuentos_lote: {},
+    })
     set({
       cliente,
       vendedor,
       plazo,
       listaPrecioId: listaId,
       descuentos: descuentos.slice(0, 4),
+      descuentosPorLote: {},
       activa: true,
       activatedAt: new Date().toISOString(),
-    }),
+      carrito: {},
+      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+    })
+  },
 
-  desactivar: () =>
+  desactivar: async () => {
+    try { await carritoDeleteSesion() } catch (e) { console.warn('[sesionVenta] desactivar:', e) }
     set({
-      cliente: null, vendedor: null, plazo: null,
+      cliente: null, plazo: null,
       activa: false, activatedAt: null,
       carrito: {}, descuentos: [], descuentosPorLote: {},
-    }),
-
-  setLista: (id) => {
-    const carrito = get().carrito
-    const updated: Record<string, ItemCarrito> = {}
-    for (const [k, item] of Object.entries(carrito)) {
-      updated[k] = recalcularItem(item, id)
-    }
-    set({ listaPrecioId: id, carrito: updated })
+      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+    })
   },
 
-  setDescuentos: (desc) => set({ descuentos: desc.slice(0, 4) }),
+  setLista: async (id) => {
+    const s = get()
+    if (!s.cliente) { set({ listaPrecioId: id }); return }
+    await carritoPutSesion({
+      cliente_id: s.cliente.id_cliente,
+      cliente_nombre: s.cliente.descp_cliente,
+      plazo_id: s.plazo?.id_plazo ?? null,
+      plazo_nombre: s.plazo?.descp_plazo ?? null,
+      lista_precio_id: id,
+      descuentos: s.descuentos,
+      descuentos_lote: s.descuentosPorLote as Record<string, number[]>,
+    })
+    set({ listaPrecioId: id })
+  },
 
-  setDescuentoLote: (ppId, desc) =>
-    set(s => ({ descuentosPorLote: { ...s.descuentosPorLote, [ppId]: desc } })),
+  setDescuentos: async (desc) => {
+    const s = get()
+    const next = desc.slice(0, 4)
+    if (!s.cliente) { set({ descuentos: next }); return }
+    await carritoPutSesion({
+      cliente_id: s.cliente.id_cliente,
+      cliente_nombre: s.cliente.descp_cliente,
+      plazo_id: s.plazo?.id_plazo ?? null,
+      plazo_nombre: s.plazo?.descp_plazo ?? null,
+      lista_precio_id: s.listaPrecioId,
+      descuentos: next,
+      descuentos_lote: s.descuentosPorLote as Record<string, number[]>,
+    })
+    set({ descuentos: next })
+  },
 
-  agregarCaja: (item) => {
-    const key     = `det_${item.det_id}`
-    const carrito = get().carrito
-    const actual  = carrito[key]?.cajas ?? 0
-    const cajas   = actual + 1
-    const pares   = cajas * item.cant_caja
-    set(s => ({
-      carrito: {
-        ...s.carrito,
-        [key]: { ...item, cajas, pares, subtotal: item.precio_base * pares },
-      },
+  setDescuentoLote: async (ppId, desc) => {
+    const s = get()
+    const nextLote = { ...s.descuentosPorLote, [ppId]: desc }
+    if (!s.cliente) { set({ descuentosPorLote: nextLote }); return }
+    await carritoPutSesion({
+      cliente_id: s.cliente.id_cliente,
+      cliente_nombre: s.cliente.descp_cliente,
+      plazo_id: s.plazo?.id_plazo ?? null,
+      plazo_nombre: s.plazo?.descp_plazo ?? null,
+      lista_precio_id: s.listaPrecioId,
+      descuentos: s.descuentos,
+      descuentos_lote: nextLote as Record<string, number[]>,
+    })
+    set({ descuentosPorLote: nextLote })
+  },
+
+  agregarCaja: async (item) => {
+    persistMeta(item)
+    const key = `det_${item.det_id}`
+    const s = get()
+    const actual = s.carrito[key]?.cajas ?? 0
+    const cajas = actual + 1
+    try {
+      await carritoUpsertItem({
+        det_id: item.det_id,
+        pp_id: item.pp_id,
+        cantidad_cajas: cajas,
+        precio_snapshot: item.precio_base,
+        caso_snapshot: item.caso,
+        caso_id_snapshot: item.caso_id ?? null,
+        marca_snapshot: item.marca,
+        marca_id_snapshot: item.marca_id ?? null,
+      })
+    } catch (err) {
+      console.error('[sesionVenta.agregarCaja]', err)
+      throw err
+    }
+    const pares = paresCalc(item, cajas)
+    set((st) => ({
+      carrito: { ...st.carrito, [key]: { ...item, cajas, pares, subtotal: item.precio_base * pares } },
+      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
     }))
   },
 
-  quitarCaja: (det_id) => {
-    const key     = `det_${det_id}`
-    const carrito = get().carrito
-    const actual  = carrito[key]?.cajas ?? 0
-    if (actual <= 1) {
-      const next = { ...carrito }
+  quitarCaja: async (det_id) => {
+    const key = `det_${det_id}`
+    const s = get()
+    const actual = s.carrito[key]
+    if (!actual) return
+    const cajas = actual.cajas - 1
+    if (cajas <= 0) {
+      await carritoPatchItem(det_id, 0)
+      const next = { ...s.carrito }
       delete next[key]
-      set({ carrito: next })
-    } else {
-      const item  = carrito[key]
-      const cajas = actual - 1
-      const pares = cajas * item.cant_caja
-      set(s => ({ carrito: { ...s.carrito, [key]: { ...item, cajas, pares, subtotal: item.precio_base * pares } } }))
-    }
-  },
-
-  setCajas: (det_id, cajas) => {
-    const key     = `det_${det_id}`
-    const carrito = get().carrito
-    const item    = carrito[key]
-    if (!item) return
-    const safeCajas = Math.max(0, Math.floor(Number.isFinite(cajas) ? cajas : 0))
-    if (safeCajas === 0) {
-      const next = { ...carrito }
-      delete next[key]
-      set({ carrito: next })
+      set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
       return
     }
-    const pares = safeCajas * item.cant_caja
-    set(s => ({
-      carrito: {
-        ...s.carrito,
-        [key]: { ...item, cajas: safeCajas, pares, subtotal: item.precio_base * pares },
-      },
+    await carritoPatchItem(det_id, cajas)
+    const pares = actual.cant_caja * cajas
+    set((st) => ({
+      carrito: { ...st.carrito, [key]: { ...actual, cajas, pares, subtotal: actual.precio_base * pares } },
+      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
     }))
   },
 
-  eliminarItem: (det_id) => {
-    const key  = `det_${det_id}`
-    const next = { ...get().carrito }
-    delete next[key]
-    set({ carrito: next })
+  setCajas: async (det_id, cajas) => {
+    const key = `det_${det_id}`
+    const s = get()
+    const actual = s.carrito[key]
+    if (!actual) return
+    const safe = Math.max(0, Math.floor(Number.isFinite(cajas) ? cajas : 0))
+    if (safe === 0) {
+      await carritoPatchItem(det_id, 0)
+      const next = { ...s.carrito }
+      delete next[key]
+      set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
+      return
+    }
+    await carritoPatchItem(det_id, safe)
+    const pares = actual.cant_caja * safe
+    set((st) => ({
+      carrito: { ...st.carrito, [key]: { ...actual, cajas: safe, pares, subtotal: actual.precio_base * pares } },
+      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+    }))
   },
 
-  eliminarItems: (detIds) => {
+  eliminarItem: async (det_id) => {
+    await carritoDeleteItem(det_id)
+    const next = { ...get().carrito }
+    delete next[`det_${det_id}`]
+    set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
+  },
+
+  eliminarItems: async (detIds) => {
     if (!detIds.length) return
+    await Promise.all(detIds.map((id) => carritoDeleteItem(id)))
     const next = { ...get().carrito }
     for (const id of detIds) delete next[`det_${id}`]
-    set({ carrito: next })
+    set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
   },
 
-  vaciarCarrito: () => set({ carrito: {} }),
-}), {
-  name: STORAGE_KEY_SESION,
-  partialize: (s) => ({
-    cliente:           s.cliente,
-    vendedor:          s.vendedor,
-    plazo:             s.plazo,
-    listaPrecioId:     s.listaPrecioId,
-    descuentos:        s.descuentos,
-    descuentosPorLote: s.descuentosPorLote,
-    carrito:           s.carrito,
-    activa:            s.activa,
-    activatedAt:       s.activatedAt,
-  }),
+  vaciarCarrito: async () => {
+    await carritoVaciarItems()
+    set({ carrito: {}, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
+  },
 }))
 
-/* ── Fragmentación ──────────────────────────────────────────────────────────
- *
- * REGLA 1 (Factura Interna de la Importadora Rimec):
- *
- *   "No se mezclan marcas en una factura. No se mezclan casos en una factura."
- *
- * Mantenemos la jerarquía visual histórica de 3 niveles:
- *
- *     PP  →  Marca  →  Item
- *
- * y solo introducimos un subnivel "Caso" DENTRO de una marca cuando ésta
- * tiene más de un caso (ej: BEIRA RIO con NORMAL + CHINELO genera 2 FIs).
- * Cuando una marca tiene UN solo caso, no se muestra el subnivel: el bloque
- * de Marca ya representa la factura completa.
- *
- * NOTA: en la tienda minorista Bazzar esta regla NO aplica — el pedido web
- * mezcla libremente. El backend distingue por el destino (Rimec vs Bazzar).
- * ──────────────────────────────────────────────────────────────────────────── */
-
+/* ── Fragmentación (sin cambios respecto al modelo anterior) ── */
 export interface ItemFragmentado {
   det_id:       number
   linea_codigo:  string
@@ -309,7 +498,6 @@ export interface ItemFragmentado {
   subtotal:      number
 }
 
-/** Una factura interna prevista (UN caso dentro de UNA marca dentro de UN PP). */
 export interface FacturaPrevisible {
   grupo_key:    string
   caso:         string
@@ -319,13 +507,11 @@ export interface FacturaPrevisible {
   items:        ItemFragmentado[]
 }
 
-/** Nivel 2: una marca dentro de un PP. Genera 1 o más facturas. */
 export interface MarcaFragmentada {
   marca:        string
   marca_id:     number | null
   total_pares:  number
   total_monto:  number
-  /** Cantidad de facturas que generará esta marca (= cantidad de casos distintos). */
   cantidad_facturas: number
   facturas:     FacturaPrevisible[]
 }
@@ -338,15 +524,14 @@ export interface LoteFragmentado {
   descuentos_lote: number[]
   total_pares:    number
   total_monto:    number
-  /** Cantidad TOTAL de facturas internas que va a generar este PP. */
   cantidad_facturas: number
   marcas:         MarcaFragmentada[]
 }
 
 export function fragmentarCarrito(
-  carrito:            Record<string, ItemCarrito>,
+  carrito: Record<string, ItemCarrito>,
   descuentosCabecera: number[],
-  descuentosPorLote:  Record<number, number[]>,
+  descuentosPorLote: Record<number, number[]>,
 ): LoteFragmentado[] {
   const byPP: Record<number, ItemCarrito[]> = {}
   for (const item of Object.values(carrito)) {
@@ -355,11 +540,10 @@ export function fragmentarCarrito(
   }
 
   return Object.entries(byPP).map(([ppIdStr, items]) => {
-    const ppId     = Number(ppIdStr)
+    const ppId = Number(ppIdStr)
     const descLote = descuentosPorLote[ppId] ?? []
     const descTotal = [...descuentosCabecera, ...descLote]
 
-    // ── Nivel 2: agrupar por MARCA ───────────────────────────────────────
     const byMarca: Record<string, ItemCarrito[]> = {}
     for (const item of items) {
       const marca = (item.marca && String(item.marca).trim()) || 'Sin marca'
@@ -368,7 +552,6 @@ export function fragmentarCarrito(
     }
 
     const marcas: MarcaFragmentada[] = Object.entries(byMarca).map(([marca, mItems]) => {
-      // ── Nivel 2.5: agrupar por CASO dentro de la marca ───────────────
       const byCaso: Record<string, ItemCarrito[]> = {}
       for (const item of mItems) {
         const caso = (item.caso && String(item.caso).trim()) || 'Sin caso'
@@ -377,38 +560,38 @@ export function fragmentarCarrito(
       }
 
       const facturas: FacturaPrevisible[] = Object.entries(byCaso).map(([caso, cItems]) => {
-        const detalle: ItemFragmentado[] = cItems.map(item => {
+        const detalle: ItemFragmentado[] = cItems.map((item) => {
           const precioNeto = calcularPrecioNeto(item.precio_base, descTotal)
-          const subtotal   = precioNeto * item.pares
+          const subtotal = precioNeto * item.pares
           return {
-            det_id:       item.det_id,
-            linea_codigo:  item.linea_codigo,
-            ref_codigo:    item.referencia_codigo,
-            color_nombre:  item.color_nombre,
-            gradas_fmt:    item.gradas_fmt,
-            imagen_url:    item.imagen_url,
-            cajas:         item.cajas,
-            pares:         item.pares,
-            precio_base:   item.precio_base,
-            precio_neto:   precioNeto,
+            det_id: item.det_id,
+            linea_codigo: item.linea_codigo,
+            ref_codigo: item.referencia_codigo,
+            color_nombre: item.color_nombre,
+            gradas_fmt: item.gradas_fmt,
+            imagen_url: item.imagen_url,
+            cajas: item.cajas,
+            pares: item.pares,
+            precio_base: item.precio_base,
+            precio_neto: precioNeto,
             subtotal,
           }
         })
         return {
-          grupo_key:    `pp${ppId}__${marca}__${caso}`,
+          grupo_key: `pp${ppId}__${marca}__${caso}`,
           caso,
-          caso_id:      cItems[0].caso_id ?? null,
-          total_pares:  detalle.reduce((s, i) => s + i.pares, 0),
-          total_monto:  detalle.reduce((s, i) => s + i.subtotal, 0),
-          items:        detalle,
+          caso_id: cItems[0].caso_id ?? null,
+          total_pares: detalle.reduce((s, i) => s + i.pares, 0),
+          total_monto: detalle.reduce((s, i) => s + i.subtotal, 0),
+          items: detalle,
         }
       })
 
       return {
         marca,
-        marca_id:          mItems[0].marca_id ?? null,
-        total_pares:       facturas.reduce((s, f) => s + f.total_pares, 0),
-        total_monto:       facturas.reduce((s, f) => s + f.total_monto, 0),
+        marca_id: mItems[0].marca_id ?? null,
+        total_pares: facturas.reduce((s, f) => s + f.total_pares, 0),
+        total_monto: facturas.reduce((s, f) => s + f.total_monto, 0),
         cantidad_facturas: facturas.length,
         facturas,
       }
@@ -416,15 +599,18 @@ export function fragmentarCarrito(
 
     const pp = items[0]
     return {
-      pp_id:             ppId,
-      pp_nro:            pp.pp_nro,
-      quincena:          formatearQuincena(pp.eta),
-      eta:               pp.eta,
-      descuentos_lote:   descLote,
-      total_pares:       marcas.reduce((s, m) => s + m.total_pares, 0),
-      total_monto:       marcas.reduce((s, m) => s + m.total_monto, 0),
+      pp_id: ppId,
+      pp_nro: pp.pp_nro,
+      quincena: formatearQuincena(pp.eta),
+      eta: pp.eta,
+      descuentos_lote: descLote,
+      total_pares: marcas.reduce((s, m) => s + m.total_pares, 0),
+      total_monto: marcas.reduce((s, m) => s + m.total_monto, 0),
       cantidad_facturas: marcas.reduce((s, m) => s + m.cantidad_facturas, 0),
       marcas,
     }
   })
 }
+
+/** Compat: algunos componentes importaban este key para listeners legacy. */
+export const STORAGE_KEY_SESION = 'rimec_sesion_venta_v2'

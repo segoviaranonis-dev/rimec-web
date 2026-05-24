@@ -40,6 +40,8 @@ export default function CarritoPage() {
   const [validando, setValidando] = useState(false)
   const [exito, setExito] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [recalculando, setRecalculando] = useState<string | null>(null) // "ppId:marca:caso"
+  const [recalculoExito, setRecalculoExito] = useState<string | null>(null)
 
   // Countdown del token (60 s desde validacion.expiraEn).
   const [now, setNow] = useState(() => Date.now())
@@ -473,55 +475,80 @@ export default function CarritoPage() {
                         </div>
                       )}
                       {facturaConfig && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: facturaConfig.pre_autorizado ? '#F0FDF4' : '#FEF3C7', borderRadius: 8, border: facturaConfig.pre_autorizado ? '1px solid #10B981' : '1px solid #F59E0B' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Lista:</span>
-                          <select
-                            value={facturaConfig.lista_precio_id}
-                            onChange={async (e) => {
-                              const newLista = parseInt(e.target.value, 10)
-                              await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
-                                lista_precio_id: newLista,
-                                pre_autorizado: false
-                              })
-                            }}
-                            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            <option value={1}>L1</option>
-                            <option value={2}>L2</option>
-                            <option value={3}>L3</option>
-                            <option value={4}>L4</option>
-                          </select>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginLeft: 8 }}>Desc.:</span>
-                          {[0, 1, 2, 3].map(i => (
-                            <input
-                              key={i}
-                              type="number"
-                              min={0}
-                              max={99}
-                              value={facturaConfig.descuentos[i] || 0}
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px', backgroundColor: facturaConfig.pre_autorizado ? '#F0FDF4' : '#FEF3C7', borderRadius: 8, border: facturaConfig.pre_autorizado ? '1px solid #10B981' : '1px solid #F59E0B' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Lista de precios:</span>
+                            <select
+                              value={facturaConfig.lista_precio_id}
                               onChange={async (e) => {
-                                const val = parseFloat(e.target.value) || 0
-                                const newDesc = [...facturaConfig.descuentos]
-                                newDesc[i] = val
+                                const newLista = parseInt(e.target.value, 10)
                                 await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
-                                  descuentos: newDesc,
+                                  lista_precio_id: newLista,
                                   pre_autorizado: false
                                 })
                               }}
-                              style={{ width: 48, padding: '4px 6px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: 12, textAlign: 'center' }}
-                            />
-                          ))}
+                              style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: 12, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white' }}
+                              title="Seleccionar lista de precios base para esta factura"
+                            >
+                              {LISTAS.map((lista) => (
+                                <option key={lista.id} value={lista.id}>
+                                  {lista.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Descuentos (%):</span>
+                            {[0, 1, 2, 3].map(i => (
+                              <input
+                                key={i}
+                                type="number"
+                                min={0}
+                                max={99}
+                                step={0.01}
+                                value={facturaConfig.descuentos[i] || 0}
+                                onChange={async (e) => {
+                                  const val = parseFloat(e.target.value) || 0
+                                  const newDesc = [...facturaConfig.descuentos]
+                                  newDesc[i] = val
+                                  await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
+                                    descuentos: newDesc,
+                                    pre_autorizado: false
+                                  })
+                                }}
+                                style={{ width: 52, padding: '5px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: 12, textAlign: 'center', backgroundColor: 'white' }}
+                                title={`Descuento ${i + 1} (cascada)`}
+                              />
+                            ))}
+                          </div>
                           {!facturaConfig.pre_autorizado ? (
                             <button
                               onClick={async () => {
-                                await recalcularFactura(lote.pp_id, marca.marca, fact.caso)
+                                const key = `${lote.pp_id}:${marca.marca}:${fact.caso}`
+                                setRecalculando(key)
+                                setRecalculoExito(null)
+                                setError(null)
+                                try {
+                                  const result = await recalcularFactura(lote.pp_id, marca.marca, fact.caso)
+                                  setRecalculoExito(`✓ ${result.items_actualizados} ítems actualizados con ${LISTAS.find(l => l.id === result.lista_aplicada)?.nombre}`)
+                                  setTimeout(() => setRecalculoExito(null), 5000)
+                                } catch (err) {
+                                  setError('Error recalculando precios. Intentá de nuevo.')
+                                } finally {
+                                  setRecalculando(null)
+                                }
                               }}
-                              style={{ padding: '5px 12px', borderRadius: 6, border: 'none', backgroundColor: '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginLeft: 'auto' }}
+                              disabled={recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}`}
+                              title="Recalcular precios consultando BD con la lista y descuentos configurados. Requerido antes de confirmar el pedido."
+                              style={{ padding: '6px 14px', borderRadius: 6, border: 'none', backgroundColor: recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}` ? '#9CA3AF' : '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, cursor: recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}` ? 'not-allowed' : 'pointer', marginLeft: 'auto', whiteSpace: 'nowrap' }}
                             >
-                              ⚠️ Ver Totales
+                              {recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}` ? '⏳ Recalculando...' : '⚠️ Ver Totales'}
                             </button>
                           ) : (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: VERDE, marginLeft: 'auto' }}>✅ Pre-autorizado</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: VERDE, marginLeft: 'auto', whiteSpace: 'nowrap' }}>✅ Pre-autorizado</span>
+                          )}
+                          {recalculoExito && recalculando === null && (
+                            <span style={{ fontSize: 10, color: VERDE, fontWeight: 600, marginLeft: 8, whiteSpace: 'nowrap' }}>{recalculoExito}</span>
                           )}
                         </div>
                       )}

@@ -49,7 +49,13 @@ export async function getFiltros() {
       `)
 
     if (error || !stockMetaRaw) {
-      console.error('[filtros] Error fetching stockMeta:', error)
+      console.error('[filtros] Error fetching stockMeta:', {
+        error,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+      })
       return fallback
     }
 

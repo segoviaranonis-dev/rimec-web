@@ -77,7 +77,7 @@ export default function CarritoPage() {
     )
   }
 
-  const lotes         = fragmentarCarrito(carrito, descuentos, descuentosPorLote)
+  const lotes         = fragmentarCarrito(carrito, descuentos, descuentosPorLote, facturas)
   const listaActiva   = LISTAS.find(l => l.id === listaPrecioId) ?? LISTAS[0]
   const totalGenPares = lotes.reduce((s, l) => s + l.total_pares, 0)
   const totalGenMonto = lotes.reduce((s, l) => s + l.total_monto, 0)

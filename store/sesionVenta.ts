@@ -562,6 +562,7 @@ export function fragmentarCarrito(
   carrito: Record<string, ItemCarrito>,
   descuentosCabecera: number[],
   descuentosPorLote: Record<number, number[]>,
+  facturasConfig?: FacturaConfig[],
 ): LoteFragmentado[] {
   const byPP: Record<number, ItemCarrito[]> = {}
   for (const item of Object.values(carrito)) {
@@ -590,8 +591,14 @@ export function fragmentarCarrito(
       }
 
       const facturas: FacturaPrevisible[] = Object.entries(byCaso).map(([caso, cItems]) => {
+        // Buscar configuración de esta factura específica (MIG-083)
+        const facturaConfig = facturasConfig?.find(
+          f => f.pp_id === ppId && f.marca === marca && f.caso === caso
+        )
+        const descFactura = facturaConfig?.descuentos ?? descTotal
+
         const detalle: ItemFragmentado[] = cItems.map((item) => {
-          const precioNeto = calcularPrecioNeto(item.precio_base, descTotal)
+          const precioNeto = calcularPrecioNeto(item.precio_base, descFactura)
           const subtotal = precioNeto * item.pares
           return {
             det_id: item.det_id,

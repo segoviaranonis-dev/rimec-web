@@ -22,9 +22,7 @@ export default function CarritoPage() {
   const descuentosPorLote   = useSesion(s => s.descuentosPorLote)
   const setDescuentoLote    = useSesion(s => s.setDescuentoLote)
   const facturas            = useSesion(s => s.facturas)
-  const todasPreAutorizadas = useSesion(s => s.todasPreAutorizadas)
   const actualizarDescuentosFactura = useSesion(s => s.actualizarDescuentosFactura)
-  const recalcularFactura   = useSesion(s => s.recalcularFactura)
   const carrito             = useSesion(s => s.carrito)
   const desactivar          = useSesion(s => s.desactivar)
   const activa              = useSesion(s => s.activa)
@@ -40,8 +38,6 @@ export default function CarritoPage() {
   const [validando, setValidando] = useState(false)
   const [exito, setExito] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [recalculando, setRecalculando] = useState<string | null>(null) // "ppId:marca:caso"
-  const [recalculoExito, setRecalculoExito] = useState<string | null>(null)
 
   // Countdown del token (60 s desde validacion.expiraEn).
   const [now, setNow] = useState(() => Date.now())
@@ -245,7 +241,6 @@ export default function CarritoPage() {
   const motivoBloqueoConfirmar =
     enviando ? 'procesando' :
     sinVendedor ? 'sin_vendedor' :
-    !todasPreAutorizadas ? 'facturas_sin_preautorizar' :
     validacion.estado === 'ERROR' ? 'error_validacion' :
     validacion.estado === 'DIFERENCIAS' ? 'diferencias' :
     validacion.estado === 'IDLE' ? 'falta_validar' :
@@ -256,7 +251,6 @@ export default function CarritoPage() {
     switch (motivoBloqueoConfirmar) {
       case 'procesando':         return 'Procesando...'
       case 'sin_vendedor':       return 'Sesión sin vendedor — reactivá la venta'
-      case 'facturas_sin_preautorizar': return '⚠️ Verificar descuentos (Ver Totales en cada factura)'
       case 'error_validacion':   return 'Reintentá VALIDAR'
       case 'diferencias':        return `Resolvé ${itemsConProblema.length} ítem(s) y volvé a VALIDAR`
       case 'falta_validar':      return 'Presioná VALIDAR primero'
@@ -332,11 +326,9 @@ export default function CarritoPage() {
               return <li key={i.det_id}><strong>{desc}</strong> — {motivo}</li>
             })}
           </ul>
-          {!todasPreAutorizadas && itemsConProblema.some(i => i.motivo === 'PRECIO_CAMBIO') && (
-            <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, backgroundColor: '#FEF3C7', padding: '8px 12px', borderRadius: 6, border: '1px solid #F59E0B' }}>
-              💡 Para continuar: presioná "⚠️ Ver Totales" en cada factura afectada para actualizar los precios. Luego podrás confirmar el pedido.
-            </p>
-          )}
+          <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, backgroundColor: '#E0F2FE', padding: '8px 12px', borderRadius: 6, border: '1px solid #0EA5E9' }}>
+            💡 Los precios se recalcularán automáticamente al validar según la configuración de cada factura.
+          </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={validar} disabled={validando}
               style={{
@@ -480,7 +472,7 @@ export default function CarritoPage() {
                         </div>
                       )}
                       {facturaConfig && (
-                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px', backgroundColor: facturaConfig.pre_autorizado ? '#F0FDF4' : '#FEF3C7', borderRadius: 8, border: facturaConfig.pre_autorizado ? '1px solid #10B981' : '1px solid #F59E0B' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px', backgroundColor: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Lista de precios:</span>
                             <select
@@ -488,8 +480,7 @@ export default function CarritoPage() {
                               onChange={async (e) => {
                                 const newLista = parseInt(e.target.value, 10)
                                 await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
-                                  lista_precio_id: newLista,
-                                  pre_autorizado: false
+                                  lista_precio_id: newLista
                                 })
                               }}
                               style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: 12, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white' }}
@@ -520,8 +511,7 @@ export default function CarritoPage() {
                                   const newDesc = [...facturaConfig.descuentos]
                                   newDesc[i] = final
                                   await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
-                                    descuentos: newDesc,
-                                    pre_autorizado: false
+                                    descuentos: newDesc
                                   })
                                 }}
                                 onKeyDown={(e) => {
@@ -534,35 +524,6 @@ export default function CarritoPage() {
                               />
                             ))}
                           </div>
-                          {!facturaConfig.pre_autorizado ? (
-                            <button
-                              onClick={async () => {
-                                const key = `${lote.pp_id}:${marca.marca}:${fact.caso}`
-                                setRecalculando(key)
-                                setRecalculoExito(null)
-                                setError(null)
-                                try {
-                                  const result = await recalcularFactura(lote.pp_id, marca.marca, fact.caso)
-                                  setRecalculoExito(`✓ ${result.items_actualizados} ítems actualizados con ${LISTAS.find(l => l.id === result.lista_aplicada)?.nombre}`)
-                                  setTimeout(() => setRecalculoExito(null), 5000)
-                                } catch (err) {
-                                  setError('Error recalculando precios. Intentá de nuevo.')
-                                } finally {
-                                  setRecalculando(null)
-                                }
-                              }}
-                              disabled={recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}`}
-                              title="Recalcular precios consultando BD con la lista y descuentos configurados. Requerido antes de confirmar el pedido."
-                              style={{ padding: '6px 14px', borderRadius: 6, border: 'none', backgroundColor: recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}` ? '#9CA3AF' : '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, cursor: recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}` ? 'not-allowed' : 'pointer', marginLeft: 'auto', whiteSpace: 'nowrap' }}
-                            >
-                              {recalculando === `${lote.pp_id}:${marca.marca}:${fact.caso}` ? '⏳ Recalculando...' : '⚠️ Ver Totales'}
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: VERDE, marginLeft: 'auto', whiteSpace: 'nowrap' }}>✅ Pre-autorizado</span>
-                          )}
-                          {recalculoExito && recalculando === null && (
-                            <span style={{ fontSize: 10, color: VERDE, fontWeight: 600, marginLeft: 8, whiteSpace: 'nowrap' }}>{recalculoExito}</span>
-                          )}
                         </div>
                       )}
                     </div>

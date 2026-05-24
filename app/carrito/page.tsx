@@ -504,20 +504,21 @@ export default function CarritoPage() {
                                 key={i}
                                 type="number"
                                 min={0}
-                                max={99}
-                                step={0.01}
+                                max={95}
+                                step={5}
                                 value={facturaConfig.descuentos[i] || 0}
                                 onChange={async (e) => {
-                                  const val = parseFloat(e.target.value) || 0
+                                  const val = parseInt(e.target.value, 10) || 0
+                                  const rounded = Math.round(val / 5) * 5
                                   const newDesc = [...facturaConfig.descuentos]
-                                  newDesc[i] = val
+                                  newDesc[i] = Math.max(0, Math.min(95, rounded))
                                   await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
                                     descuentos: newDesc,
                                     pre_autorizado: false
                                   })
                                 }}
                                 style={{ width: 52, padding: '5px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: 12, textAlign: 'center', backgroundColor: 'white' }}
-                                title={`Descuento ${i + 1} (cascada)`}
+                                title={`Descuento ${i + 1} - Múltiplos de 5 (cascada)`}
                               />
                             ))}
                           </div>

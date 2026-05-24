@@ -597,6 +597,13 @@ export function fragmentarCarrito(
         )
         const descFactura = facturaConfig?.descuentos ?? descTotal
 
+        console.log('[fragmentarCarrito] PP:', ppId, 'Marca:', marca, 'Caso:', caso, {
+          facturaConfig,
+          descFactura,
+          descTotal,
+          facturasConfigLength: facturasConfig?.length
+        })
+
         const detalle: ItemFragmentado[] = cItems.map((item) => {
           const precioNeto = calcularPrecioNeto(item.precio_base, descFactura)
           const subtotal = precioNeto * item.pares

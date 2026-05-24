@@ -180,3 +180,17 @@ export async function carritoPatchFactura(
   const data = await asJson<{ factura: FacturaConfig }>(res)
   return data.factura
 }
+
+export async function carritoRecalcularFactura(
+  pp_id: number,
+  marca: string,
+  caso: string
+): Promise<{ ok: boolean; items_actualizados: number; lista_aplicada: number; descuentos_aplicados: number[] }> {
+  const res = await fetch('/api/carrito/factura/recalcular', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ pp_id, marca, caso }),
+  })
+  return asJson(res)
+}

@@ -28,6 +28,10 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
   const [listaId,   setListaId]   = useState<ListaId>(1)
   const [descs, setDescs] = useState<[string, string, string, string]>(['', '', '', ''])
 
+  // Error visible si /api/auth/me no devuelve un id_usuario válido.
+  const [errorVendedor, setErrorVendedor] = useState<string | null>(null)
+  const [confirmando, setConfirmando] = useState(false)
+
   if (!open || activa) return null
 
   async function buscarClientes() {
@@ -58,25 +62,58 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
     if (!selCliente || !selPlazo) return
     const descuentos = descs.map(d => parseFloat(d)).filter(d => !isNaN(d) && d > 0)
 
-    // Resolver vendedor desde sesión Auth actual
-    let vendedor = null
+    setErrorVendedor(null)
+    setConfirmando(true)
+
+    // Resolver vendedor desde sesión Auth actual.
+    // CRÍTICO: si /api/auth/me falla o no devuelve id_usuario, NO permitimos activar
+    // la venta. Un pedido sin vendedor es inválido en Streamlit (aparece como "None").
+    let vendedor: { id_vendedor: number; descp_vendedor: string } | null = null
     try {
-      const res = await fetch('/api/auth/me')
-      if (res.ok) {
-        const { user } = await res.json()
-        if (user && user.id_usuario) {
-          vendedor = {
-            id_vendedor: user.id_usuario,
-            descp_vendedor: user.name
-          }
-        }
+      const res = await fetch('/api/auth/me', { cache: 'no-store' })
+      if (!res.ok) {
+        setErrorVendedor(
+          res.status === 401
+            ? 'Tu sesión de usuario expiró. Cerrá la sesión arriba y volvé a iniciar antes de armar la venta.'
+            : `No pudimos verificar tu usuario (HTTP ${res.status}). Refrescá la página y reintentá.`,
+        )
+        setConfirmando(false)
+        return
+      }
+      const { user } = await res.json()
+      if (!user || !user.id_usuario || !user.name) {
+        setErrorVendedor(
+          'El servidor no devolvió tu identidad como vendedor. Cerrá sesión y volvé a iniciar antes de armar la venta.',
+        )
+        setConfirmando(false)
+        return
+      }
+      vendedor = {
+        id_vendedor: Number(user.id_usuario),
+        descp_vendedor: String(user.name),
       }
     } catch (err) {
       console.error('Error al resolver vendedor:', err)
+      setErrorVendedor(
+        'No se pudo contactar al servidor para verificar tu usuario. Revisá tu conexión y reintentá.',
+      )
+      setConfirmando(false)
+      return
     }
 
-
-    activar(selCliente, vendedor as never, selPlazo, listaId, descuentos)
+    try {
+      await activar(selCliente, vendedor, selPlazo, listaId, descuentos)
+    } catch (err) {
+      console.error('[DialogoActivacion] error al activar venta:', err)
+      setErrorVendedor(
+        err instanceof Error
+          ? `No se pudo iniciar la venta: ${err.message}`
+          : 'No se pudo iniciar la venta. Reintentá.',
+      )
+      setConfirmando(false)
+      return
+    }
+    setConfirmando(false)
     onClose()
   }
 
@@ -249,22 +286,38 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
               </div>
             )}
 
+            {errorVendedor && (
+              <div
+                role="alert"
+                style={{
+                  backgroundColor: '#FEE2E2', border: '1px solid #FCA5A5',
+                  borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+                  fontSize: 13, color: '#7F1D1D',
+                }}
+              >
+                <strong>⛔ No se puede activar la venta.</strong>
+                <p style={{ marginTop: 4 }}>{errorVendedor}</p>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setPaso('A')}
+              <button onClick={() => setPaso('A')} disabled={confirmando}
                 style={{ flex: 1, padding: '14px 0', borderRadius: 12,
                   border: '2px solid #E2E8F0', backgroundColor: 'white',
-                  color: '#64748B', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>
+                  color: '#64748B', fontWeight: 700, fontSize: 16,
+                  cursor: confirmando ? 'wait' : 'pointer',
+                  opacity: confirmando ? 0.6 : 1 }}>
                 ← Volver
               </button>
-              <button onClick={confirmar} disabled={!selPlazo}
+              <button onClick={confirmar} disabled={!selPlazo || confirmando}
                 style={{
                   flex: 2, padding: '14px 0', borderRadius: 12,
-                  backgroundColor: selPlazo ? AZUL : '#E2E8F0',
-                  color: selPlazo ? 'white' : '#94A3B8',
+                  backgroundColor: selPlazo && !confirmando ? AZUL : '#E2E8F0',
+                  color: selPlazo && !confirmando ? 'white' : '#94A3B8',
                   fontWeight: 700, fontSize: 17, border: 'none',
-                  cursor: selPlazo ? 'pointer' : 'not-allowed',
+                  cursor: selPlazo && !confirmando ? 'pointer' : 'not-allowed',
                 }}>
-                Ver catálogo →
+                {confirmando ? 'Verificando vendedor...' : 'Ver catálogo →'}
               </button>
             </div>
           </div>

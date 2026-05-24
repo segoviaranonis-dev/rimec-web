@@ -93,7 +93,8 @@ function HeaderSesion() {
   const plazoDesc     = useSesion(s => s.plazo?.descp_plazo)
   const listaPrecioId = useSesion(s => s.listaPrecioId)
   const activatedAt   = useSesion(s => s.activatedAt)
-  const cerrarVenta   = useSesion(s => s.desactivar)
+  const desactivar    = useSesion(s => s.desactivar)
+  const cerrarVenta   = () => { void desactivar() }
   const router        = useRouter()
 
   const [mounted, setMounted] = useState(false)
@@ -424,43 +425,44 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   const activaStore   = useSesion(s => s.activa)
   const carrito       = useSesion(s => s.carrito)
   const listaPrecioId = useSesion(s => s.listaPrecioId)
-  const { agregarCaja, quitarCaja } = useSesion()
+  const agregarCaja   = useSesion(s => s.agregarCaja)
+  const quitarCaja    = useSesion(s => s.quitarCaja)
 
   const activa = mounted ? activaStore : false
 
   // Usar solo variantes con stock
-  const v = variantesConStock[varIdx] || p.variantes[0] // Fallback por si todas sin stock
-  
+  const v = variantesConStock[varIdx] || p.variantes[0]
+
   const precioVal = getPrecioActivo(v, listaPrecioId)
-  const tienePrecio = precioVal !== null
-  const precio = precioVal ? new Intl.NumberFormat('es-PY').format(precioVal) : null
+  const tienePrecio = precioVal !== null && precioVal > 0
+  const precio = tienePrecio ? new Intl.NumberFormat('es-PY').format(precioVal as number) : null
   const shell = p.shell
   const cartItem = carrito[`det_${v.det_id}`]
   const cajas = cartItem ? cartItem.cajas : 0
   const maxCajas = v.cajas_disponibles
-  
+
   const puedeAgregar = !!activa && tienePrecio && cajas < maxCajas
-  
-  const botonPlusColor = !activa 
-    ? '#CBD5E1' 
-    : !tienePrecio 
-      ? '#F1F5F9' 
-      : cajas >= maxCajas 
-        ? '#E2E8F0' 
+
+  const botonPlusColor = !activa
+    ? '#CBD5E1'
+    : !tienePrecio
+      ? '#F1F5F9'
+      : cajas >= maxCajas
+        ? '#E2E8F0'
         : AZUL
-  
-  const botonPlusTxt = !activa 
-    ? 'white' 
-    : !tienePrecio 
-      ? '#CBD5E1' 
-      : cajas >= maxCajas 
-        ? '#94A3B8' 
+
+  const botonPlusTxt = !activa
+    ? 'white'
+    : !tienePrecio
+      ? '#CBD5E1'
+      : cajas >= maxCajas
+        ? '#94A3B8'
         : 'white'
 
   const handleAgregar = () => {
     if (!activa) { onNeedSession(); return }
     if (!tienePrecio || cajas >= maxCajas) return
-    agregarCaja({
+    void agregarCaja({
       det_id:            v.det_id,
       linea_codigo:      p.linea_codigo,
       referencia_codigo: p.referencia_codigo,
@@ -470,7 +472,6 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       pp_id:             v.pp_id,
       pp_nro:            v.pp_nro,
       eta:                v.eta,
-      // Campos críticos para la Regla 1 (factura por Marca × Caso):
       marca:             p.descp_marca ?? '',
       marca_id:          p.marca_id ?? null,
       caso:              p.descp_caso ?? '',
@@ -479,7 +480,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       gradas_fmt:         v.gradas_fmt,
       imagen_url:         v.imagen_url,
       lista_precio_id:   listaPrecioId,
-      precio_base:        precioVal,
+      precio_base:        precioVal as number,
       cant_caja:          v.pares_por_caja,
     })
   }
@@ -556,7 +557,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
           <div className="flex items-end justify-between gap-1 mb-3">
             {!activa ? (
               <span className="text-[10px] font-semibold text-slate-400">🔒 Activar venta</span>
-            ) : precio ? (
+            ) : tienePrecio ? (
               <div>
                 <p className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-0.5">Precio Gs.</p>
                 <span className="text-sm font-extrabold" style={{ color: CELESTE }}>{precio}</span>
@@ -565,18 +566,19 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
               <span
                 title={
                   cartItem
-                    ? 'Este ítem está en tu carrito pero hoy no tiene precio en la lista activa. ' +
-                      'Probablemente el listado fue cambiado desde Nexus Core. Quitalo del carrito y volvé a agregarlo cuando tenga precio.'
-                    : 'Este SKU no tiene precio en la lista de precios activa. Cambiá de lista o consultá con administración.'
+                    ? 'Este ítem perdió su precio porque el listado fue desvinculado en Nexus Core. ' +
+                      'Quitalo del carrito; cuando Alfredo lo vincule de nuevo, podés volver a agregarlo.'
+                    : 'Este SKU aún no tiene precio vinculado al PP. El Director debe vincular el listado en Nexus Core (Streamlit) antes de venderlo.'
                 }
-                className="text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded-md"
+                className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md"
                 style={{
-                  backgroundColor: cartItem ? '#FEE2E2' : '#F1F5F9',
-                  color: cartItem ? '#991B1B' : '#94A3B8',
+                  backgroundColor: cartItem ? '#FEE2E2' : '#FEF3C7',
+                  color: cartItem ? '#991B1B' : '#92400E',
+                  border: cartItem ? '1px solid #FCA5A5' : '1px solid #FCD34D',
                   cursor: 'help',
                 }}
               >
-                {cartItem ? '⚠ Sin precio (en carrito)' : 'Sin precio'}
+                {cartItem ? '⚠ Sin precio (en carrito)' : 'Precio pendiente de vinculación'}
               </span>
             )}
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
@@ -628,17 +630,30 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
             </div>
           )}
 
-          {/* Controles de compra */}
-          <div className="mt-auto space-y-2">
+          {/* Controles de compra. Si el SKU no tiene precio, el bloque entero queda visualmente opaco
+              y los handlers son no-ops. Teclado/Enter no fuerzan inserción. */}
+          <div
+            className="mt-auto space-y-2"
+            style={{ opacity: activa && !tienePrecio ? 0.55 : 1 }}
+            aria-disabled={activa && !tienePrecio ? true : undefined}
+            onKeyDown={(e) => {
+              if (activa && !tienePrecio && (e.key === 'Enter' || e.key === ' ' || e.key === '+')) {
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            }}
+          >
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { if (!activa) { onNeedSession(); return }; quitarCaja(v.det_id) }}
-                disabled={!activa || cajas === 0}
+                type="button"
+                onClick={() => { if (!activa) { onNeedSession(); return }; if (!tienePrecio) return; void quitarCaja(v.det_id) }}
+                disabled={!activa || !tienePrecio || cajas === 0}
+                aria-disabled={!activa || !tienePrecio || cajas === 0}
                 className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-lg font-bold transition-colors"
                 style={{
-                  borderColor: activa && cajas > 0 ? AZUL : '#E2E8F0',
-                  color: activa && cajas > 0 ? AZUL : '#CBD5E1',
-                  cursor: activa && cajas > 0 ? 'pointer' : 'not-allowed',
+                  borderColor: activa && tienePrecio && cajas > 0 ? AZUL : '#E2E8F0',
+                  color: activa && tienePrecio && cajas > 0 ? AZUL : '#CBD5E1',
+                  cursor: activa && tienePrecio && cajas > 0 ? 'pointer' : 'not-allowed',
                 }}>−</button>
 
               <div className="flex-1 text-center">
@@ -649,8 +664,19 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
               </div>
 
               <button
+                type="button"
                 onClick={handleAgregar}
                 disabled={!puedeAgregar}
+                aria-disabled={!puedeAgregar}
+                title={
+                  !activa
+                    ? 'Activá la venta primero'
+                    : !tienePrecio
+                      ? 'Precio pendiente de vinculación — no se puede agregar al carrito hasta que Alfredo vincule el listado en Nexus Core.'
+                      : cajas >= maxCajas
+                        ? `Llegaste al máximo (${maxCajas} cajas)`
+                        : 'Agregar al carrito'
+                }
                 className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-lg font-bold transition-colors"
                 style={{
                   borderColor: botonPlusColor,
@@ -663,8 +689,14 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
             <p className="text-[9px] text-center text-slate-400 font-medium">
               {v.pares_por_caja} pares/caja · máx. {maxCajas} cjs
             </p>
-            
-            {cajas > 0 && (
+
+            {activa && !tienePrecio && (
+              <p className="text-[9px] text-center font-semibold" style={{ color: '#92400E' }}>
+                Bloqueado hasta que el Director vincule el listado de precios.
+              </p>
+            )}
+
+            {cajas > 0 && tienePrecio && (
               <a href="/carrito" className="block w-full py-1.5 rounded-lg bg-emerald-500 text-white text-center font-bold text-xs">
                 En pedido ✅
               </a>

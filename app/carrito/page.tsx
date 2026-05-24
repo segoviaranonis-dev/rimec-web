@@ -24,6 +24,7 @@ export default function CarritoPage() {
   const facturas            = useSesion(s => s.facturas)
   const todasPreAutorizadas = useSesion(s => s.todasPreAutorizadas)
   const actualizarDescuentosFactura = useSesion(s => s.actualizarDescuentosFactura)
+  const recalcularFactura   = useSesion(s => s.recalcularFactura)
   const carrito             = useSesion(s => s.carrito)
   const desactivar          = useSesion(s => s.desactivar)
   const activa              = useSesion(s => s.activa)
@@ -513,7 +514,7 @@ export default function CarritoPage() {
                           {!facturaConfig.pre_autorizado ? (
                             <button
                               onClick={async () => {
-                                await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, { pre_autorizado: true })
+                                await recalcularFactura(lote.pp_id, marca.marca, fact.caso)
                               }}
                               style={{ padding: '5px 12px', borderRadius: 6, border: 'none', backgroundColor: '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginLeft: 'auto' }}
                             >

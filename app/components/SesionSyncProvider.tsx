@@ -1,39 +1,80 @@
 'use client'
 
 /**
- * Sincroniza el store `useSesion` entre múltiples pestañas del navegador.
+ * SesionSyncProvider — MIG-080 multidispositivo.
  *
- * Caso de uso:
- *   - El vendedor abre rimec-web en dos pestañas.
- *   - En la pestaña A elimina los ítems huérfanos del carrito o cierra la venta.
- *   - Zustand-persist escribe a localStorage; el navegador dispara el evento
- *     `storage` en TODAS las demás pestañas (no en la que escribió).
- *   - Este provider rehidrata el store en la pestaña pasiva para que muestre
- *     el estado actualizado y no se le permita confirmar un pedido con datos
- *     stale.
- *
- * Notas:
- *   - El evento `storage` no se dispara en la misma pestaña que hizo el
- *     `setItem`. Por eso solo necesitamos esto en pestañas pasivas.
- *   - Si `BroadcastChannel` estuviera disponible podríamos usarlo, pero
- *     `storage` ya cubre el caso y no requiere dependencias extra.
+ * Responsabilidades:
+ *  1. Al montar la app, resuelve el vendedor desde /api/auth/me y lo guarda en el store.
+ *  2. Lee el carrito persistido en BD (GET /api/carrito/sesion) y poblá la cache local.
+ *  3. Mantiene una suscripción Realtime a carrito_sesion + carrito_item filtrada
+ *     por id_usuario. Cuando otra pestaña/dispositivo modifica algo, recargamos.
+ *  4. Limpia la suscripción al desmontar.
  */
 
-import { useEffect } from 'react'
-import { useSesion, STORAGE_KEY_SESION } from '@/store/sesionVenta'
+import { useEffect, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useSesion } from '@/store/sesionVenta'
+
+interface MeResponse {
+  user: { id_usuario: number; name: string; role: string } | null
+}
 
 export function SesionSyncProvider({ children }: { children: React.ReactNode }) {
+  const cargarDesdeBD = useSesion((s) => s.cargarDesdeBD)
+  const setVendedor = useSesion((s) => s.setVendedor)
+  const vendedor = useSesion((s) => s.vendedor)
+
+  const userIdRef = useRef<number | null>(null)
+
+  // 1. Resolver vendedor + 2. carga inicial del carrito.
   useEffect(() => {
-    function onStorage(event: StorageEvent) {
-      if (event.storageArea !== window.localStorage) return
-      if (event.key !== STORAGE_KEY_SESION) return
-      // Recargar el estado desde localStorage en esta pestaña.
-      // Zustand-persist expone `rehydrate()` en `useSesion.persist`.
-      void useSesion.persist.rehydrate()
+    let cancelado = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
+        if (!res.ok) return
+        const data = (await res.json()) as MeResponse
+        if (cancelado || !data.user) return
+        userIdRef.current = data.user.id_usuario
+        setVendedor({
+          id_vendedor: data.user.id_usuario,
+          descp_vendedor: data.user.name,
+        })
+        await cargarDesdeBD()
+      } catch (err) {
+        console.warn('[SesionSyncProvider] init falló:', err)
+      }
+    })()
+    return () => {
+      cancelado = true
     }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+  }, [cargarDesdeBD, setVendedor])
+
+  // 3. Realtime: re-sincroniza ante cambios de cualquier dispositivo.
+  useEffect(() => {
+    const id = vendedor?.id_vendedor
+    if (!id) return
+
+    const refrescar = () => { void cargarDesdeBD() }
+
+    const channel = supabase
+      .channel(`carrito-${id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'carrito_sesion', filter: `id_usuario=eq.${id}` },
+        refrescar,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'carrito_item', filter: `id_usuario=eq.${id}` },
+        refrescar,
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [vendedor?.id_vendedor, cargarDesdeBD])
 
   return <>{children}</>
 }

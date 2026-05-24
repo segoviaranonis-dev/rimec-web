@@ -9,6 +9,7 @@ import {
   carritoPatchFactura,
   carritoPatchItem,
   carritoPutSesion,
+  carritoRecalcularFactura,
   carritoUpsertItem,
   carritoVaciarItems,
   type CarritoItemBD,
@@ -106,6 +107,7 @@ export interface SesionVenta {
   setDescuentos:    (desc: number[]) => Promise<void>
   setDescuentoLote: (ppId: number, desc: number[]) => Promise<void>
   actualizarDescuentosFactura: (pp_id: number, marca: string, caso: string, config: { lista_precio_id?: number; descuentos?: number[]; pre_autorizado?: boolean }) => Promise<void>
+  recalcularFactura: (pp_id: number, marca: string, caso: string) => Promise<void>
   agregarCaja:      (item: ItemCarritoMeta) => Promise<void>
   quitarCaja:       (det_id: number) => Promise<void>
   setCajas:         (det_id: number, cajas: number) => Promise<void>
@@ -406,6 +408,11 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
 
   actualizarDescuentosFactura: async (pp_id, marca, caso, config) => {
     await carritoPatchFactura(pp_id, marca, caso, config)
+    await get().cargarDesdeBD()
+  },
+
+  recalcularFactura: async (pp_id, marca, caso) => {
+    await carritoRecalcularFactura(pp_id, marca, caso)
     await get().cargarDesdeBD()
   },
 

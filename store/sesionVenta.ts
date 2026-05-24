@@ -6,12 +6,14 @@ import {
   carritoDeleteItem,
   carritoDeleteSesion,
   carritoGet,
+  carritoPatchFactura,
   carritoPatchItem,
   carritoPutSesion,
   carritoUpsertItem,
   carritoVaciarItems,
   type CarritoItemBD,
   type CarritoSesionBD,
+  type FacturaConfig,
 } from '@/lib/carritoApi'
 
 /* ── Tipos ── */
@@ -74,6 +76,8 @@ export interface SesionVenta {
   listaPrecioId:     ListaId
   descuentos:        number[]
   descuentosPorLote: Record<number, number[]>
+  facturas:          FacturaConfig[]
+  todasPreAutorizadas: boolean
   carrito:           Record<string, ItemCarrito>
   activa:            boolean
   activatedAt:       string | null
@@ -101,6 +105,7 @@ export interface SesionVenta {
   setLista:         (id: ListaId) => Promise<void>
   setDescuentos:    (desc: number[]) => Promise<void>
   setDescuentoLote: (ppId: number, desc: number[]) => Promise<void>
+  actualizarDescuentosFactura: (pp_id: number, marca: string, caso: string, config: { lista_precio_id?: number; descuentos?: number[]; pre_autorizado?: boolean }) => Promise<void>
   agregarCaja:      (item: ItemCarritoMeta) => Promise<void>
   quitarCaja:       (det_id: number) => Promise<void>
   setCajas:         (det_id: number, cajas: number) => Promise<void>
@@ -244,6 +249,8 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
   listaPrecioId:     1,
   descuentos:        [],
   descuentosPorLote: {},
+  facturas:          [],
+  todasPreAutorizadas: true,
   carrito:           {},
   activa:            false,
   activatedAt:       null,
@@ -269,6 +276,8 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       const it = itemFromBD(META_CACHE, row, listaId)
       if (it) carrito[`det_${row.det_id}`] = it
     }
+    const facturas = sesion?.descuentos_lote?.facturas ?? []
+    const todasPreAutorizadas = facturas.every((f) => f.pre_autorizado)
     set((s) => ({
       cliente: sesion
         ? { id_cliente: sesion.cliente_id, descp_cliente: sesion.cliente_nombre, email: null }
@@ -279,6 +288,8 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       listaPrecioId: listaId,
       descuentos: sesion?.descuentos ?? [],
       descuentosPorLote: (sesion?.descuentos_lote as Record<number, number[]> | undefined) ?? {},
+      facturas,
+      todasPreAutorizadas,
       carrito,
       activa: Boolean(sesion),
       activatedAt: sesion?.iniciada_en ?? null,
@@ -341,6 +352,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       cliente: null, plazo: null,
       activa: false, activatedAt: null,
       carrito: {}, descuentos: [], descuentosPorLote: {},
+      facturas: [], todasPreAutorizadas: true,
       validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
     })
   },
@@ -390,6 +402,11 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       descuentos_lote: nextLote as Record<string, number[]>,
     })
     set({ descuentosPorLote: nextLote })
+  },
+
+  actualizarDescuentosFactura: async (pp_id, marca, caso, config) => {
+    await carritoPatchFactura(pp_id, marca, caso, config)
+    await get().cargarDesdeBD()
   },
 
   agregarCaja: async (item) => {

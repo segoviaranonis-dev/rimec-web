@@ -1,106 +1,67 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSesion, fragmentarCarrito, LISTAS, getPrecioActivo } from '@/store/sesionVenta'
+import { useSesion, fragmentarCarrito, LISTAS } from '@/store/sesionVenta'
 import { supabase } from '@/lib/supabase'
+import { carritoValidar, type ValidarItemResult } from '@/lib/carritoApi'
 
 const AZUL = '#1E40AF'
+const VERDE = '#10B981'
+const AMARILLO = '#F59E0B'
+const ROJO = '#DC2626'
 
-interface PrecioActualRow {
-  det_id: number
-  lpn:    number | null
-  lpc02:  number | null
-  lpc03:  number | null
-  lpc04:  number | null
-  precio_web?: number | null
-}
+const VENTANA_VALIDACION_S = 60
 
 export default function CarritoPage() {
-  const { cliente, vendedor, plazo, listaPrecioId, descuentos, descuentosPorLote,
-          setDescuentoLote, carrito, desactivar, activa,
-          setCajas, eliminarItem, eliminarItems } = useSesion()
+  const cliente             = useSesion(s => s.cliente)
+  const vendedor            = useSesion(s => s.vendedor)
+  const plazo               = useSesion(s => s.plazo)
+  const listaPrecioId       = useSesion(s => s.listaPrecioId)
+  const descuentos          = useSesion(s => s.descuentos)
+  const descuentosPorLote   = useSesion(s => s.descuentosPorLote)
+  const setDescuentoLote    = useSesion(s => s.setDescuentoLote)
+  const facturas            = useSesion(s => s.facturas)
+  const todasPreAutorizadas = useSesion(s => s.todasPreAutorizadas)
+  const actualizarDescuentosFactura = useSesion(s => s.actualizarDescuentosFactura)
+  const carrito             = useSesion(s => s.carrito)
+  const desactivar          = useSesion(s => s.desactivar)
+  const activa              = useSesion(s => s.activa)
+  const setCajas            = useSesion(s => s.setCajas)
+  const eliminarItem        = useSesion(s => s.eliminarItem)
+  const eliminarItems       = useSesion(s => s.eliminarItems)
+  const validacion          = useSesion(s => s.validacion)
+  const setValidacion       = useSesion(s => s.setValidacion)
+  const limpiarValidacion   = useSesion(s => s.limpiarValidacion)
+
   const router = useRouter()
   const [enviando, setEnviando] = useState(false)
-  const [exito,    setExito]    = useState<string | null>(null)
-  const [error,    setError]    = useState<string | null>(null)
-  /**
-   * Estado tri-modal de la validación de precios.
-   * - `idle`         : aún no se intentó (carrito vacío o sesión inactiva)
-   * - `validating`   : query en curso
-   * - `verified`     : DB respondió OK; `huerfanos` contiene la lista real
-   * - `unverifiable` : la query falló (red, RLS, timeout). NO sabemos si hay
-   *                   huérfanos o no. Bloqueamos confirmación y ofrecemos
-   *                   reintento. Esto NO es lo mismo que "sin precio".
-   */
-  type EstadoValid = 'idle' | 'validating' | 'verified' | 'unverifiable'
-  const [estadoValid, setEstadoValid] = useState<EstadoValid>('idle')
-  /** det_ids en el carrito que actualmente NO tienen precio (solo válido si estadoValid === 'verified'). */
-  const [huerfanos, setHuerfanos] = useState<number[]>([])
-  const [errorValid, setErrorValid] = useState<string | null>(null)
-  /** Trigger manual para revalidar (botón "Revalidar precios"). */
-  const [revalToken, setRevalToken] = useState(0)
+  const [validando, setValidando] = useState(false)
+  const [exito, setExito] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  // Si otra pestaña modifica localStorage, forzamos revalidación.
+  // Countdown del token (60 s desde validacion.expiraEn).
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      if (e.key !== 'rimec_sesion_venta') return
-      setRevalToken(t => t + 1)
-    }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+    if (validacion.estado !== 'OK' || !validacion.expiraEn) return
+    const intervalo = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(intervalo)
+  }, [validacion.estado, validacion.expiraEn])
 
-  // Al abrir el carrito (o tras revalToken) preguntamos precios actuales.
-  // CRÍTICO: si la red falla → estado 'unverifiable', NO 'verified' con huerfanos vacíos.
+  const segundosRestantes = useMemo(() => {
+    if (validacion.estado !== 'OK' || !validacion.expiraEn) return 0
+    const restante = Math.max(0, new Date(validacion.expiraEn).getTime() - now)
+    return Math.ceil(restante / 1000)
+  }, [validacion.estado, validacion.expiraEn, now])
+
   useEffect(() => {
-    const detIds = Object.values(carrito).map(it => it.det_id).filter(n => Number.isFinite(n))
-    if (!activa || detIds.length === 0) {
-      setEstadoValid('idle')
-      setHuerfanos([])
-      setErrorValid(null)
-      return
+    if (validacion.estado === 'OK' && segundosRestantes <= 0) {
+      limpiarValidacion()
     }
-    let cancelado = false
-    setEstadoValid('validating')
-    setErrorValid(null)
-    ;(async () => {
-      try {
-        const { data, error: errPrecio } = await supabase
-          .from('v_stock_rimec')
-          .select('det_id, lpn, lpc02, lpc03, lpc04')
-          .in('det_id', detIds)
-        if (cancelado) return
-        if (errPrecio) {
-          console.error('[carrito] supabase error validando precios:', errPrecio.message)
-          setEstadoValid('unverifiable')
-          setErrorValid(errPrecio.message)
-          return
-        }
-        const map = new Map<number, PrecioActualRow>()
-        for (const r of (data ?? []) as PrecioActualRow[]) map.set(Number(r.det_id), r)
-        const sinPrecio: number[] = []
-        for (const id of detIds) {
-          const row = map.get(id)
-          if (!row) { sinPrecio.push(id); continue }
-          const p = getPrecioActivo(row, listaPrecioId)
-          if (p == null || p <= 0) sinPrecio.push(id)
-        }
-        setHuerfanos(sinPrecio)
-        setEstadoValid('verified')
-      } catch (e: unknown) {
-        if (cancelado) return
-        const msg = e instanceof Error ? e.message : 'Error desconocido'
-        console.error('[carrito] excepción validando precios:', msg)
-        setEstadoValid('unverifiable')
-        setErrorValid(msg)
-      }
-    })()
-    return () => { cancelado = true }
-  }, [activa, listaPrecioId, carrito, revalToken])
+  }, [segundosRestantes, validacion.estado, limpiarValidacion])
 
-  const revalidar = () => setRevalToken(t => t + 1)
-
+  // Cualquier mutación del carrito limpia el token (lo hace el store).
+  // Si el usuario cierra venta sin confirmar, volver al catálogo.
   if (!activa || Object.keys(carrito).length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '80px 0' }}>
@@ -122,19 +83,67 @@ export default function CarritoPage() {
   const totalGenPares = lotes.reduce((s, l) => s + l.total_pares, 0)
   const totalGenMonto = lotes.reduce((s, l) => s + l.total_monto, 0)
   const descLabel     = descuentos.length > 0 ? descuentos.map(d => `${d}%`).join(' + ') : 'Sin descuento'
-
-  // Cantidad total de facturas internas que se van a generar.
-  // Regla 1: una factura por cada combinación (PP × Marca × Caso).
   const totalFacturas = lotes.reduce((s, l) => s + l.cantidad_facturas, 0)
+
+  const itemsConProblema: ValidarItemResult[] =
+    validacion.estado === 'DIFERENCIAS'
+      ? (validacion.items
+          .filter((i) => !i.ok)
+          .map((i) => ({
+            det_id: i.det_id,
+            cajas_solicitadas: carrito[`det_${i.det_id}`]?.cajas ?? 0,
+            cajas_actuales: i.cajas_actuales,
+            precio_carrito: carrito[`det_${i.det_id}`]?.precio_base ?? 0,
+            precio_actual: i.precio_actual,
+            ok: false,
+            motivo: (i.motivo as ValidarItemResult['motivo']) ?? null,
+          })))
+      : []
+
+  const detIdsSinPrecio = itemsConProblema
+    .filter((i) => i.motivo === 'SIN_PRECIO')
+    .map((i) => i.det_id)
+
+  async function validar() {
+    setValidando(true)
+    setError(null)
+    try {
+      const data = await carritoValidar()
+      if (!data.success) {
+        setValidacion({
+          estado: 'ERROR',
+          token: null,
+          expiraEn: null,
+          items: [],
+        })
+        setError(data.detail ?? 'No se pudo validar el carrito.')
+        return
+      }
+      setValidacion({
+        estado: data.estado === 'OK' ? 'OK' : 'DIFERENCIAS',
+        token: data.token ?? null,
+        expiraEn: data.expira_en ?? null,
+        items: (data.items ?? []).map((i) => ({
+          det_id: i.det_id,
+          ok: i.ok,
+          motivo: i.motivo,
+          cajas_actuales: i.cajas_actuales,
+          precio_actual: i.precio_actual,
+        })),
+      })
+    } catch (e) {
+      setValidacion({ estado: 'ERROR', token: null, expiraEn: null, items: [] })
+      setError(e instanceof Error ? e.message : 'Error al validar')
+    } finally {
+      setValidando(false)
+    }
+  }
 
   async function confirmarPedido() {
     setEnviando(true)
     setError(null)
     try {
       const [d1, d2, d3, d4] = [...descuentos, 0, 0, 0, 0]
-
-      // Construir payload con tipos primitivos garantizados (JSON válido).
-      // Cada elemento de `facturas` se traduce en UNA factura_interna del backend.
       const payload = {
         cliente_id:      cliente!.id_cliente,
         cliente_nombre:  String(cliente!.descp_cliente || ''),
@@ -148,48 +157,42 @@ export default function CarritoPage() {
         descuento_2: Number(d2) || 0,
         descuento_3: Number(d3) || 0,
         descuento_4: Number(d4) || 0,
-        total_pares:  Number(totalGenPares) || 0,
-        total_neto:   Number(totalGenMonto) || 0,
-        fecha:        new Date().toISOString(),
-        lotes:        lotes.map(lote => ({
-          pp_id:       Number(lote.pp_id),
-          pp_nro:      String(lote.pp_nro || ''),
-          quincena:    String(lote.quincena || ''),
-          eta:         lote.eta ? String(lote.eta) : null,
+        total_pares: Number(totalGenPares) || 0,
+        total_neto:  Number(totalGenMonto) || 0,
+        fecha:       new Date().toISOString(),
+        lotes: lotes.map((lote) => ({
+          pp_id:  Number(lote.pp_id),
+          pp_nro: String(lote.pp_nro || ''),
+          quincena: String(lote.quincena || ''),
+          eta: lote.eta ? String(lote.eta) : null,
           total_pares: Number(lote.total_pares) || 0,
           total_monto: Number(lote.total_monto) || 0,
-          // Aplanamos lote.marcas[].facturas[] -> lote.facturas[] enriqueciendo
-          // cada factura con su marca de pertenencia (Regla 1: 1 FI por PP×Marca×Caso).
-          facturas:    lote.marcas.flatMap(m =>
-            m.facturas.map(f => ({
-              marca:       String(m.marca || ''),
-              marca_id:    m.marca_id,
-              caso:        String(f.caso || ''),
-              caso_id:     f.caso_id,
+          facturas: lote.marcas.flatMap((m) =>
+            m.facturas.map((f) => ({
+              marca: String(m.marca || ''),
+              marca_id: m.marca_id,
+              caso: String(f.caso || ''),
+              caso_id: f.caso_id,
               total_pares: Number(f.total_pares) || 0,
               total_monto: Number(f.total_monto) || 0,
-              items:       f.items.map(item => ({
-                det_id:       Number(item.det_id),
+              items: f.items.map((item) => ({
+                det_id: Number(item.det_id),
                 linea_codigo: String(item.linea_codigo || ''),
                 ref_codigo:   String(item.ref_codigo || ''),
                 color_nombre: String(item.color_nombre || ''),
                 gradas_fmt:   String(item.gradas_fmt || ''),
                 imagen_url:   String(item.imagen_url || ''),
-                cajas:        Number(item.cajas) || 0,
-                pares:        Number(item.pares) || 0,
-                precio_base:  Number(item.precio_base) || 0,
-                precio_neto:  Number(item.precio_neto) || 0,
-                subtotal:     Number(item.subtotal) || 0,
-              }))
-            }))
+                cajas: Number(item.cajas) || 0,
+                pares: Number(item.pares) || 0,
+                precio_base: Number(item.precio_base) || 0,
+                precio_neto: Number(item.precio_neto) || 0,
+                subtotal:    Number(item.subtotal) || 0,
+              })),
+            })),
           ),
-        }))
+        })),
       }
 
-      // Llamar RPC que ejecuta todo en una transacción atómica:
-      // 1. Inserta pedido_venta_rimec
-      // 2. Crea factura_interna por cada PP en estado RESERVADA
-      // 3. Descuenta stock de mercadería en tránsito
       const { data, error: rpcErr } = await supabase.rpc('confirmar_pedido_web', {
         p_cliente_id:      cliente!.id_cliente,
         p_vendedor_id:     vendedor?.id_vendedor ?? null,
@@ -202,45 +205,65 @@ export default function CarritoPage() {
         p_total_pares:     totalGenPares,
         p_total_monto:     totalGenMonto,
         p_payload:         payload,
+        p_validacion_token: validacion.token,
       })
 
-      if (rpcErr) {
-        throw new Error(rpcErr.message)
-      }
+      if (rpcErr) throw new Error(rpcErr.message)
 
-      // Verificar respuesta de la función
-      const result = data as { 
+      const result = data as {
         success: boolean
         error?: string
+        detail?: string
         nro_pedido?: string
-        facturas?: Array<{ nro_factura: string; pp_id: number; total_pares: number }> 
+        facturas?: Array<{ nro_factura: string; pp_id: number; total_pares: number }>
       }
-      
+
       if (!result.success) {
-        throw new Error(result.error || 'Error al procesar el pedido')
+        throw new Error(result.error || result.detail || 'Error al procesar el pedido')
       }
 
-      // Éxito: limpiar sesión y mostrar resultado
-      const facturasGeneradas = result.facturas?.map(f => f.nro_factura).join(', ') || ''
+      const facturasGeneradas = result.facturas?.map((f) => f.nro_factura).join(', ') || ''
       const nroPedido = result.nro_pedido || ''
-      desactivar()
+      await desactivar()
       setExito(`Pedido ${nroPedido} confirmado. Facturas: ${facturasGeneradas}`)
-
-      // Redirigir destacando el pedido recién creado
       setTimeout(() => {
         router.push(nroPedido ? `/pedidos?destacar=${encodeURIComponent(nroPedido)}` : '/pedidos')
       }, 2500)
-
-    } catch (e: unknown) {
+    } catch (e) {
       console.error('Error al confirmar pedido:', e)
       setError(e instanceof Error ? e.message : 'Error al confirmar')
+    } finally {
+      setEnviando(false)
     }
-    setEnviando(false)
   }
+
+  const sinVendedor = !vendedor?.id_vendedor
+  const tokenVigente = validacion.estado === 'OK' && segundosRestantes > 0
+  const motivoBloqueoConfirmar =
+    enviando ? 'procesando' :
+    sinVendedor ? 'sin_vendedor' :
+    !todasPreAutorizadas ? 'facturas_sin_preautorizar' :
+    validacion.estado === 'ERROR' ? 'error_validacion' :
+    validacion.estado === 'DIFERENCIAS' ? 'diferencias' :
+    validacion.estado === 'IDLE' ? 'falta_validar' :
+    !tokenVigente ? 'token_vencido' :
+    null
+
+  const labelConfirmar = (() => {
+    switch (motivoBloqueoConfirmar) {
+      case 'procesando':         return 'Procesando...'
+      case 'sin_vendedor':       return 'Sesión sin vendedor — reactivá la venta'
+      case 'facturas_sin_preautorizar': return '⚠️ Verificar descuentos (Ver Totales en cada factura)'
+      case 'error_validacion':   return 'Reintentá VALIDAR'
+      case 'diferencias':        return `Resolvé ${itemsConProblema.length} ítem(s) y volvé a VALIDAR`
+      case 'falta_validar':      return 'Presioná VALIDAR primero'
+      case 'token_vencido':      return 'Validación vencida — VALIDÁ de nuevo'
+      default:                   return `CONFIRMAR PEDIDO →   (${segundosRestantes}s)`
+    }
+  })()
 
   return (
     <div style={{ maxWidth: 780, margin: '0 auto' }}>
-      {/* Cabecera del pedido */}
       <div style={{
         backgroundColor: '#EFF6FF', border: `2px solid ${AZUL}`,
         borderRadius: 16, padding: '20px 24px', marginBottom: 28,
@@ -256,103 +279,97 @@ export default function CarritoPage() {
         <p style={{ fontSize: 14, color: '#64748B' }}>
           <strong>Vendedor:</strong> {vendedor?.descp_vendedor ?? '—'}
           &nbsp;·&nbsp;<strong>Plazo:</strong> {plazo?.descp_plazo ?? '—'}
+          &nbsp;·&nbsp;<strong>FIs previstas:</strong> {totalFacturas}
         </p>
       </div>
 
-      {/* Estado 'unverifiable' — Supabase no respondió.
-          IMPORTANTE: no es lo mismo que "sin precio". Solo dice que NO PUDIMOS verificar.
-          Bloqueamos confirmación porque no tenemos evidencia de que los precios estén vigentes. */}
-      {estadoValid === 'unverifiable' && !exito && (
-        <div
-          role="alert"
-          style={{
-            backgroundColor: '#FFEDD5', border: '1px solid #FB923C',
-            borderRadius: 12, padding: '14px 18px', marginBottom: 20,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 16, flexWrap: 'wrap', color: '#7C2D12',
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}>
-              🔌 No se pudo verificar el precio ahora
-            </p>
-            <p style={{ fontSize: 12 }}>
-              Probablemente hay un problema de red o el servicio de catálogo no respondió.
-              No podemos confirmar el pedido hasta validar que los {Object.keys(carrito).length} ítems
-              de tu carrito tengan precio vigente.
-              {errorValid ? <span style={{ display: 'block', marginTop: 4, fontSize: 11, opacity: 0.8 }}>Detalle técnico: {errorValid}</span> : null}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={revalidar}
+      {sinVendedor && !exito && (
+        <div role="alert" style={{
+          backgroundColor: '#FEE2E2', border: '1px solid #FCA5A5',
+          borderRadius: 12, padding: '14px 18px', marginBottom: 20,
+          color: '#7F1D1D',
+        }}>
+          <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}>
+            ⛔ Sesión de venta sin vendedor asignado
+          </p>
+          <p style={{ fontSize: 12, marginBottom: 10 }}>
+            La sesión no tiene un vendedor identificado. Cerrá la venta y volvé a activarla.
+          </p>
+          <button type="button" onClick={() => { void desactivar(); router.push('/') }}
             style={{
-              padding: '10px 16px', borderRadius: 10,
-              backgroundColor: '#7C2D12', color: 'white',
-              border: 'none', cursor: 'pointer',
-              fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap',
-            }}
-          >
-            Reintentar verificación
+              padding: '10px 16px', borderRadius: 10, backgroundColor: '#7F1D1D',
+              color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+            }}>
+            Cerrar venta y volver al catálogo
           </button>
         </div>
       )}
 
-      {/* Estado 'verified' con huérfanos confirmados. */}
-      {estadoValid === 'verified' && huerfanos.length > 0 && !exito && (
-        <div
-          role="alert"
-          style={{
-            backgroundColor: '#FEF3C7', border: '1px solid #FCD34D',
-            borderRadius: 12, padding: '14px 18px', marginBottom: 20,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 16, flexWrap: 'wrap', color: '#78350F',
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}>
-              ⚠ {huerfanos.length} {huerfanos.length === 1 ? 'ítem perdió' : 'ítems perdieron'} su precio
-            </p>
-            <p style={{ fontSize: 12 }}>
-              Estos SKUs estaban en tu carrito pero ya no tienen precio en la lista{' '}
-              <strong>{listaActiva.nombre}</strong>. Probablemente el listado fue cambiado en Nexus Core.
-              No se pueden facturar — quitalos para continuar.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={revalidar}
-              title="Volver a consultar precios actuales"
+      {validacion.estado === 'DIFERENCIAS' && !exito && (
+        <div role="alert" style={{
+          backgroundColor: '#FEF3C7', border: '1px solid #FCD34D',
+          borderRadius: 12, padding: '14px 18px', marginBottom: 20, color: '#78350F',
+        }}>
+          <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>
+            ⚠ {itemsConProblema.length} ítem(s) con diferencias en BD
+          </p>
+          <ul style={{ fontSize: 12, paddingLeft: 18, marginBottom: 10 }}>
+            {itemsConProblema.map((i) => {
+              const meta = carrito[`det_${i.det_id}`]
+              const desc = meta
+                ? `L${meta.linea_codigo}·R${meta.referencia_codigo}${meta.color_nombre ? ` · ${meta.color_nombre}` : ''}`
+                : `det ${i.det_id}`
+              const motivo = i.motivo === 'STOCK_INSUFICIENTE'
+                ? `Stock disponible: ${i.cajas_actuales} (pediste ${i.cajas_solicitadas})`
+                : i.motivo === 'PRECIO_CAMBIO'
+                  ? `Precio cambió: ${i.precio_carrito.toLocaleString('es-PY')} → ${i.precio_actual?.toLocaleString('es-PY') ?? '—'}`
+                  : i.motivo === 'SIN_PRECIO'
+                    ? 'El SKU perdió el precio en Nexus Core'
+                    : 'Diferencia'
+              return <li key={i.det_id}><strong>{desc}</strong> — {motivo}</li>
+            })}
+          </ul>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={validar} disabled={validando}
               style={{
-                padding: '10px 14px', borderRadius: 10,
-                backgroundColor: 'transparent', color: '#78350F',
-                border: '1px solid #B45309', cursor: 'pointer',
-                fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap',
-              }}
-            >
+                padding: '10px 14px', borderRadius: 10, backgroundColor: 'transparent',
+                color: '#78350F', border: '1px solid #B45309', cursor: 'pointer',
+                fontWeight: 700, fontSize: 12,
+              }}>
               Revalidar
             </button>
-            <button
-              type="button"
-              onClick={() => eliminarItems(huerfanos)}
-              style={{
-                padding: '10px 16px', borderRadius: 10,
-                backgroundColor: '#78350F', color: 'white',
-                border: 'none', cursor: 'pointer',
-                fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap',
-              }}
-            >
-              Quitar {huerfanos.length} ítem{huerfanos.length === 1 ? '' : 's'} sin precio
-            </button>
+            {detIdsSinPrecio.length > 0 && (
+              <button type="button" onClick={() => void eliminarItems(detIdsSinPrecio)}
+                style={{
+                  padding: '10px 16px', borderRadius: 10, backgroundColor: '#78350F',
+                  color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                }}>
+                Quitar {detIdsSinPrecio.length} ítem(s) sin precio
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Éxito */}
+      {validacion.estado === 'ERROR' && !exito && (
+        <div role="alert" style={{
+          backgroundColor: '#FFEDD5', border: '1px solid #FB923C',
+          borderRadius: 12, padding: '14px 18px', marginBottom: 20, color: '#7C2D12',
+        }}>
+          <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>
+            🔌 No se pudo verificar el carrito
+          </p>
+          <p style={{ fontSize: 12 }}>
+            Reintentá VALIDAR. Si persiste, refrescá la página y volvé a iniciar la venta.
+          </p>
+        </div>
+      )}
+
       {exito && (
-        <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 12,
-                      padding: '16px 20px', marginBottom: 20 }}>
+        <div style={{
+          backgroundColor: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 12,
+          padding: '16px 20px', marginBottom: 20,
+        }}>
           <p style={{ color: '#166534', fontWeight: 700, fontSize: 16 }}>✅ {exito}</p>
           <p style={{ color: '#166534', fontSize: 14, marginTop: 8 }}>
             Stock descontado. Las facturas están en estado RESERVADA esperando aprobación en el ERP.
@@ -363,52 +380,45 @@ export default function CarritoPage() {
         </div>
       )}
 
-      {/* Error */}
       {error && (
-        <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12,
-                      padding: '16px 20px', marginBottom: 20 }}>
+        <div style={{
+          backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12,
+          padding: '16px 20px', marginBottom: 20,
+        }}>
           <p style={{ color: '#991B1B', fontWeight: 700 }}>❌ {error}</p>
         </div>
       )}
 
       {/* Lotes */}
-      {lotes.map(lote => {
+      {lotes.map((lote) => {
         const descLote = descuentosPorLote[lote.pp_id] ?? []
         return (
-          <div key={lote.pp_id} style={{
-            border: '1px solid #E2E8F0', borderRadius: 16, marginBottom: 20, overflow: 'hidden',
-          }}>
-            {/* Header lote */}
-            <div style={{ backgroundColor: '#F8FAFC', padding: '16px 20px',
-                          borderBottom: '1px solid #E2E8F0', display: 'flex',
-                          alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div key={lote.pp_id} style={{ border: '1px solid #E2E8F0', borderRadius: 16, marginBottom: 20, overflow: 'hidden' }}>
+            <div style={{
+              backgroundColor: '#F8FAFC', padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+            }}>
               <div>
-                <p style={{ fontWeight: 900, fontSize: 17, color: '#1E293B' }}>
-                  📦 {lote.quincena}
-                </p>
+                <p style={{ fontWeight: 900, fontSize: 17, color: '#1E293B' }}>📦 {lote.quincena}</p>
                 <p style={{ fontSize: 13, color: '#64748B' }}>
                   {lote.pp_nro} · {lote.total_pares.toLocaleString('es-PY')} pares
                   &nbsp;·&nbsp;Gs. {lote.total_monto.toLocaleString('es-PY')}
                 </p>
               </div>
-              {/* Descuento especial del lote */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 13, color: '#64748B' }}>Desc. lote:</span>
                 {descLote.map((d, i) => (
-                  <span key={i} style={{ fontSize: 13, fontWeight: 700, color: AZUL,
-                    padding: '3px 10px', backgroundColor: '#DBEAFE', borderRadius: 99 }}>{d}%</span>
+                  <span key={i} style={{ fontSize: 13, fontWeight: 700, color: AZUL, padding: '3px 10px', backgroundColor: '#DBEAFE', borderRadius: 99 }}>{d}%</span>
                 ))}
                 {descLote.length < 2 && (
                   <input
                     placeholder="%" type="number" min={0} max={99}
-                    style={{ width: 56, padding: '4px 8px', borderRadius: 8,
-                      border: '1px solid #E2E8F0', fontSize: 13, textAlign: 'center' }}
-                    onKeyDown={e => {
+                    style={{ width: 56, padding: '4px 8px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, textAlign: 'center' }}
+                    onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         const val = parseFloat((e.target as HTMLInputElement).value)
-                        if (!isNaN(val) && val > 0)
-                          setDescuentoLote(lote.pp_id, [...descLote, val]);
-                        (e.target as HTMLInputElement).value = ''
+                        if (!isNaN(val) && val > 0) void setDescuentoLote(lote.pp_id, [...descLote, val])
+                        ;(e.target as HTMLInputElement).value = ''
                       }
                     }}
                   />
@@ -416,214 +426,183 @@ export default function CarritoPage() {
               </div>
             </div>
 
-            {/* Aviso de Regla 1 si este PP va a generar más de 1 factura */}
             {lote.cantidad_facturas > 1 && (
-              <div style={{
-                padding: '10px 20px', backgroundColor: '#FEFCE8',
-                borderBottom: '1px solid #FDE68A',
-                fontSize: 12, color: '#854D0E',
-              }}>
-                ⚖ <strong>Regla 1 — Factura Interna:</strong> este lote se dividirá en{' '}
-                <strong>{lote.cantidad_facturas} facturas internas</strong>{' '}
-                (una por cada Marca · una adicional por cada Caso extra dentro de una marca).
+              <div style={{ padding: '10px 20px', backgroundColor: '#FEFCE8', borderBottom: '1px solid #FDE68A', fontSize: 12, color: '#854D0E' }}>
+                ⚖ <strong>Regla 1 — Factura Interna:</strong> este lote se dividirá en <strong>{lote.cantidad_facturas} facturas internas</strong>.
               </div>
             )}
 
-            {/* Nivel 2: MARCA */}
-            {lote.marcas.map(marca => (
-              <div key={`${lote.pp_id}__${marca.marca}`}
-                   style={{ borderBottom: '1px solid #F1F5F9' }}>
-
-                {/* Cabecera de la marca */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10,
-                              flexWrap: 'wrap', padding: '14px 20px 8px 20px' }}>
-                  <p style={{ fontWeight: 700, fontSize: 15, color: AZUL, margin: 0 }}>
-                    🏷️ {marca.marca}
-                  </p>
+            {lote.marcas.map((marca) => (
+              <div key={`${lote.pp_id}__${marca.marca}`} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '14px 20px 8px 20px' }}>
+                  <p style={{ fontWeight: 700, fontSize: 15, color: AZUL, margin: 0 }}>🏷️ {marca.marca}</p>
                   {marca.cantidad_facturas > 1 && (
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '2px 8px',
-                      borderRadius: 99, backgroundColor: '#FEF3C7', color: '#92400E',
-                    }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, backgroundColor: '#FEF3C7', color: '#92400E' }}>
                       {marca.cantidad_facturas} casos · {marca.cantidad_facturas} facturas
                     </span>
                   )}
                   <p style={{ fontSize: 13, color: '#64748B', margin: 0, marginLeft: 'auto' }}>
-                    {marca.total_pares.toLocaleString('es-PY')} pares · Gs.{' '}
-                    {marca.total_monto.toLocaleString('es-PY')}
+                    {marca.total_pares.toLocaleString('es-PY')} pares · Gs. {marca.total_monto.toLocaleString('es-PY')}
                   </p>
                 </div>
 
-                {/* Nivel 2.5: facturas dentro de la marca (1 por caso). Sólo se muestra
-                    el sub-header de caso si la marca tiene MÁS DE UNO. */}
-                {marca.facturas.map((fact, idx) => (
-                  <div key={fact.grupo_key}
-                       style={{
-                         padding: marca.cantidad_facturas > 1 ? '8px 20px 14px 20px'
-                                                              : '0 20px 12px 20px',
-                         borderLeft: marca.cantidad_facturas > 1 ? `3px solid ${AZUL}` : 'none',
-                         backgroundColor: marca.cantidad_facturas > 1 ? '#FAFAFA' : 'transparent',
-                         marginLeft: marca.cantidad_facturas > 1 ? 12 : 0,
-                       }}>
+                {marca.facturas.map((fact, idx) => {
+                  const facturaConfig = facturas.find(f =>
+                    f.pp_id === lote.pp_id && f.marca === marca.marca && f.caso === fact.caso
+                  )
+                  return (
+                  <div key={fact.grupo_key} style={{
+                    padding: marca.cantidad_facturas > 1 ? '8px 20px 14px 20px' : '0 20px 12px 20px',
+                    borderLeft: marca.cantidad_facturas > 1 ? `3px solid ${AZUL}` : 'none',
+                    backgroundColor: marca.cantidad_facturas > 1 ? '#FAFAFA' : 'transparent',
+                    marginLeft: marca.cantidad_facturas > 1 ? 12 : 0,
+                  }}>
                     {marca.cantidad_facturas > 1 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8,
-                                    marginBottom: 8 }}>
-                        <span style={{
-                          fontSize: 10, fontWeight: 800, padding: '2px 7px',
-                          borderRadius: 99, backgroundColor: AZUL, color: 'white',
-                          letterSpacing: 0.5,
-                        }}>
-                          FI {idx + 1}/{marca.cantidad_facturas}
-                        </span>
-                        <span style={{
-                          fontSize: 12, fontWeight: 600, padding: '2px 10px',
-                          borderRadius: 99, backgroundColor: '#E0E7FF', color: '#3730A3',
-                        }}>
-                          Caso: {fact.caso}
-                        </span>
-                        <span style={{ fontSize: 12, color: '#64748B', marginLeft: 'auto' }}>
-                          {fact.total_pares.toLocaleString('es-PY')} pares · Gs.{' '}
-                          {fact.total_monto.toLocaleString('es-PY')}
-                        </span>
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99, backgroundColor: AZUL, color: 'white', letterSpacing: 0.5 }}>
+                            FI {idx + 1}/{marca.cantidad_facturas}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 99, backgroundColor: '#E0E7FF', color: '#3730A3' }}>
+                            Caso: {fact.caso}
+                          </span>
+                          <span style={{ fontSize: 12, color: '#64748B', marginLeft: 'auto' }}>
+                            {fact.total_pares.toLocaleString('es-PY')} pares · Gs. {fact.total_monto.toLocaleString('es-PY')}
+                          </span>
+                        </div>
+                        {facturaConfig && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: facturaConfig.pre_autorizado ? '#F0FDF4' : '#FEF3C7', borderRadius: 8, border: facturaConfig.pre_autorizado ? '1px solid #10B981' : '1px solid #F59E0B' }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Desc.:</span>
+                            {[0, 1, 2, 3].map(i => (
+                              <input
+                                key={i}
+                                type="number"
+                                min={0}
+                                max={99}
+                                value={facturaConfig.descuentos[i] || 0}
+                                onChange={async (e) => {
+                                  const val = parseFloat(e.target.value) || 0
+                                  const newDesc = [...facturaConfig.descuentos]
+                                  newDesc[i] = val
+                                  await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
+                                    descuentos: newDesc,
+                                    pre_autorizado: false
+                                  })
+                                }}
+                                style={{ width: 48, padding: '4px 6px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: 12, textAlign: 'center' }}
+                              />
+                            ))}
+                            {!facturaConfig.pre_autorizado ? (
+                              <button
+                                onClick={async () => {
+                                  await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, { pre_autorizado: true })
+                                }}
+                                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', backgroundColor: '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginLeft: 'auto' }}
+                              >
+                                ⚠️ Ver Totales
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: VERDE, marginLeft: 'auto' }}>✅ Pre-autorizado</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {/* Nivel 3: items con foto miniatura */}
-                    {fact.items.map(item => (
-                  <div key={item.det_id} style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '8px 0', borderTop: '1px solid #F8FAFC', fontSize: 14,
-                  }}>
-                    {/* Foto miniatura */}
-                    {item.imagen_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imagen_url}
-                        alt={`${item.linea_codigo}-${item.ref_codigo}`}
-                        style={{
-                          width: 42, height: 42, borderRadius: 8, objectFit: 'contain',
-                          backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0',
-                          flexShrink: 0,
-                        }}
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                      />
-                    ) : (
-                      <div style={{
-                        width: 42, height: 42, borderRadius: 8, backgroundColor: '#F1F5F9',
-                        flexShrink: 0, display: 'flex', alignItems: 'center',
-                        justifyContent: 'center', color: '#CBD5E1', fontSize: 18,
-                      }}>👟</div>
-                    )}
 
-                    <span style={{ color: '#374151', flex: 2 }}>
-                      L{item.linea_codigo}·R{item.ref_codigo}
-                      <span style={{ color: '#94A3B8', marginLeft: 6 }}>{item.gradas_fmt}</span>
-                      {item.color_nombre && (
-                        <span style={{
-                          display: 'block', fontSize: 11, color: '#64748B',
-                          marginTop: 2,
-                        }}>{item.color_nombre}</span>
-                      )}
-                    </span>
+                    {fact.items.map((item) => (
+                      <div key={item.det_id} style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '8px 0', borderTop: '1px solid #F8FAFC', fontSize: 14,
+                      }}>
+                        {item.imagen_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.imagen_url}
+                            alt={`${item.linea_codigo}-${item.ref_codigo}`}
+                            style={{
+                              width: 42, height: 42, borderRadius: 8, objectFit: 'contain',
+                              backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', flexShrink: 0,
+                            }}
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: 42, height: 42, borderRadius: 8, backgroundColor: '#F1F5F9',
+                            flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#CBD5E1', fontSize: 18,
+                          }}>👟</div>
+                        )}
 
-                    {/* Editor de cajas con +/-  */}
-                    <span style={{ flex: 1, display: 'flex', alignItems: 'center',
-                                   gap: 4, color: '#64748B' }}>
-                      <button
-                        type="button"
-                        aria-label="Restar caja"
-                        onClick={() => setCajas(item.det_id, item.cajas - 1)}
-                        style={{
-                          width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
-                          background: '#F8FAFC', cursor: 'pointer', fontWeight: 700,
-                          color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
-                        }}
-                      >−</button>
-                      <input
-                        type="number"
-                        min={0}
-                        value={item.cajas}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10)
-                          setCajas(item.det_id, Number.isFinite(v) ? v : 0)
-                        }}
-                        aria-label="Cantidad de cajas"
-                        style={{
-                          width: 48, height: 26, textAlign: 'center', borderRadius: 6,
-                          border: '1px solid #CBD5E1', fontSize: 14, color: '#1E293B',
-                          fontWeight: 600, padding: 0,
-                        }}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Sumar caja"
-                        onClick={() => setCajas(item.det_id, item.cajas + 1)}
-                        style={{
-                          width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
-                          background: '#F8FAFC', cursor: 'pointer', fontWeight: 700,
-                          color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
-                        }}
-                      >+</button>
-                      <span style={{ marginLeft: 4, fontSize: 12 }}>caj · {item.pares} p</span>
-                    </span>
+                        <span style={{ color: '#374151', flex: 2 }}>
+                          L{item.linea_codigo}·R{item.ref_codigo}
+                          <span style={{ color: '#94A3B8', marginLeft: 6 }}>{item.gradas_fmt}</span>
+                          {item.color_nombre && (
+                            <span style={{ display: 'block', fontSize: 11, color: '#64748B', marginTop: 2 }}>{item.color_nombre}</span>
+                          )}
+                        </span>
 
-                    <span style={{ color: '#64748B', flex: 1 }}>
-                      Base: {item.precio_base.toLocaleString('es-PY')}
-                    </span>
-                    <span style={{ color: AZUL, fontWeight: 700, flex: 1 }}>
-                      Neto: {item.precio_neto.toLocaleString('es-PY')}
-                    </span>
-                    <span style={{ color: '#1E293B', fontWeight: 700, flex: 1, textAlign: 'right' }}>
-                      Gs. {item.subtotal.toLocaleString('es-PY')}
-                    </span>
+                        <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, color: '#64748B' }}>
+                          <button type="button" aria-label="Restar caja"
+                            onClick={() => void setCajas(item.det_id, item.cajas - 1)}
+                            style={{
+                              width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
+                              background: '#F8FAFC', cursor: 'pointer', fontWeight: 700,
+                              color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
+                            }}>−</button>
+                          <input
+                            type="number" min={0} value={item.cajas}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10)
+                              void setCajas(item.det_id, Number.isFinite(v) ? v : 0)
+                            }}
+                            aria-label="Cantidad de cajas"
+                            style={{
+                              width: 48, height: 26, textAlign: 'center', borderRadius: 6,
+                              border: '1px solid #CBD5E1', fontSize: 14, color: '#1E293B',
+                              fontWeight: 600, padding: 0,
+                            }}
+                          />
+                          <button type="button" aria-label="Sumar caja"
+                            onClick={() => void setCajas(item.det_id, item.cajas + 1)}
+                            style={{
+                              width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
+                              background: '#F8FAFC', cursor: 'pointer', fontWeight: 700,
+                              color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
+                            }}>+</button>
+                          <span style={{ marginLeft: 4, fontSize: 12 }}>caj · {item.pares} p</span>
+                        </span>
 
-                    {/* Basurero — eliminar item del carrito */}
-                    <button
-                      type="button"
-                      aria-label="Eliminar item del carrito"
-                      title={`Eliminar L${item.linea_codigo}·R${item.ref_codigo}`}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        console.log('[carrito] eliminarItem click', { det_id: item.det_id, linea: item.linea_codigo, ref: item.ref_codigo })
-                        if (item.det_id == null || Number.isNaN(Number(item.det_id))) {
-                          console.error('[carrito] det_id inválido, no se elimina:', item)
-                          window.alert('det_id inválido — abrí la consola y avisame.')
-                          return
-                        }
-                        eliminarItem(Number(item.det_id))
-                      }}
-                      style={{
-                        background: 'transparent',
-                        border: '1px solid #FCA5A5',
-                        cursor: 'pointer',
-                        fontSize: 16, lineHeight: 1, padding: '6px 10px',
-                        borderRadius: 8, color: '#DC2626',
-                        marginLeft: 8,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#FEE2E2'
-                        e.currentTarget.style.borderColor = '#DC2626'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent'
-                        e.currentTarget.style.borderColor = '#FCA5A5'
-                      }}
-                    >🗑️ Quitar</button>
+                        <span style={{ color: '#64748B', flex: 1 }}>Base: {item.precio_base.toLocaleString('es-PY')}</span>
+                        <span style={{ color: AZUL, fontWeight: 700, flex: 1 }}>Neto: {item.precio_neto.toLocaleString('es-PY')}</span>
+                        <span style={{ color: '#1E293B', fontWeight: 700, flex: 1, textAlign: 'right' }}>
+                          Gs. {item.subtotal.toLocaleString('es-PY')}
+                        </span>
+
+                        <button type="button" aria-label="Eliminar item del carrito"
+                          title={`Eliminar L${item.linea_codigo}·R${item.ref_codigo}`}
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation()
+                            if (item.det_id == null || Number.isNaN(Number(item.det_id))) return
+                            void eliminarItem(Number(item.det_id))
+                          }}
+                          style={{
+                            background: 'transparent', border: '1px solid #FCA5A5',
+                            cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '6px 10px',
+                            borderRadius: 8, color: '#DC2626', marginLeft: 8,
+                          }}>🗑️ Quitar</button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ))}
           </div>
         )
       })}
 
-      {/* Total general + confirmación */}
-      <div style={{
-        border: `2px solid ${AZUL}`, borderRadius: 16, padding: '24px',
-        backgroundColor: '#EFF6FF',
-      }}>
+      {/* Total + Validar + Confirmar */}
+      <div style={{ border: `2px solid ${AZUL}`, borderRadius: 16, padding: 24, backgroundColor: '#EFF6FF' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, marginBottom: 8 }}>
           <span style={{ color: '#64748B' }}>Total pares</span>
           <span style={{ fontWeight: 900, color: '#1E293B' }}>{totalGenPares.toLocaleString('es-PY')}</span>
@@ -632,57 +611,70 @@ export default function CarritoPage() {
           <span style={{ color: '#64748B' }}>Monto total</span>
           <span style={{ fontWeight: 900, color: AZUL }}>Gs. {totalGenMonto.toLocaleString('es-PY')}</span>
         </div>
-        {(() => {
-          // Bloqueo del botón con 3 motivos posibles (orden de precedencia):
-          //   1. enviando → procesando, no doble-click
-          //   2. estadoValid === 'unverifiable' → no sabemos si los precios sirven
-          //   3. estadoValid === 'verified' && huerfanos > 0 → DB confirmó que perdieron precio
-          //   4. estadoValid === 'validating' → esperar respuesta
-          const motivoBloqueo =
-            enviando ? 'procesando' :
-            estadoValid === 'unverifiable' ? 'no_verificado' :
-            estadoValid === 'verified' && huerfanos.length > 0 ? 'huerfanos' :
-            estadoValid === 'validating' || estadoValid === 'idle' ? 'validando' :
-            null
 
-          const label = (() => {
-            switch (motivoBloqueo) {
-              case 'procesando':     return 'Procesando...'
-              case 'no_verificado':  return 'Verificación pendiente — reintentá arriba'
-              case 'huerfanos':      return `Resolvé ${huerfanos.length} ítem(s) sin precio`
-              case 'validando':      return 'Validando precios...'
-              default:               return 'CONFIRMAR PEDIDO →'
-            }
-          })()
+        {/* Banner del estado de validación */}
+        <div style={{
+          padding: '12px 16px', borderRadius: 12, marginBottom: 14,
+          backgroundColor:
+            validacion.estado === 'OK' && tokenVigente ? '#ECFDF5' :
+            validacion.estado === 'DIFERENCIAS' ? '#FEF3C7' :
+            validacion.estado === 'ERROR' ? '#FFEDD5' :
+            '#F1F5F9',
+          border:
+            validacion.estado === 'OK' && tokenVigente ? `1px solid ${VERDE}` :
+            validacion.estado === 'DIFERENCIAS' ? `1px solid ${AMARILLO}` :
+            validacion.estado === 'ERROR' ? `1px solid #FB923C` :
+            '1px solid #CBD5E1',
+          color:
+            validacion.estado === 'OK' && tokenVigente ? '#065F46' :
+            validacion.estado === 'DIFERENCIAS' ? '#78350F' :
+            validacion.estado === 'ERROR' ? '#7C2D12' :
+            '#475569',
+          fontSize: 13,
+        }}>
+          {validacion.estado === 'OK' && tokenVigente && (
+            <>✅ <strong>Carrito validado.</strong> Tenés {segundosRestantes}s para confirmar antes de re-validar.</>
+          )}
+          {validacion.estado === 'DIFERENCIAS' && (
+            <>⚠ <strong>Hay diferencias en stock o precio.</strong> Ajustá los ítems marcados arriba y volvé a validar.</>
+          )}
+          {validacion.estado === 'ERROR' && (
+            <>🔌 <strong>No se pudo validar.</strong> Reintentá; si persiste, refrescá la página.</>
+          )}
+          {validacion.estado === 'IDLE' && (
+            <>🛡 <strong>Validar obligatorio</strong> — el sistema chequea stock y precios contra el PP en BD antes de confirmar.</>
+          )}
+          {validacion.estado === 'OK' && !tokenVigente && (
+            <>⌛ <strong>La validación venció.</strong> Volvé a presionar VALIDAR.</>
+          )}
+        </div>
 
-          const titulo = (() => {
-            switch (motivoBloqueo) {
-              case 'no_verificado':  return 'No pudimos verificar precios con el servidor. Hacé click en "Reintentar verificación" arriba.'
-              case 'huerfanos':      return `Tenés ${huerfanos.length} ítem(s) sin precio. Quitalos antes de confirmar.`
-              case 'validando':      return 'Validando precios contra el catálogo...'
-              case 'procesando':     return 'Procesando pedido, esperá...'
-              default:               return 'Confirmar pedido'
-            }
-          })()
+        <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+          <button type="button" onClick={validar} disabled={validando || sinVendedor}
+            style={{
+              flex: 1, padding: '14px 0', borderRadius: 12,
+              backgroundColor: validando || sinVendedor ? '#94A3B8' : VERDE,
+              color: 'white', fontWeight: 900, fontSize: 16, border: 'none',
+              cursor: validando || sinVendedor ? 'not-allowed' : 'pointer',
+            }}>
+            {validando ? 'Validando...' : '🛡 VALIDAR'}
+          </button>
+          <button type="button" onClick={confirmarPedido}
+            disabled={motivoBloqueoConfirmar !== null}
+            title={motivoBloqueoConfirmar ? labelConfirmar : 'Confirmar pedido'}
+            style={{
+              flex: 2, padding: '14px 0', borderRadius: 12,
+              backgroundColor: motivoBloqueoConfirmar !== null ? '#94A3B8' : AZUL,
+              color: 'white', fontWeight: 900, fontSize: 16, border: 'none',
+              cursor: motivoBloqueoConfirmar !== null ? 'not-allowed' : 'pointer',
+            }}>
+            {labelConfirmar}
+          </button>
+        </div>
 
-          return (
-            <button
-              onClick={confirmarPedido}
-              disabled={motivoBloqueo !== null}
-              title={titulo}
-              style={{
-                width: '100%', padding: '18px 0', borderRadius: 14,
-                backgroundColor: motivoBloqueo !== null ? '#94A3B8' : AZUL,
-                color: 'white',
-                fontWeight: 900, fontSize: 19, border: 'none',
-                cursor: motivoBloqueo !== null ? 'not-allowed' : 'pointer',
-              }}>
-              {label}
-            </button>
-          )
-        })()}
-        <a href="/" style={{ display: 'block', textAlign: 'center', marginTop: 14,
-                              color: '#64748B', fontSize: 14 }}>← Seguir agregando</a>
+        <a href="/" style={{ display: 'block', textAlign: 'center', color: '#64748B', fontSize: 14 }}>
+          ← Seguir agregando
+        </a>
       </div>
     </div>
   )

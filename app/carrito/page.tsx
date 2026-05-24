@@ -332,6 +332,11 @@ export default function CarritoPage() {
               return <li key={i.det_id}><strong>{desc}</strong> — {motivo}</li>
             })}
           </ul>
+          {!todasPreAutorizadas && itemsConProblema.some(i => i.motivo === 'PRECIO_CAMBIO') && (
+            <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, backgroundColor: '#FEF3C7', padding: '8px 12px', borderRadius: 6, border: '1px solid #F59E0B' }}>
+              💡 Para continuar: presioná "⚠️ Ver Totales" en cada factura afectada para actualizar los precios. Luego podrás confirmar el pedido.
+            </p>
+          )}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={validar} disabled={validando}
               style={{
@@ -506,19 +511,26 @@ export default function CarritoPage() {
                                 min={0}
                                 max={95}
                                 step={5}
-                                value={facturaConfig.descuentos[i] || 0}
-                                onChange={async (e) => {
+                                defaultValue={facturaConfig.descuentos[i] || 0}
+                                onBlur={async (e) => {
                                   const val = parseInt(e.target.value, 10) || 0
                                   const rounded = Math.round(val / 5) * 5
+                                  const final = Math.max(0, Math.min(95, rounded))
+                                  e.target.value = String(final)
                                   const newDesc = [...facturaConfig.descuentos]
-                                  newDesc[i] = Math.max(0, Math.min(95, rounded))
+                                  newDesc[i] = final
                                   await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
                                     descuentos: newDesc,
                                     pre_autorizado: false
                                   })
                                 }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur()
+                                  }
+                                }}
                                 style={{ width: 52, padding: '5px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: 12, textAlign: 'center', backgroundColor: 'white' }}
-                                title={`Descuento ${i + 1} - Múltiplos de 5 (cascada)`}
+                                title={`Descuento ${i + 1} - Múltiplos de 5 (cascada). Presioná Enter para aplicar.`}
                               />
                             ))}
                           </div>

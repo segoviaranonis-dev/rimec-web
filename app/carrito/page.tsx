@@ -473,7 +473,24 @@ export default function CarritoPage() {
                       )}
                       {facturaConfig && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: facturaConfig.pre_autorizado ? '#F0FDF4' : '#FEF3C7', borderRadius: 8, border: facturaConfig.pre_autorizado ? '1px solid #10B981' : '1px solid #F59E0B' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Desc.:</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Lista:</span>
+                          <select
+                            value={facturaConfig.lista_precio_id}
+                            onChange={async (e) => {
+                              const newLista = parseInt(e.target.value, 10)
+                              await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
+                                lista_precio_id: newLista,
+                                pre_autorizado: false
+                              })
+                            }}
+                            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            <option value={1}>L1</option>
+                            <option value={2}>L2</option>
+                            <option value={3}>L3</option>
+                            <option value={4}>L4</option>
+                          </select>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginLeft: 8 }}>Desc.:</span>
                           {[0, 1, 2, 3].map(i => (
                             <input
                               key={i}

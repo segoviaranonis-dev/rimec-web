@@ -457,8 +457,8 @@ export default function CarritoPage() {
                     backgroundColor: marca.cantidad_facturas > 1 ? '#FAFAFA' : 'transparent',
                     marginLeft: marca.cantidad_facturas > 1 ? 12 : 0,
                   }}>
-                    {marca.cantidad_facturas > 1 && (
-                      <div style={{ marginBottom: 12 }}>
+                    <div style={{ marginBottom: 12 }}>
+                      {marca.cantidad_facturas > 1 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                           <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99, backgroundColor: AZUL, color: 'white', letterSpacing: 0.5 }}>
                             FI {idx + 1}/{marca.cantidad_facturas}
@@ -470,44 +470,44 @@ export default function CarritoPage() {
                             {fact.total_pares.toLocaleString('es-PY')} pares · Gs. {fact.total_monto.toLocaleString('es-PY')}
                           </span>
                         </div>
-                        {facturaConfig && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: facturaConfig.pre_autorizado ? '#F0FDF4' : '#FEF3C7', borderRadius: 8, border: facturaConfig.pre_autorizado ? '1px solid #10B981' : '1px solid #F59E0B' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Desc.:</span>
-                            {[0, 1, 2, 3].map(i => (
-                              <input
-                                key={i}
-                                type="number"
-                                min={0}
-                                max={99}
-                                value={facturaConfig.descuentos[i] || 0}
-                                onChange={async (e) => {
-                                  const val = parseFloat(e.target.value) || 0
-                                  const newDesc = [...facturaConfig.descuentos]
-                                  newDesc[i] = val
-                                  await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
-                                    descuentos: newDesc,
-                                    pre_autorizado: false
-                                  })
-                                }}
-                                style={{ width: 48, padding: '4px 6px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: 12, textAlign: 'center' }}
-                              />
-                            ))}
-                            {!facturaConfig.pre_autorizado ? (
-                              <button
-                                onClick={async () => {
-                                  await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, { pre_autorizado: true })
-                                }}
-                                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', backgroundColor: '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginLeft: 'auto' }}
-                              >
-                                ⚠️ Ver Totales
-                              </button>
-                            ) : (
-                              <span style={{ fontSize: 11, fontWeight: 700, color: VERDE, marginLeft: 'auto' }}>✅ Pre-autorizado</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      )}
+                      {facturaConfig && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: facturaConfig.pre_autorizado ? '#F0FDF4' : '#FEF3C7', borderRadius: 8, border: facturaConfig.pre_autorizado ? '1px solid #10B981' : '1px solid #F59E0B' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Desc.:</span>
+                          {[0, 1, 2, 3].map(i => (
+                            <input
+                              key={i}
+                              type="number"
+                              min={0}
+                              max={99}
+                              value={facturaConfig.descuentos[i] || 0}
+                              onChange={async (e) => {
+                                const val = parseFloat(e.target.value) || 0
+                                const newDesc = [...facturaConfig.descuentos]
+                                newDesc[i] = val
+                                await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
+                                  descuentos: newDesc,
+                                  pre_autorizado: false
+                                })
+                              }}
+                              style={{ width: 48, padding: '4px 6px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: 12, textAlign: 'center' }}
+                            />
+                          ))}
+                          {!facturaConfig.pre_autorizado ? (
+                            <button
+                              onClick={async () => {
+                                await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, { pre_autorizado: true })
+                              }}
+                              style={{ padding: '5px 12px', borderRadius: 6, border: 'none', backgroundColor: '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginLeft: 'auto' }}
+                            >
+                              ⚠️ Ver Totales
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: VERDE, marginLeft: 'auto' }}>✅ Pre-autorizado</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {fact.items.map((item) => (
                       <div key={item.det_id} style={{

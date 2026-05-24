@@ -1,0 +1,182 @@
+/**
+ * Cliente HTTP del carrito persistente en BD (MIG-080 → 083).
+ * Reemplaza el carrito localStorage. El frontend nunca habla directo con la tabla;
+ * pasa por los route handlers que validan sesión y usan SERVICE_ROLE_KEY.
+ */
+
+export interface FacturaConfig {
+  pp_id: number
+  marca: string
+  marca_id: number | null
+  caso: string
+  caso_id: number | null
+  lista_precio_id: number
+  descuentos: number[]
+  pre_autorizado: boolean
+  items_count: number
+}
+
+export interface DescuentosLote {
+  facturas: FacturaConfig[]
+}
+
+export interface CarritoSesionBD {
+  id_usuario: number
+  cliente_id: number
+  cliente_nombre: string
+  plazo_id: number | null
+  plazo_nombre: string | null
+  lista_precio_id: number
+  descuentos: number[]
+  descuentos_lote: DescuentosLote
+  iniciada_en: string
+  actualizada_en: string
+  validada_en: string | null
+  validacion_token: string | null
+  validacion_estado: 'OK' | 'DIFERENCIAS' | 'BLOQUEADO' | null
+}
+
+export interface CarritoItemBD {
+  id_usuario: number
+  det_id: number
+  pp_id: number
+  cantidad_cajas: number
+  precio_snapshot: number
+  caso_snapshot: string
+  caso_id_snapshot: number | null
+  marca_snapshot: string
+  marca_id_snapshot: number | null
+  agregado_en: string
+  actualizado_en: string
+}
+
+export interface CarritoGetResponse {
+  sesion: CarritoSesionBD | null
+  items: CarritoItemBD[]
+}
+
+export interface ValidarItemResult {
+  det_id: number
+  cajas_solicitadas: number
+  cajas_actuales: number
+  precio_carrito: number
+  precio_actual: number | null
+  ok: boolean
+  motivo: 'SIN_PRECIO' | 'STOCK_INSUFICIENTE' | 'PRECIO_CAMBIO' | null
+}
+
+export interface ValidarResponse {
+  success: boolean
+  estado?: 'OK' | 'DIFERENCIAS' | 'BLOQUEADO'
+  token?: string | null
+  expira_en?: string | null
+  items?: ValidarItemResult[]
+  detail?: string
+}
+
+async function asJson<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    let err = `HTTP ${res.status}`
+    try {
+      const data = await res.json()
+      err = data?.error ?? err
+    } catch {}
+    throw new Error(err)
+  }
+  return (await res.json()) as T
+}
+
+export async function carritoGet(): Promise<CarritoGetResponse> {
+  const res = await fetch('/api/carrito/sesion', { cache: 'no-store', credentials: 'include' })
+  if (res.status === 401) return { sesion: null, items: [] }
+  return asJson<CarritoGetResponse>(res)
+}
+
+export async function carritoPutSesion(payload: {
+  cliente_id: number
+  cliente_nombre: string
+  plazo_id?: number | null
+  plazo_nombre?: string | null
+  lista_precio_id?: number
+  descuentos?: number[]
+  descuentos_lote?: Record<string, number[]>
+}): Promise<CarritoSesionBD> {
+  const res = await fetch('/api/carrito/sesion', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  const data = await asJson<{ sesion: CarritoSesionBD }>(res)
+  return data.sesion
+}
+
+export async function carritoDeleteSesion(): Promise<void> {
+  const res = await fetch('/api/carrito/sesion', { method: 'DELETE', credentials: 'include' })
+  await asJson<{ ok: boolean }>(res)
+}
+
+export async function carritoUpsertItem(item: {
+  det_id: number
+  pp_id: number
+  cantidad_cajas: number
+  precio_snapshot: number
+  caso_snapshot: string
+  caso_id_snapshot?: number | null
+  marca_snapshot: string
+  marca_id_snapshot?: number | null
+}): Promise<CarritoItemBD> {
+  const res = await fetch('/api/carrito/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(item),
+  })
+  const data = await asJson<{ item: CarritoItemBD }>(res)
+  return data.item
+}
+
+export async function carritoPatchItem(det_id: number, cantidad_cajas: number): Promise<void> {
+  const res = await fetch(`/api/carrito/items/${det_id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ cantidad_cajas }),
+  })
+  await asJson<{ ok?: boolean; item?: CarritoItemBD }>(res)
+}
+
+export async function carritoDeleteItem(det_id: number): Promise<void> {
+  const res = await fetch(`/api/carrito/items/${det_id}`, { method: 'DELETE', credentials: 'include' })
+  await asJson<{ ok: boolean }>(res)
+}
+
+export async function carritoVaciarItems(): Promise<void> {
+  const res = await fetch('/api/carrito/items', { method: 'DELETE', credentials: 'include' })
+  await asJson<{ ok: boolean }>(res)
+}
+
+export async function carritoValidar(): Promise<ValidarResponse> {
+  const res = await fetch('/api/carrito/validar', { method: 'POST', credentials: 'include' })
+  return asJson<ValidarResponse>(res)
+}
+
+export async function carritoPatchFactura(
+  pp_id: number,
+  marca: string,
+  caso: string,
+  config: {
+    lista_precio_id?: number
+    descuentos?: number[]
+    pre_autorizado?: boolean
+  }
+): Promise<FacturaConfig> {
+  const res = await fetch('/api/carrito/factura', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ pp_id, marca, caso, ...config }),
+  })
+  const data = await asJson<{ factura: FacturaConfig }>(res)
+  return data.factura
+}

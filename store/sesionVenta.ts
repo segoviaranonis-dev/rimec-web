@@ -179,53 +179,58 @@ function paresCalc(item: ItemCarritoMeta, cajas: number): number {
 
 function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, listaId: ListaId): ItemCarrito | null {
   const base = meta.get(row.det_id)
-  // Extraer precios del JOIN con v_stock_rimec (MIG-083 fix)
+  // Extraer datos del JOIN con v_stock_rimec (MIG-083 fix: multi-dispositivo)
   const stockRow = row.v_stock_rimec?.[0]
   const precio_lpn = stockRow?.lpn ?? 0
   const precio_lpc02 = stockRow?.lpc02 ?? 0
   const precio_lpc03 = stockRow?.lpc03 ?? 0
   const precio_lpc04 = stockRow?.lpc04 ?? 0
 
-  if (!base) {
-    // Sin metadatos (catálogo) usamos lo que tenemos en BD.
+  // Si tenemos META_CACHE (localStorage), usarlo
+  if (base) {
+    const pares = paresCalc(base, row.cantidad_cajas)
     return {
-      det_id: row.det_id,
-      linea_codigo: '',
-      referencia_codigo: '',
-      material_code: '',
-      color_code: '',
-      color_nombre: '',
-      pp_id: row.pp_id,
-      pp_nro: '',
-      eta: null,
-      marca: row.marca_snapshot,
-      marca_id: row.marca_id_snapshot,
-      caso: row.caso_snapshot,
-      caso_id: row.caso_id_snapshot,
-      nombre: '',
-      gradas_fmt: '',
-      imagen_url: '',
+      ...base,
       lista_precio_id: listaId,
       precio_base: row.precio_snapshot,
       precio_lpn,
       precio_lpc02,
       precio_lpc03,
       precio_lpc04,
-      cant_caja: 0,
       cajas: row.cantidad_cajas,
-      pares: 0,
-      subtotal: row.precio_snapshot * 0,
+      pares,
+      subtotal: row.precio_snapshot * pares,
     }
   }
-  const pares = paresCalc(base, row.cantidad_cajas)
+
+  // SIN META_CACHE (otro dispositivo): usar datos de v_stock_rimec
+  const cant_caja = stockRow?.pares_por_caja ?? 0
+  const pares = row.cantidad_cajas * cant_caja
+
   return {
-    ...base,
+    det_id: row.det_id,
+    linea_codigo: stockRow?.linea_codigo ?? '',
+    referencia_codigo: stockRow?.referencia_codigo ?? '',
+    material_code: stockRow?.material_code ?? '',
+    color_code: stockRow?.color_code ?? '',
+    color_nombre: stockRow?.descp_color ?? '',
+    pp_id: row.pp_id,
+    pp_nro: stockRow?.pp_nro ?? '',
+    eta: stockRow?.eta ?? null,
+    marca: row.marca_snapshot,
+    marca_id: row.marca_id_snapshot,
+    caso: row.caso_snapshot,
+    caso_id: row.caso_id_snapshot,
+    nombre: stockRow?.nombre ?? '',
+    gradas_fmt: '',  // TODO: calcular desde grades_json si es necesario
+    imagen_url: stockRow?.imagen_url ?? '',
     lista_precio_id: listaId,
     precio_base: row.precio_snapshot,
     precio_lpn,
     precio_lpc02,
     precio_lpc03,
     precio_lpc04,
+    cant_caja,
     cajas: row.cantidad_cajas,
     pares,
     subtotal: row.precio_snapshot * pares,

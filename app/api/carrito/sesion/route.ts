@@ -31,15 +31,15 @@ export async function GET() {
 
   const items = itemsRes.data ?? []
 
-  // Si hay items, traer precios de v_stock_rimec
+  // Si hay items, traer precios Y metadata de v_stock_rimec (MIG-083 fix: multi-dispositivo)
   if (items.length > 0) {
     const detIds = items.map(i => i.det_id)
     const { data: stockData } = await sb
       .from('v_stock_rimec')
-      .select('det_id, lpn, lpc02, lpc03, lpc04')
+      .select('det_id, lpn, lpc02, lpc03, lpc04, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, eta, nombre, imagen_url, pares_por_caja')
       .in('det_id', detIds)
 
-    // Enriquecer items con precios
+    // Enriquecer items con precios Y metadata
     if (stockData) {
       const stockMap = new Map(stockData.map(s => [s.det_id, s]))
       items.forEach(item => {

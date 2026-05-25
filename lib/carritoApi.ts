@@ -54,6 +54,17 @@ export interface CarritoItemBD {
     lpc02: number | null
     lpc03: number | null
     lpc04: number | null
+    // METADATA para sesiones multi-dispositivo (MIG-083 fix)
+    linea_codigo: string
+    referencia_codigo: string
+    material_code: string
+    color_code: string
+    descp_color: string
+    pp_nro: string
+    eta: string | null
+    nombre: string
+    imagen_url: string | null
+    pares_por_caja: number
   }>
 }
 

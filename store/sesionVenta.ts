@@ -62,6 +62,11 @@ export interface ItemCarrito {
   imagen_url:      string
   lista_precio_id: ListaId
   precio_base:     number
+  // Precios directos de v_stock_rimec (MIG-083 fix)
+  precio_lpn:      number
+  precio_lpc02:    number
+  precio_lpc03:    number
+  precio_lpc04:    number
   cant_caja:       number
   cajas:           number
   pares:           number
@@ -174,6 +179,13 @@ function paresCalc(item: ItemCarritoMeta, cajas: number): number {
 
 function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, listaId: ListaId): ItemCarrito | null {
   const base = meta.get(row.det_id)
+  // Extraer precios del JOIN con v_stock_rimec (MIG-083 fix)
+  const stockRow = row.v_stock_rimec?.[0]
+  const precio_lpn = stockRow?.lpn ?? 0
+  const precio_lpc02 = stockRow?.lpc02 ?? 0
+  const precio_lpc03 = stockRow?.lpc03 ?? 0
+  const precio_lpc04 = stockRow?.lpc04 ?? 0
+
   if (!base) {
     // Sin metadatos (catálogo) usamos lo que tenemos en BD.
     return {
@@ -195,6 +207,10 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
       imagen_url: '',
       lista_precio_id: listaId,
       precio_base: row.precio_snapshot,
+      precio_lpn,
+      precio_lpc02,
+      precio_lpc03,
+      precio_lpc04,
       cant_caja: 0,
       cajas: row.cantidad_cajas,
       pares: 0,
@@ -206,6 +222,10 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     ...base,
     lista_precio_id: listaId,
     precio_base: row.precio_snapshot,
+    precio_lpn,
+    precio_lpc02,
+    precio_lpc03,
+    precio_lpc04,
     cajas: row.cantidad_cajas,
     pares,
     subtotal: row.precio_snapshot * pares,
@@ -596,17 +616,20 @@ export function fragmentarCarrito(
           f => f.pp_id === ppId && f.marca === marca && f.caso === caso
         )
         const descFactura = facturaConfig?.descuentos ?? descTotal
-
-        console.log('[fragmentarCarrito] PP:', ppId, 'Marca:', marca, 'Caso:', caso, {
-          facturaConfig,
-          descFactura,
-          descTotal,
-          facturasConfigLength: facturasConfig?.length
-        })
+        const listaFactura = facturaConfig?.lista_precio_id ?? 1
 
         const detalle: ItemFragmentado[] = cItems.map((item) => {
-          const precioNeto = calcularPrecioNeto(item.precio_base, descFactura)
+          // MIG-083 fix: precio base viene DIRECTO de v_stock_rimec según lista de factura
+          const precioBaseLista =
+            listaFactura === 1 ? item.precio_lpn :
+            listaFactura === 2 ? item.precio_lpc02 :
+            listaFactura === 3 ? item.precio_lpc03 :
+            listaFactura === 4 ? item.precio_lpc04 :
+            item.precio_lpn
+
+          const precioNeto = calcularPrecioNeto(precioBaseLista, descFactura)
           const subtotal = precioNeto * item.pares
+
           return {
             det_id: item.det_id,
             linea_codigo: item.linea_codigo,
@@ -616,7 +639,7 @@ export function fragmentarCarrito(
             imagen_url: item.imagen_url,
             cajas: item.cajas,
             pares: item.pares,
-            precio_base: item.precio_base,
+            precio_base: precioBaseLista,
             precio_neto: precioNeto,
             subtotal,
           }

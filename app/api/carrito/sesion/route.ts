@@ -19,6 +19,8 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'no-session' }, { status: 401 })
 
   const sb = getSupabaseAdmin()
+
+  // Traer sesión e items del carrito
   const [sesionRes, itemsRes] = await Promise.all([
     sb.from('carrito_sesion').select('*').eq('id_usuario', session.id_usuario).maybeSingle(),
     sb.from('carrito_item').select('*').eq('id_usuario', session.id_usuario),
@@ -27,9 +29,31 @@ export async function GET() {
   if (sesionRes.error) return NextResponse.json({ error: sesionRes.error.message }, { status: 500 })
   if (itemsRes.error) return NextResponse.json({ error: itemsRes.error.message }, { status: 500 })
 
+  const items = itemsRes.data ?? []
+
+  // Si hay items, traer precios de v_stock_rimec
+  if (items.length > 0) {
+    const detIds = items.map(i => i.det_id)
+    const { data: stockData } = await sb
+      .from('v_stock_rimec')
+      .select('det_id, lpn, lpc02, lpc03, lpc04')
+      .in('det_id', detIds)
+
+    // Enriquecer items con precios
+    if (stockData) {
+      const stockMap = new Map(stockData.map(s => [s.det_id, s]))
+      items.forEach(item => {
+        const stock = stockMap.get(item.det_id)
+        if (stock) {
+          item.v_stock_rimec = [stock]
+        }
+      })
+    }
+  }
+
   return NextResponse.json({
     sesion: sesionRes.data,
-    items: itemsRes.data ?? [],
+    items,
   })
 }
 

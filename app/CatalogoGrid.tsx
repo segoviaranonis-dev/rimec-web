@@ -481,6 +481,10 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       imagen_url:         v.imagen_url,
       lista_precio_id:   listaPrecioId,
       precio_base:        precioVal as number,
+      precio_lpn:         v.lpn ?? 0,
+      precio_lpc02:       v.lpc02 ?? 0,
+      precio_lpc03:       v.lpc03 ?? 0,
+      precio_lpc04:       v.lpc04 ?? 0,
       cant_caja:          v.pares_por_caja,
     })
   }

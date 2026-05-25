@@ -48,6 +48,13 @@ export interface CarritoItemBD {
   marca_id_snapshot: number | null
   agregado_en: string
   actualizado_en: string
+  v_stock_rimec?: Array<{
+    det_id: number
+    lpn: number | null
+    lpc02: number | null
+    lpc03: number | null
+    lpc04: number | null
+  }>
 }
 
 export interface CarritoGetResponse {

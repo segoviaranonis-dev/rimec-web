@@ -64,26 +64,51 @@ export async function GET(
       )
     }
 
-    // Obtener datos adicionales de la FI
-    const { data: fiCompleta } = await supabase
+    // Obtener datos de la FI (sin JOINs complejos)
+    const { data: fiCompleta, error: fiError } = await supabase
       .from('factura_interna')
-      .select(`
-        *,
-        cliente:cliente_v2!factura_interna_cliente_id_fkey(descp_cliente),
-        vendedor:usuario_v2!factura_interna_vendedor_id_fkey(nombre),
-        plazo:plazo_venta(nombre),
-        pp:pedido_proveedor!factura_interna_pp_id_fkey(numero_registro, numero_proforma),
-        quincena:quincena_arribo!factura_interna_quincena_arribo_id_fkey(descripcion)
-      `)
+      .select('*')
       .eq('id', fiId)
       .single()
 
-    if (!fiCompleta) {
+    if (fiError || !fiCompleta) {
+      console.error('[PDF] Error obteniendo FI:', fiError)
       return NextResponse.json(
         { error: 'Error obteniendo datos de factura' },
         { status: 500 }
       )
     }
+
+    // Obtener datos relacionados (de forma segura)
+    const { data: cliente } = await supabase
+      .from('cliente_v2')
+      .select('descp_cliente')
+      .eq('id_cliente', fiCompleta.cliente_id)
+      .single()
+
+    const { data: vendedor } = await supabase
+      .from('usuario_v2')
+      .select('nombre')
+      .eq('id_usuario', fiCompleta.vendedor_id)
+      .single()
+
+    const { data: plazo } = await supabase
+      .from('plazo_venta')
+      .select('nombre')
+      .eq('id_plazo', fiCompleta.plazo_id)
+      .single()
+
+    const { data: pp } = await supabase
+      .from('pedido_proveedor')
+      .select('numero_registro, numero_proforma')
+      .eq('id', fiCompleta.pp_id)
+      .single()
+
+    const { data: quincena } = await supabase
+      .from('quincena_arribo')
+      .select('descripcion')
+      .eq('id', fiCompleta.quincena_arribo_id)
+      .single()
 
     // Obtener items de la FI
     const { data: items } = await supabase
@@ -128,14 +153,14 @@ export async function GET(
     // Preparar datos de la FI
     const fiData = {
       nro_factura: fiCompleta.nro_factura,
-      cliente_nombre: (fiCompleta.cliente as any)?.descp_cliente || 'Sin cliente',
-      vendedor_nombre: (fiCompleta.vendedor as any)?.nombre || 'Sin vendedor',
-      quincena_llegada: (fiCompleta.quincena as any)?.descripcion || 'A confirmar',
-      pp_nro: (fiCompleta.pp as any)?.numero_registro || 'N/A',
-      proforma: (fiCompleta.pp as any)?.numero_proforma,
+      cliente_nombre: cliente?.descp_cliente || 'Sin cliente',
+      vendedor_nombre: vendedor?.nombre || 'Sin vendedor',
+      quincena_llegada: quincena?.descripcion || 'A confirmar',
+      pp_nro: pp?.numero_registro || 'N/A',
+      proforma: pp?.numero_proforma,
       created_at: fiCompleta.created_at,
       lista_precio: `Lista ${fiCompleta.lista_precio_id}`,
-      plazo: (fiCompleta.plazo as any)?.nombre || 'N/A',
+      plazo: plazo?.nombre || 'N/A',
       descuento_1: fiCompleta.descuento_1,
       descuento_2: fiCompleta.descuento_2,
       descuento_3: fiCompleta.descuento_3,

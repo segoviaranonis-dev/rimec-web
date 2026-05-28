@@ -216,8 +216,8 @@ export async function GET(
       )
     }
 
-    // Devolver PDF
-    return new NextResponse(pdfBuffer, {
+    // Devolver PDF (convertir Buffer a Uint8Array para Next.js 16)
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

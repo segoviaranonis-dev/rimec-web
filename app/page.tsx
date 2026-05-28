@@ -143,7 +143,7 @@ export default async function HomePage({ searchParams }: {
   ).sort((a, b) => a.id - b.id)
 
   const pps = Array.from(
-    new Map(rows.map(r => [r.pp_nro, { nro: r.pp_nro, eta: r.eta }])).values()
+    new Map(rows.map(r => [r.pp_nro, { nro: r.pp_nro }])).values()
   ).sort((a, b) => a.nro.localeCompare(b.nro))
 
   const totalPares = rows.reduce((s, r) => s + r.cantidad_pares, 0)

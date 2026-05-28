@@ -167,27 +167,41 @@ export default function CarritoPage() {
           total_pares: Number(lote.total_pares) || 0,
           total_monto: Number(lote.total_monto) || 0,
           facturas: lote.marcas.flatMap((m) =>
-            m.facturas.map((f) => ({
-              marca: String(m.marca || ''),
-              marca_id: m.marca_id,
-              caso: String(f.caso || ''),
-              caso_id: f.caso_id,
-              total_pares: Number(f.total_pares) || 0,
-              total_monto: Number(f.total_monto) || 0,
-              items: f.items.map((item) => ({
-                det_id: Number(item.det_id),
-                linea_codigo: String(item.linea_codigo || ''),
-                ref_codigo:   String(item.ref_codigo || ''),
-                color_nombre: String(item.color_nombre || ''),
-                gradas_fmt:   String(item.gradas_fmt || ''),
-                imagen_url:   String(item.imagen_url || ''),
-                cajas: Number(item.cajas) || 0,
-                pares: Number(item.pares) || 0,
-                precio_base: Number(item.precio_base) || 0,
-                precio_neto: Number(item.precio_neto) || 0,
-                subtotal:    Number(item.subtotal) || 0,
-              })),
-            })),
+            m.facturas.map((f) => {
+              // Buscar configuración de descuentos específicos para esta factura
+              const facturaConfig = facturas.find(
+                fc => fc.pp_id === lote.pp_id && fc.marca === m.marca && fc.caso === f.caso
+              )
+              const descFactura = facturaConfig?.descuentos ?? [...descuentos, ...(descuentosPorLote[lote.pp_id] ?? [])]
+              const listaFactura = facturaConfig?.lista_precio_id ?? listaPrecioId
+
+              return {
+                marca: String(m.marca || ''),
+                marca_id: m.marca_id,
+                caso: String(f.caso || ''),
+                caso_id: f.caso_id,
+                lista_precio_id: listaFactura,
+                descuento_1: Number(descFactura[0]) || 0,
+                descuento_2: Number(descFactura[1]) || 0,
+                descuento_3: Number(descFactura[2]) || 0,
+                descuento_4: Number(descFactura[3]) || 0,
+                total_pares: Number(f.total_pares) || 0,
+                total_monto: Number(f.total_monto) || 0,
+                items: f.items.map((item) => ({
+                  det_id: Number(item.det_id),
+                  linea_codigo: String(item.linea_codigo || ''),
+                  ref_codigo:   String(item.ref_codigo || ''),
+                  color_nombre: String(item.color_nombre || ''),
+                  gradas_fmt:   String(item.gradas_fmt || ''),
+                  imagen_url:   String(item.imagen_url || ''),
+                  cajas: Number(item.cajas) || 0,
+                  pares: Number(item.pares) || 0,
+                  precio_base: Number(item.precio_base) || 0,
+                  precio_neto: Number(item.precio_neto) || 0,
+                  subtotal:    Number(item.subtotal) || 0,
+                })),
+              }
+            }),
           ),
         })),
       }

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import NotificationBell from '@/components/NotificationBell'
 
 export interface FilterItem {
   id: number
@@ -282,12 +283,18 @@ export default function Header({ data }: { data: HeaderData }) {
           {/* Acciones */}
           <div className="flex items-center gap-4 text-sm font-medium tracking-wide text-gray-800">
             <SearchBar />
+            {user && <NotificationBell />}
             <Link href="/carrito" className="hover:text-[#0EA5E9] transition-colors ml-2">
               Carrito
             </Link>
             <Link href="/pedidos" className="hover:text-[#0EA5E9] transition-colors">
               Pedidos
             </Link>
+            {user && (
+              <Link href="/mis-facturas" className="hover:text-[#0EA5E9] transition-colors">
+                Mis Facturas
+              </Link>
+            )}
             <Link
               href="/estadisticas"
               className="hover:text-[#0EA5E9] transition-colors font-semibold text-[#0EA5E9]"

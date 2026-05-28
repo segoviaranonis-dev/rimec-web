@@ -162,8 +162,8 @@ export default function CarritoPage() {
         lotes: lotes.map((lote) => ({
           pp_id:  Number(lote.pp_id),
           pp_nro: String(lote.pp_nro || ''),
+          proforma: String(lote.proforma || ''),
           quincena: String(lote.quincena || ''),
-          eta: lote.eta ? String(lote.eta) : null,
           total_pares: Number(lote.total_pares) || 0,
           total_monto: Number(lote.total_monto) || 0,
           facturas: lote.marcas.flatMap((m) =>
@@ -401,7 +401,7 @@ export default function CarritoPage() {
               <div>
                 <p style={{ fontWeight: 900, fontSize: 17, color: '#1E293B' }}>📦 {lote.quincena}</p>
                 <p style={{ fontSize: 13, color: '#64748B' }}>
-                  {lote.pp_nro} · {lote.total_pares.toLocaleString('es-PY')} pares
+                  {lote.pp_nro} ({lote.proforma}) · {lote.total_pares.toLocaleString('es-PY')} pares
                   &nbsp;·&nbsp;Gs. {lote.total_monto.toLocaleString('es-PY')}
                 </p>
               </div>
@@ -569,7 +569,7 @@ export default function CarritoPage() {
                               color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
                             }}>−</button>
                           <input
-                            type="number" min={0} value={item.cajas}
+                            type="number" min={0} max={item.cajas_disponibles} value={item.cajas}
                             onChange={(e) => {
                               const v = parseInt(e.target.value, 10)
                               void setCajas(item.det_id, Number.isFinite(v) ? v : 0)
@@ -582,11 +582,16 @@ export default function CarritoPage() {
                             }}
                           />
                           <button type="button" aria-label="Sumar caja"
+                            disabled={item.cajas >= item.cajas_disponibles}
                             onClick={() => void setCajas(item.det_id, item.cajas + 1)}
                             style={{
                               width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
-                              background: '#F8FAFC', cursor: 'pointer', fontWeight: 700,
-                              color: '#475569', fontSize: 16, lineHeight: 1, padding: 0,
+                              background: item.cajas >= item.cajas_disponibles ? '#E2E8F0' : '#F8FAFC',
+                              cursor: item.cajas >= item.cajas_disponibles ? 'not-allowed' : 'pointer',
+                              fontWeight: 700,
+                              color: item.cajas >= item.cajas_disponibles ? '#94A3B8' : '#475569',
+                              fontSize: 16, lineHeight: 1, padding: 0,
+                              opacity: item.cajas >= item.cajas_disponibles ? 0.5 : 1,
                             }}>+</button>
                           <span style={{ marginLeft: 4, fontSize: 12 }}>caj · {item.pares} p</span>
                         </span>

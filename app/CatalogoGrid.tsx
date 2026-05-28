@@ -349,11 +349,22 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
               </div>
             </div>
 
-            {/* ETA */}
-            <ChipEta label={p.origen_label} shell={shell} />
+            {/* Dato duro visible abajo - chip solo indica cantidad de colores */}
           </div>
 
-          <p className="text-xs font-bold uppercase truncate" style={{ color: '#1e293b' }}>{p.nombre}</p>
+          {/* Dato duro con mismo estilo que chip ETA */}
+          <span
+            className="inline-flex items-center gap-1 text-sm font-extrabold leading-none px-3 py-1.5 rounded-lg shadow-sm mb-1"
+            style={{
+              color: v.quincena_desc ? shell.accentColor : '#94A3B8',
+              backgroundColor: v.quincena_desc ? shell.shellBackground : '#F1F5F9',
+              border: v.quincena_desc ? shell.shellBorder : '1px solid #E2E8F0',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+            }}
+          >
+            {v.quincena_desc ? `📦 ${v.quincena_desc}` : 'NULL'}
+          </span>
+
           <p className="text-[10px] text-slate-400 truncate mb-2">
             {p.descp_material} · {v.descp_color}
           </p>
@@ -471,7 +482,8 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       color_nombre:      v.descp_color,
       pp_id:             v.pp_id,
       pp_nro:            v.pp_nro,
-      eta:                v.eta,
+      proforma:          v.proforma,
+      quincena_desc:     v.quincena_desc,
       marca:             p.descp_marca ?? '',
       marca_id:          p.marca_id ?? null,
       caso:              p.descp_caso ?? '',
@@ -486,6 +498,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       precio_lpc03:       v.lpc03 ?? 0,
       precio_lpc04:       v.lpc04 ?? 0,
       cant_caja:          v.pares_por_caja,
+      cajas_disponibles:  maxCajas,
     })
   }
 
@@ -538,16 +551,23 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
               </div>
             </div>
 
-            {/* ETA — nueva ubicación pedida por el Director */}
-            <ChipEta label={p.origen_label} shell={shell} />
+            {/* Dato duro visible abajo - chip solo indica cantidad de colores */}
           </div>
 
-          {/* Fila 4: Descripción */}
-          <p className="text-[10px] font-bold uppercase truncate" style={{ color: '#1e293b' }}>
-            {p.nombre}
-          </p>
+          {/* Dato duro con mismo estilo que chip ETA */}
+          <span
+            className="inline-flex items-center gap-1 text-[13px] sm:text-sm font-extrabold leading-none px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg shadow-sm mb-1"
+            style={{
+              color: v.quincena_desc ? shell.accentColor : '#94A3B8',
+              backgroundColor: v.quincena_desc ? shell.shellBackground : '#F1F5F9',
+              border: v.quincena_desc ? shell.shellBorder : '1px solid #E2E8F0',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+            }}
+          >
+            {v.quincena_desc ? `📦 ${v.quincena_desc}` : 'NULL'}
+          </span>
 
-          {/* Fila 5: Material y Color */}
+          {/* Material y Color */}
           <p className="text-[10px] text-slate-400 truncate mb-1">
             {p.descp_material} · {v.descp_color}
           </p>

@@ -117,7 +117,9 @@ export function buildCardKey(skuId: string, origen: Pick<OrigenMetadatos, 'tipo'
 type StockOrigenRow = {
   pp_id?: number | null
   pp_nro?: string | null
-  eta?: string | null
+  proforma?: string | null                 // Matrimonio con pp_nro
+  quincena_arribo_id?: number | null       // Dato duro (FK)
+  quincena_desc?: string | null            // Descripción legible
   /** Futuro: id depósito / flag stock físico en vista */
   origen_tipo?: string | null
   deposito_id?: string | number | null
@@ -150,22 +152,35 @@ export function deriveOrigenFromStockRow(row: StockOrigenRow): OrigenMetadatos {
     }
   }
 
-  const etaIso = row.eta?.slice(0, 10) ?? ''
+  // Cable de acero: dato duro (quincena) es OBLIGATORIO
+  const quincenaId = row.quincena_arribo_id
+  const quincenaDesc = row.quincena_desc
   const ppId = row.pp_id != null ? Number(row.pp_id) : 0
-  const referenciaId = etaIso || (ppId > 0 ? `pp:${ppId}` : 'sin-eta')
-  const label = etaIso
-    ? `🚢 ${etaLabelDdMm(etaIso)}`
-    : row.pp_nro
-      ? `PP ${row.pp_nro}`
-      : ppId > 0
-        ? `PP #${ppId}`
-        : 'Tránsito'
+
+  // Si hay quincena definida, usarla como referencia (dato duro)
+  if (quincenaId && quincenaDesc) {
+    return {
+      tipo: 'TRÁNSITO_PP',
+      referenciaId: `q:${quincenaId}`,
+      label: `${quincenaDesc}`,
+      shell: paletaQuincena(`${quincenaId}`),
+    }
+  }
+
+  // Sin quincena: PP sin migrar o incompleto
+  const referenciaId = ppId > 0 ? `pp:${ppId}` : 'sin-quincena'
+  const proforma = row.proforma ? ` (${row.proforma})` : ''
+  const label = row.pp_nro
+    ? `${row.pp_nro}${proforma} - SIN QUINCENA`
+    : ppId > 0
+      ? `PP #${ppId}${proforma} - SIN QUINCENA`
+      : 'SIN QUINCENA ASIGNADA'
 
   return {
     tipo: 'TRÁNSITO_PP',
     referenciaId,
     label,
-    shell: etaIso ? paletaQuincena(etaIso) : PALETAS_QUINCENA[0]!,
+    shell: PALETAS_QUINCENA[0]!,
   }
 }
 

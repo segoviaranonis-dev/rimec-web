@@ -35,6 +35,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'sesión de venta no activa' }, { status: 409 })
   }
 
+  // Validar stock disponible
+  const { data: stockData } = await sb
+    .from('v_stock_rimec')
+    .select('det_id, cajas_disponibles')
+    .eq('det_id', body.det_id)
+    .single()
+
+  if (!stockData) {
+    return NextResponse.json({ error: 'producto no encontrado' }, { status: 404 })
+  }
+
+  const cajasDisponibles = stockData.cajas_disponibles ?? 0
+  if (body.cantidad_cajas > cajasDisponibles) {
+    return NextResponse.json({
+      error: `stock insuficiente (disponible: ${cajasDisponibles} cajas)`
+    }, { status: 400 })
+  }
+
   const { data, error } = await sb
     .from('carrito_item')
     .upsert(

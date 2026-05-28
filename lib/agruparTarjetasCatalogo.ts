@@ -19,7 +19,8 @@ export interface RimecVariante {
   det_id: number
   pp_id: number
   pp_nro: string
-  eta: string | null
+  proforma: string                      // Matrimonio con pp_nro
+  quincena_desc: string | null          // Dato duro - mostrar en tarjeta
   material_code: string
   color_code: string
   descp_color: string
@@ -118,7 +119,8 @@ export function agruparTarjetasCatalogo(
       det_id: item.det_id,
       pp_id: item.pp_id,
       pp_nro: item.pp_nro,
-      eta: item.eta,
+      proforma: item.proforma,
+      quincena_desc: item.quincena_desc,  // Dato duro
       material_code: item.material_code,
       color_code: item.color_code,
       descp_color: item.descp_color,

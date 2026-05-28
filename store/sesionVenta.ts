@@ -1,7 +1,6 @@
 'use client'
 
 import { create } from 'zustand'
-import { formatearQuincena } from '@/lib/fecha'
 import {
   carritoDeleteItem,
   carritoDeleteSesion,
@@ -12,6 +11,7 @@ import {
   carritoRecalcularFactura,
   carritoUpsertItem,
   carritoVaciarItems,
+  StockInsuficienteError,
   type CarritoItemBD,
   type CarritoSesionBD,
   type FacturaConfig,
@@ -52,7 +52,8 @@ export interface ItemCarrito {
   color_nombre:    string
   pp_id:           number
   pp_nro:          string
-  eta:             string | null
+  proforma:        string         // Matrimonio con pp_nro
+  quincena_desc:   string | null  // Dato duro (reemplaza eta)
   marca:           string
   marca_id:        number | null
   caso:            string
@@ -71,6 +72,7 @@ export interface ItemCarrito {
   cajas:           number
   pares:           number
   subtotal:        number
+  cajas_disponibles: number  // Stock disponible para validación del botón +
 }
 
 export type ItemCarritoMeta = Omit<ItemCarrito, 'cajas' | 'pares' | 'subtotal'>
@@ -200,6 +202,7 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
       cajas: row.cantidad_cajas,
       pares,
       subtotal: row.precio_snapshot * pares,
+      cajas_disponibles: stockRow?.cajas_disponibles ?? 0,
     }
   }
 
@@ -216,7 +219,8 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     color_nombre: stockRow?.descp_color ?? '',
     pp_id: row.pp_id,
     pp_nro: stockRow?.pp_nro ?? '',
-    eta: stockRow?.eta ?? null,
+    proforma: stockRow?.proforma ?? '',
+    quincena_desc: stockRow?.quincena_desc ?? null,
     marca: row.marca_snapshot,
     marca_id: row.marca_id_snapshot,
     caso: row.caso_snapshot,
@@ -234,6 +238,7 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     cajas: row.cantidad_cajas,
     pares,
     subtotal: row.precio_snapshot * pares,
+    cajas_disponibles: stockRow?.cajas_disponibles ?? 0,
   }
 }
 
@@ -503,18 +508,30 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     if (!actual) return
     const safe = Math.max(0, Math.floor(Number.isFinite(cajas) ? cajas : 0))
     if (safe === 0) {
-      await carritoPatchItem(det_id, 0)
-      const next = { ...s.carrito }
-      delete next[key]
-      set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
+      try {
+        await carritoPatchItem(det_id, 0)
+        const next = { ...s.carrito }
+        delete next[key]
+        set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
+      } catch (err) {
+        console.error('[sesionVenta.setCajas]', err)
+      }
       return
     }
-    await carritoPatchItem(det_id, safe)
-    const pares = actual.cant_caja * safe
-    set((st) => ({
-      carrito: { ...st.carrito, [key]: { ...actual, cajas: safe, pares, subtotal: actual.precio_base * pares } },
-      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
-    }))
+    try {
+      await carritoPatchItem(det_id, safe)
+      const pares = actual.cant_caja * safe
+      set((st) => ({
+        carrito: { ...st.carrito, [key]: { ...actual, cajas: safe, pares, subtotal: actual.precio_base * pares } },
+        validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+      }))
+    } catch (err) {
+      if (err instanceof StockInsuficienteError) {
+        // Validación de stock - no actualizar estado, silencioso
+        return
+      }
+      console.error('[sesionVenta.setCajas]', err)
+    }
   },
 
   eliminarItem: async (det_id) => {
@@ -551,6 +568,7 @@ export interface ItemFragmentado {
   precio_base:   number
   precio_neto:   number
   subtotal:      number
+  cajas_disponibles: number
 }
 
 export interface FacturaPrevisible {
@@ -574,8 +592,8 @@ export interface MarcaFragmentada {
 export interface LoteFragmentado {
   pp_id:          number
   pp_nro:         string
+  proforma:       string         // Matrimonio con pp_nro
   quincena:       string
-  eta:            string | null
   descuentos_lote: number[]
   total_pares:    number
   total_monto:    number
@@ -647,6 +665,7 @@ export function fragmentarCarrito(
             precio_base: precioBaseLista,
             precio_neto: precioNeto,
             subtotal,
+            cajas_disponibles: item.cajas_disponibles,
           }
         })
         return {
@@ -673,8 +692,8 @@ export function fragmentarCarrito(
     return {
       pp_id: ppId,
       pp_nro: pp.pp_nro,
-      quincena: formatearQuincena(pp.eta),
-      eta: pp.eta,
+      proforma: pp.proforma,
+      quincena: pp.quincena_desc ?? 'Sin quincena asignada',
       descuentos_lote: descLote,
       total_pares: marcas.reduce((s, m) => s + m.total_pares, 0),
       total_monto: marcas.reduce((s, m) => s + m.total_monto, 0),

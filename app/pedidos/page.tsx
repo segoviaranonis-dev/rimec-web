@@ -20,6 +20,7 @@ interface FacturaPayload {
 interface LotePayload {
   pp_id?: number
   pp_nro?: string
+  proforma?: string
   quincena?: string
   eta?: string | null
   total_pares?: number
@@ -412,7 +413,7 @@ function PedidosContent() {
                                 borderRadius: 8, fontSize: 12, color: '#475569' }}>
                     {lotes.map((lt, i) => (
                       <div key={i} style={{ marginBottom: 6 }}>
-                        PP {lt.pp_id} · {lt.pp_nro} ·{' '}
+                        {lt.pp_nro}{lt.proforma ? ` (${lt.proforma})` : ''} ·{' '}
                         {(lt.facturas?.length ?? 0)} factura(s) prevista(s) ·{' '}
                         {fmtPares(lt.total_pares)} pares
                       </div>

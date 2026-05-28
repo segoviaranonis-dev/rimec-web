@@ -4,6 +4,13 @@
  * pasa por los route handlers que validan sesión y usan SERVICE_ROLE_KEY.
  */
 
+export class StockInsuficienteError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'StockInsuficienteError'
+  }
+}
+
 export interface FacturaConfig {
   pp_id: number
   marca: string
@@ -54,6 +61,7 @@ export interface CarritoItemBD {
     lpc02: number | null
     lpc03: number | null
     lpc04: number | null
+    cajas_disponibles: number | null  // Stock disponible para validación
     // METADATA para sesiones multi-dispositivo (MIG-083 fix)
     linea_codigo: string
     referencia_codigo: string
@@ -61,7 +69,8 @@ export interface CarritoItemBD {
     color_code: string
     descp_color: string
     pp_nro: string
-    eta: string | null
+    proforma: string                  // Matrimonio con pp_nro
+    quincena_desc: string | null  // Dato duro (reemplaza eta)
     nombre: string
     imagen_url: string | null
     pares_por_caja: number
@@ -161,6 +170,19 @@ export async function carritoPatchItem(det_id: number, cantidad_cajas: number): 
     credentials: 'include',
     body: JSON.stringify({ cantidad_cajas }),
   })
+
+  // Si es error de validación de stock, lanzar error específico
+  if (res.status === 400) {
+    try {
+      const data = await res.json()
+      if (data.error?.includes('stock insuficiente')) {
+        throw new StockInsuficienteError(data.error)
+      }
+    } catch (err) {
+      if (err instanceof StockInsuficienteError) throw err
+    }
+  }
+
   await asJson<{ ok?: boolean; item?: CarritoItemBD }>(res)
 }
 
@@ -209,6 +231,19 @@ export async function carritoRecalcularFactura(
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ pp_id, marca, caso }),
+  })
+  return asJson(res)
+}
+
+export async function carritoLimpiar(): Promise<{
+  ok: boolean
+  ajustados: number
+  eliminados: number
+  detalle: { ajustados: number[]; eliminados: number[] }
+}> {
+  const res = await fetch('/api/carrito/limpiar', {
+    method: 'POST',
+    credentials: 'include',
   })
   return asJson(res)
 }

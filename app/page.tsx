@@ -14,7 +14,8 @@ export interface StockRow {
   pp_id:                number
   pp_nro:               string
   proforma:             string
-  eta:                  string | null
+  quincena_arribo_id:   number | null                   // Dato duro (FK)
+  quincena_desc:        string | null                   // Descripción legible
   marca_id:             number
   descp_marca:          string
   caso_id:              number | null
@@ -54,14 +55,8 @@ export interface StockRow {
 
 const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/productos`
 
-/** Formatea fecha ISO YYYY-MM-DD a DD-MM para display. */
-function formatearEtaLabel(isoFecha: string): string {
-  const [, mes, dia] = isoFecha.split('-')
-  return `${dia}-${mes}`
-}
-
 export default async function HomePage({ searchParams }: {
-  searchParams: Promise<{ grupo_estilo_id?: string; marca_id?: string; linea_ids?: string; tipo_ids?: string; colores?: string; eta_fechas?: string }>
+  searchParams: Promise<{ grupo_estilo_id?: string; marca_id?: string; linea_ids?: string; tipo_ids?: string; colores?: string; quincenas?: string }>
 }) {
   const params = await searchParams
   const estiloId  = params.grupo_estilo_id ?? ''
@@ -69,7 +64,7 @@ export default async function HomePage({ searchParams }: {
   const lineasIds = params.linea_ids ? params.linea_ids.split(',').filter(Boolean).map(Number) : []
   const tiposIds  = params.tipo_ids  ? params.tipo_ids.split(',').filter(Boolean).map(Number) : []
   const coloresFiltro = params.colores ? params.colores.split(',').filter(Boolean) : []
-  const etasSel = params.eta_fechas?.split(',').filter(Boolean) ?? []
+  const quincenasSel = params.quincenas?.split(',').filter(Boolean).map(Number) ?? []
 
   // Solo filas con stock vendible: evita descargar decenas de miles de filas agotadas.
   const { data, error } = await supabase
@@ -121,11 +116,8 @@ export default async function HomePage({ searchParams }: {
   if (coloresFiltro.length > 0) {
     rows = rows.filter(r => coloresFiltro.includes(r.descp_color))
   }
-  if (etasSel.length > 0) {
-    rows = rows.filter(r => {
-      const etaFecha = r.eta?.slice(0, 10)
-      return etaFecha && etasSel.includes(etaFecha)
-    })
+  if (quincenasSel.length > 0) {
+    rows = rows.filter(r => r.quincena_arribo_id && quincenasSel.includes(r.quincena_arribo_id))
   }
 
   const productos = agruparTarjetasCatalogo(rows, BUCKET, cajasDisponiblesDeFila)
@@ -141,19 +133,14 @@ export default async function HomePage({ searchParams }: {
     )
   ).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
 
-  // Opciones ETA: fechas únicas ordenadas cronológicamente
-  const todasEtas = Array.from(
-    new Set(
+  // Opciones de Llegada: quincenas únicas ordenadas
+  const todasQuincenas = Array.from(
+    new Map(
       allRows
-        .map(r => r.eta?.slice(0, 10))
-        .filter((e): e is string => !!e)
-    )
-  )
-    .sort()
-    .map(isoFecha => ({
-      id: isoFecha,
-      label: formatearEtaLabel(isoFecha)
-    }))
+        .filter(r => r.quincena_arribo_id && r.quincena_desc)
+        .map(r => [r.quincena_arribo_id, { id: r.quincena_arribo_id!, label: r.quincena_desc! }])
+    ).values()
+  ).sort((a, b) => a.id - b.id)
 
   const pps = Array.from(
     new Map(rows.map(r => [r.pp_nro, { nro: r.pp_nro, eta: r.eta }])).values()
@@ -169,7 +156,7 @@ export default async function HomePage({ searchParams }: {
         lineas={todasLineas}
         tipos={todosTipos}
         colores={todosColores}
-        etas={todasEtas}
+        quincenas={todasQuincenas}
         totalModelos={productos.length}
         totalPares={totalPares}
       />
@@ -201,8 +188,8 @@ export default async function HomePage({ searchParams }: {
                 Los PP deben estar <strong>ABIERTO</strong> o <strong>ENVIADO</strong> (no solo «aprobado»).
               </li>
             )}
-            {etasSel.length > 0 && filasVista > 0 && productos.length === 0 && (
-              <li>Probá quitar filtro ETA en la URL (<code className="text-xs">eta_fechas</code>).</li>
+            {quincenasSel.length > 0 && filasVista > 0 && productos.length === 0 && (
+              <li>Probá quitar filtro Llegada en la URL (<code className="text-xs">quincenas</code>).</li>
             )}
           </ul>
         </div>

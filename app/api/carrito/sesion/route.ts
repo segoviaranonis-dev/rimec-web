@@ -36,7 +36,7 @@ export async function GET() {
     const detIds = items.map(i => i.det_id)
     const { data: stockData } = await sb
       .from('v_stock_rimec')
-      .select('det_id, lpn, lpc02, lpc03, lpc04, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, eta, nombre, imagen_url, pares_por_caja')
+      .select('det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja')
       .in('det_id', detIds)
 
     // Enriquecer items con precios Y metadata

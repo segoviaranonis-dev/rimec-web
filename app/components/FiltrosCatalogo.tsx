@@ -8,8 +8,8 @@ interface FilterItem {
   label: string
 }
 
-interface EtaItem {
-  id: string
+interface QuincenaItem {
+  id: number
   label: string
 }
 
@@ -19,7 +19,7 @@ interface Props {
   lineas:  FilterItem[]
   tipos:   FilterItem[]
   colores: string[]
-  etas:    EtaItem[]
+  quincenas: QuincenaItem[]
   totalModelos: number
   totalPares:   number
 }
@@ -27,7 +27,7 @@ interface Props {
 const RIMEC_BLUE   = '#1E40AF'
 const RIMEC_CELESTE = '#0EA5E9'
 
-export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, etas, totalModelos, totalPares }: Props) {
+export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quincenas, totalModelos, totalPares }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
 
@@ -37,9 +37,9 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, etas,
   const lineasSelIds = searchParams.get('linea_ids')   ? searchParams.get('linea_ids')!.split(',').filter(Boolean).map(Number) : []
   const tiposSelIds  = searchParams.get('tipo_ids')    ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : []
   const colorsSel    = searchParams.get('colores')     ? searchParams.get('colores')!.split(',').filter(Boolean) : []
-  const etasSel      = searchParams.get('eta_fechas')  ? searchParams.get('eta_fechas')!.split(',').filter(Boolean) : []
+  const quincenasSel = searchParams.get('quincenas')   ? searchParams.get('quincenas')!.split(',').filter(Boolean).map(Number) : []
 
-  const aplicar = useCallback((opts: { grupo_estilo_id?: string; marca_id?: string; linea_ids?: number[]; tipo_ids?: number[]; cols?: string[]; eta_fechas?: string[] }) => {
+  const aplicar = useCallback((opts: { grupo_estilo_id?: string; marca_id?: string; linea_ids?: number[]; tipo_ids?: number[]; cols?: string[]; quincenas?: number[] }) => {
     const params = new URLSearchParams()
 
     const estId = opts.grupo_estilo_id !== undefined ? opts.grupo_estilo_id : estiloIdActual
@@ -47,19 +47,19 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, etas,
     const lns   = opts.linea_ids       !== undefined ? opts.linea_ids       : lineasSelIds
     const tps   = opts.tipo_ids        !== undefined ? opts.tipo_ids        : tiposSelIds
     const cls   = opts.cols            !== undefined ? opts.cols            : colorsSel
-    const ets   = opts.eta_fechas      !== undefined ? opts.eta_fechas      : etasSel
+    const qncs  = opts.quincenas       !== undefined ? opts.quincenas       : quincenasSel
 
-    if (estId)      params.set('grupo_estilo_id', estId)
-    if (marId)      params.set('marca_id',        marId)
-    if (lns.length) params.set('linea_ids',       lns.join(','))
-    if (tps.length) params.set('tipo_ids',        tps.join(','))
-    if (cls.length) params.set('colores',         cls.join(','))
-    if (ets.length) params.set('eta_fechas',      ets.join(','))
+    if (estId)       params.set('grupo_estilo_id', estId)
+    if (marId)       params.set('marca_id',        marId)
+    if (lns.length)  params.set('linea_ids',       lns.join(','))
+    if (tps.length)  params.set('tipo_ids',        tps.join(','))
+    if (cls.length)  params.set('colores',         cls.join(','))
+    if (qncs.length) params.set('quincenas',       qncs.join(','))
 
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, etasSel, router])
+  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, router])
 
-  const hayFiltros = !!(estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length || colorsSel.length || etasSel.length)
+  const hayFiltros = !!(estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length || colorsSel.length || quincenasSel.length)
 
   const activeEstiloLabel = estilos.find(e => String(e.id) === estiloIdActual)?.label
   const activeMarcaLabel  = marcas.find(m => String(m.id) === marcaIdActual)?.label
@@ -178,12 +178,12 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, etas,
             showSearch={true}
           />
 
-          <DropdownFilterEta
-            label="ETA"
-            options={etas}
-            selected={etasSel}
-            onChange={ets => aplicar({ eta_fechas: ets })}
-            placeholder="Buscar fecha arribo…"
+          <DropdownFilterQuincena
+            label="Llegada"
+            options={quincenas}
+            selected={quincenasSel}
+            onChange={qncs => aplicar({ quincenas: qncs })}
+            placeholder="Buscar quincena de llegada…"
             showSearch={false}
           />
 
@@ -386,12 +386,12 @@ function DropdownFilter({ label, options, selected, onChange, placeholder, showS
   )
 }
 
-function DropdownFilterEta({ label, options, selected, onChange, placeholder, showSearch = false }: {
-  label: string; options: EtaItem[]; selected: string[]; onChange: (vals: string[]) => void; placeholder: string; showSearch?: boolean
+function DropdownFilterQuincena({ label, options, selected, onChange, placeholder, showSearch = false }: {
+  label: string; options: QuincenaItem[]; selected: number[]; onChange: (vals: number[]) => void; placeholder: string; showSearch?: boolean
 }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
-  const [temp, setTemp]   = useState<string[]>(selected)
+  const [temp, setTemp]   = useState<number[]>(selected)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setTemp(selected) }, [selected])
@@ -406,7 +406,7 @@ function DropdownFilterEta({ label, options, selected, onChange, placeholder, sh
     ? options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()))
     : options
 
-  function toggle(id: string) {
+  function toggle(id: number) {
     setTemp(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 

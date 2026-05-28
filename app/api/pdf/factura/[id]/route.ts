@@ -7,8 +7,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseUrl, resolveSupabaseAnonKey } from '@/lib/supabaseEnv'
-import { spawn } from 'child_process'
-import path from 'path'
+import { generarPDFFactura } from '@/lib/pdfGenerator'
 
 const supabaseUrl = resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const serviceKey = resolveSupabaseAnonKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
@@ -65,84 +64,99 @@ export async function GET(
       )
     }
 
-    // Generar PDF llamando al script Python
-    const controlCentralPath = path.resolve(process.cwd(), '..', 'control_central')
-    const scriptPath = path.join(controlCentralPath, 'generar_pdf_cli.py')
-    const pythonPath = path.join(controlCentralPath, 'venv', 'Scripts', 'python.exe')
+    // Obtener datos adicionales de la FI
+    const { data: fiCompleta } = await supabase
+      .from('factura_interna')
+      .select(`
+        *,
+        cliente:cliente_v2!factura_interna_cliente_id_fkey(descp_cliente),
+        vendedor:usuario_v2!factura_interna_vendedor_id_fkey(nombre),
+        plazo:plazo_venta(nombre),
+        pp:pedido_proveedor!factura_interna_pp_id_fkey(numero_registro, numero_proforma),
+        quincena:quincena_arribo!factura_interna_quincena_arribo_id_fkey(descripcion)
+      `)
+      .eq('id', fiId)
+      .single()
 
-    // Verificar si existe el script
-    const fs = require('fs')
-    if (!fs.existsSync(scriptPath)) {
-      console.error('[PDF] Script no encontrado:', scriptPath)
+    if (!fiCompleta) {
       return NextResponse.json(
-        { error: 'Generador de PDF no disponible' },
+        { error: 'Error obteniendo datos de factura' },
         { status: 500 }
       )
     }
 
-    return new Promise<NextResponse>((resolve) => {
-      const chunks: Buffer[] = []
-      const errorChunks: Buffer[] = []
+    // Obtener items de la FI
+    const { data: items } = await supabase
+      .from('factura_interna_detalle')
+      .select('*')
+      .eq('factura_id', fiId)
+      .order('id')
 
-      const pythonProcess = spawn(pythonPath, [scriptPath, String(fiId)], {
-        cwd: controlCentralPath,
-      })
+    if (!items || items.length === 0) {
+      return NextResponse.json(
+        { error: 'Factura sin items' },
+        { status: 400 }
+      )
+    }
 
-      pythonProcess.stdout.on('data', (data: Buffer) => {
-        chunks.push(data)
-      })
-
-      pythonProcess.stderr.on('data', (data: Buffer) => {
-        errorChunks.push(data)
-      })
-
-      pythonProcess.on('close', (code) => {
-        if (code !== 0) {
-          const errorMsg = Buffer.concat(errorChunks).toString('utf-8')
-          console.error('[PDF] Error generando PDF:', errorMsg)
-          resolve(
-            NextResponse.json(
-              { error: 'Error al generar PDF', details: errorMsg },
-              { status: 500 }
-            )
-          )
-          return
+    // Parsear snapshots y preparar items para PDF
+    const itemsParaPDF = items.map((item: any) => {
+      let snapshot: any = {}
+      try {
+        if (typeof item.linea_snapshot === 'string') {
+          snapshot = JSON.parse(item.linea_snapshot)
+        } else if (typeof item.linea_snapshot === 'object') {
+          snapshot = item.linea_snapshot
         }
+      } catch (e) {
+        console.error('[PDF] Error parseando snapshot:', e)
+      }
 
-        const pdfBuffer = Buffer.concat(chunks)
+      return {
+        linea_codigo: snapshot.linea_codigo || '?',
+        ref_codigo: snapshot.ref_codigo || '?',
+        color_nombre: snapshot.color_nombre || '',
+        gradas_fmt: snapshot.gradas_fmt || '',
+        cajas: item.cajas || 0,
+        pares: item.pares || 0,
+        precio_unit: item.precio_unit || 0,
+        precio_neto: item.precio_neto || 0,
+        subtotal: item.subtotal || 0,
+      }
+    })
 
-        if (pdfBuffer.length === 0) {
-          resolve(
-            NextResponse.json(
-              { error: 'PDF generado está vacío' },
-              { status: 500 }
-            )
-          )
-          return
-        }
+    // Preparar datos de la FI
+    const fiData = {
+      nro_factura: fiCompleta.nro_factura,
+      cliente_nombre: (fiCompleta.cliente as any)?.descp_cliente || 'Sin cliente',
+      vendedor_nombre: (fiCompleta.vendedor as any)?.nombre || 'Sin vendedor',
+      quincena_llegada: (fiCompleta.quincena as any)?.descripcion || 'A confirmar',
+      pp_nro: (fiCompleta.pp as any)?.numero_registro || 'N/A',
+      proforma: (fiCompleta.pp as any)?.numero_proforma,
+      created_at: fiCompleta.created_at,
+      lista_precio: `Lista ${fiCompleta.lista_precio_id}`,
+      plazo: (fiCompleta.plazo as any)?.nombre || 'N/A',
+      descuento_1: fiCompleta.descuento_1,
+      descuento_2: fiCompleta.descuento_2,
+      descuento_3: fiCompleta.descuento_3,
+      descuento_4: fiCompleta.descuento_4,
+      marca: fiCompleta.marca,
+      caso: fiCompleta.caso,
+      total_pares: fiCompleta.total_pares,
+      total_monto: fiCompleta.total_monto,
+    }
 
-        // Devolver PDF con headers apropiados
-        resolve(
-          new NextResponse(pdfBuffer, {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/pdf',
-              'Content-Disposition': `inline; filename="FI_${fi.nro_factura}.pdf"`,
-              'Content-Length': String(pdfBuffer.length),
-            },
-          })
-        )
-      })
+    // Generar PDF
+    const pdfBuffer = await generarPDFFactura(fiData, itemsParaPDF)
 
-      pythonProcess.on('error', (err) => {
-        console.error('[PDF] Error ejecutando Python:', err)
-        resolve(
-          NextResponse.json(
-            { error: 'Error ejecutando generador de PDF' },
-            { status: 500 }
-          )
-        )
-      })
+    // Devolver PDF
+    return new NextResponse(pdfBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="FI_${fi.nro_factura}.pdf"`,
+        'Content-Length': String(pdfBuffer.length),
+      },
     })
   } catch (error) {
     console.error('[PDF] Exception:', error)

@@ -43,13 +43,29 @@ export async function generarPDFFactura(
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
+      // Validar datos de entrada
+      if (!fiData || !items || items.length === 0) {
+        return reject(new Error('Datos de entrada inválidos'))
+      }
+
+      console.log('[PDF Gen] Iniciando generación...')
+      console.log('[PDF Gen] FI:', fiData.nro_factura, 'Items:', items.length)
+
       const doc = new PDFDocument({ size: 'A4', margin: 50 })
       const chunks: Buffer[] = []
 
       // Capturar chunks del PDF
-      doc.on('data', (chunk) => chunks.push(chunk))
-      doc.on('end', () => resolve(Buffer.concat(chunks)))
-      doc.on('error', reject)
+      doc.on('data', (chunk) => {
+        chunks.push(chunk)
+      })
+      doc.on('end', () => {
+        console.log('[PDF Gen] Documento finalizado, chunks:', chunks.length)
+        resolve(Buffer.concat(chunks))
+      })
+      doc.on('error', (err) => {
+        console.error('[PDF Gen] Error en doc:', err)
+        reject(err)
+      })
 
       // ========================================
       // HEADER
@@ -239,8 +255,10 @@ export async function generarPDFFactura(
           { width: 495, align: 'center' }
         )
 
+      console.log('[PDF Gen] Finalizando documento...')
       doc.end()
     } catch (error) {
+      console.error('[PDF Gen] Exception en generación:', error)
       reject(error)
     }
   })

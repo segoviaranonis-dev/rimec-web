@@ -150,6 +150,31 @@ export async function GET(
       }
     })
 
+    // Validar datos críticos
+    if (!fiCompleta.nro_factura) {
+      console.error('[PDF] Falta nro_factura')
+      return NextResponse.json(
+        { error: 'Datos incompletos: falta número de factura' },
+        { status: 500 }
+      )
+    }
+
+    if (!fiCompleta.created_at) {
+      console.error('[PDF] Falta created_at')
+      return NextResponse.json(
+        { error: 'Datos incompletos: falta fecha' },
+        { status: 500 }
+      )
+    }
+
+    if (typeof fiCompleta.total_pares !== 'number' || typeof fiCompleta.total_monto !== 'number') {
+      console.error('[PDF] Totales inválidos:', fiCompleta.total_pares, fiCompleta.total_monto)
+      return NextResponse.json(
+        { error: 'Datos incompletos: totales inválidos' },
+        { status: 500 }
+      )
+    }
+
     // Preparar datos de la FI
     const fiData = {
       nro_factura: fiCompleta.nro_factura,
@@ -157,22 +182,39 @@ export async function GET(
       vendedor_nombre: vendedor?.nombre || 'Sin vendedor',
       quincena_llegada: quincena?.descripcion || 'A confirmar',
       pp_nro: pp?.numero_registro || 'N/A',
-      proforma: pp?.numero_proforma,
+      proforma: pp?.numero_proforma || undefined,
       created_at: fiCompleta.created_at,
       lista_precio: `Lista ${fiCompleta.lista_precio_id}`,
       plazo: plazo?.nombre || 'N/A',
-      descuento_1: fiCompleta.descuento_1,
-      descuento_2: fiCompleta.descuento_2,
-      descuento_3: fiCompleta.descuento_3,
-      descuento_4: fiCompleta.descuento_4,
-      marca: fiCompleta.marca,
-      caso: fiCompleta.caso,
+      descuento_1: fiCompleta.descuento_1 || 0,
+      descuento_2: fiCompleta.descuento_2 || 0,
+      descuento_3: fiCompleta.descuento_3 || 0,
+      descuento_4: fiCompleta.descuento_4 || 0,
+      marca: fiCompleta.marca || 'N/A',
+      caso: fiCompleta.caso || '',
       total_pares: fiCompleta.total_pares,
       total_monto: fiCompleta.total_monto,
     }
 
     // Generar PDF
-    const pdfBuffer = await generarPDFFactura(fiData, itemsParaPDF)
+    console.log('[PDF] Generando PDF para FI:', fiData.nro_factura)
+    console.log('[PDF] Items count:', itemsParaPDF.length)
+    console.log('[PDF] FI Data:', JSON.stringify(fiData, null, 2))
+
+    let pdfBuffer: Buffer
+    try {
+      pdfBuffer = await generarPDFFactura(fiData, itemsParaPDF)
+      console.log('[PDF] PDF generado exitosamente, size:', pdfBuffer.length)
+    } catch (pdfError) {
+      console.error('[PDF] Error en generación PDF:', pdfError)
+      return NextResponse.json(
+        {
+          error: 'Error generando PDF',
+          details: pdfError instanceof Error ? pdfError.message : String(pdfError)
+        },
+        { status: 500 }
+      )
+    }
 
     // Devolver PDF
     return new NextResponse(pdfBuffer, {
@@ -184,9 +226,13 @@ export async function GET(
       },
     })
   } catch (error) {
-    console.error('[PDF] Exception:', error)
+    console.error('[PDF] Exception general:', error)
+    console.error('[PDF] Stack:', error instanceof Error ? error.stack : 'No stack')
     return NextResponse.json(
-      { error: 'Error interno del servidor' },
+      {
+        error: 'Error interno del servidor',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     )
   }

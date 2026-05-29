@@ -182,7 +182,7 @@ export async function GET(
     const materialesMap = new Map<number, string>()
     if (ppdIds.length > 0) {
       const { data: ppdData } = await supabase
-        .from('pedido_proveedor_det')
+        .from('pedido_proveedor_detalle')
         .select('id, descp_material')
         .in('id', ppdIds)
 
@@ -216,9 +216,9 @@ export async function GET(
         if (lineaCodigo && refCodigo) {
           const key = `${lineaCodigo}-${refCodigo}`
 
-          // Buscar producto en pedido_proveedor_det del mismo PP
+          // Buscar producto en pedido_proveedor_detalle del mismo PP
           const { data: ppdMatch } = await supabase
-            .from('pedido_proveedor_det')
+            .from('pedido_proveedor_detalle')
             .select('descp_material')
             .eq('pp_id', fiCompleta.pp_id)
             .eq('linea', lineaCodigo)

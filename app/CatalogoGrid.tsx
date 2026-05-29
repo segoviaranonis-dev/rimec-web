@@ -16,6 +16,7 @@ export type RimecAgrupado = TarjetaCatalogo
 
 const AZUL = '#0F172A'
 const CELESTE = '#0EA5E9'
+const DORADO = '#D4AF37'
 
 const COLOR_MAP: [RegExp, string][] = [
   [/\bbranco\b|\bblanco\b|off\s?white|\bivory\b|\bmarfil\b/i, '#f5f5f0'],
@@ -755,12 +756,13 @@ function Pill({ active, onClick, children }: { active: boolean, onClick: () => v
 }
 
 export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[], pps: any[] }) {
-  const { activa, carrito } = useSesion()
+  const { activa, carrito, cliente, vendedor, listaPrecioId } = useSesion()
   const [lineaFiltro, setLineaFiltro] = useState('')
   const [colorFiltro, setColorFiltro] = useState('')
   const [ofertasFiltro, setOfertasFiltro] = useState(false)
   const [buscar, setBuscar] = useState('')
   const [mostrarDialogo, setMostrarDialogo] = useState(false)
+  const [generandoPDF, setGenerandoPDF] = useState(false)
 
   // Derived unique lists for filters
   const lineasDisponibles = Array.from(new Set(productos.map(p => p.linea_codigo))).sort()
@@ -790,6 +792,73 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
   const totalCajas = cartItems.reduce((s, i) => s + i.cajas, 0)
   const totalPares = cartItems.reduce((s, i) => s + i.pares, 0)
   const cartCount = cartItems.length
+
+  const handleGenerarPDFCatalogo = async () => {
+    if (!activa || !cliente) return
+
+    setGenerandoPDF(true)
+    try {
+      // Preparar datos: solo productos visibles (respetando filtros)
+      const productosParaPDF = filtered.map(p => ({
+        linea_codigo: p.linea_codigo,
+        referencia_codigo: p.referencia_codigo,
+        descp_material: p.descp_material,
+        descp_marca: p.descp_marca,
+        quincena_desc: p.variantes[0]?.quincena_desc || null,
+        variantes: p.variantes
+          .filter(v => v.cajas_disponibles > 0)
+          .map(v => ({
+            det_id: v.det_id,
+            descp_color: v.descp_color,
+            imagen_url: v.imagen_url,
+            gradas_fmt: v.gradas_fmt,
+            cajas_disponibles: v.cajas_disponibles,
+            precio_base: getPrecioActivo(v, listaPrecioId) || 0,
+            lista_precio_id: listaPrecioId,
+          })),
+      }))
+
+      const catalogoData = {
+        cliente_nombre: cliente.descp_cliente || 'Cliente',
+        vendedor_nombre: vendedor?.descp_vendedor || 'Vendedor',
+        lista_precio: LISTAS.find(l => l.id === listaPrecioId)?.nombre || listaPrecioId,
+        fecha_generacion: new Date().toLocaleDateString('es-PY', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      }
+
+      const response = await fetch('/api/pdf/catalogo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productos: productosParaPDF, catalogoData }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Error generando PDF')
+      }
+
+      // Descargar PDF
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `catalogo-${cliente.descp_cliente.replace(/\s+/g, '_')}-${Date.now()}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('[Catálogo] Error generando PDF:', error)
+      alert('Error al generar el PDF. Intentá de nuevo.')
+    } finally {
+      setGenerandoPDF(false)
+    }
+  }
 
   return (
     <>
@@ -906,6 +975,31 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
           }}>
             🛒 {cartCount} ref · {totalCajas} cajas · {totalPares.toLocaleString('es-PY')} pares
           </a>
+        </div>
+      )}
+      {activa && filtered.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 100, right: 24, zIndex: 50 }}>
+          <button
+            onClick={handleGenerarPDFCatalogo}
+            disabled={generandoPDF}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '14px 24px', borderRadius: 14,
+              backgroundColor: generandoPDF ? '#94A3B8' : DORADO,
+              color: generandoPDF ? 'white' : AZUL,
+              fontWeight: 700, fontSize: 15, border: 'none',
+              cursor: generandoPDF ? 'not-allowed' : 'pointer',
+              boxShadow: '0 6px 20px rgba(212,175,55,0.35)',
+              transition: 'all 0.2s',
+            }}
+            title="Generar PDF del catálogo visible (respetando filtros)"
+          >
+            {generandoPDF ? (
+              <>⏳ Generando PDF...</>
+            ) : (
+              <>📄 PDF Catálogo ({filtered.length} modelos)</>
+            )}
+          </button>
         </div>
       )}
 

@@ -168,21 +168,55 @@ export async function GET(
     // Cargar materiales de todos los ppd_ids en una sola query
     const materialesMap = new Map<number, string>()
     if (ppdIds.length > 0) {
-      console.log('[PDF] Cargando materiales para ppd_ids:', ppdIds)
-      const { data: ppdData, error: ppdError } = await supabase
+      const { data: ppdData } = await supabase
         .from('pedido_proveedor_det')
         .select('id, descp_material')
         .in('id', ppdIds)
 
-      if (ppdError) {
-        console.error('[PDF] Error cargando materiales:', ppdError)
-      }
-
       if (ppdData) {
-        console.log('[PDF] Materiales cargados:', ppdData)
         ppdData.forEach((ppd: any) => {
           materialesMap.set(ppd.id, ppd.descp_material || '')
         })
+      }
+    }
+
+    // Para items sin ppd_id, intentar cargar material por código de producto
+    const itemsSinMaterial = items.filter(item => !item.ppd_id)
+    const materialesPorCodigo = new Map<string, string>()
+
+    if (itemsSinMaterial.length > 0) {
+      for (const item of itemsSinMaterial) {
+        let snapshot: any = {}
+        try {
+          if (typeof item.linea_snapshot === 'string') {
+            snapshot = JSON.parse(item.linea_snapshot)
+          } else if (typeof item.linea_snapshot === 'object') {
+            snapshot = item.linea_snapshot
+          }
+        } catch (e) {
+          continue
+        }
+
+        const lineaCodigo = snapshot.linea_codigo
+        const refCodigo = snapshot.ref_codigo
+
+        if (lineaCodigo && refCodigo) {
+          const key = `${lineaCodigo}-${refCodigo}`
+
+          // Buscar producto en pedido_proveedor_det del mismo PP
+          const { data: ppdMatch } = await supabase
+            .from('pedido_proveedor_det')
+            .select('descp_material')
+            .eq('pp_id', fiCompleta.pp_id)
+            .eq('linea', lineaCodigo)
+            .eq('referencia', refCodigo)
+            .limit(1)
+            .single()
+
+          if (ppdMatch?.descp_material) {
+            materialesPorCodigo.set(key, ppdMatch.descp_material)
+          }
+        }
       }
     }
 
@@ -199,19 +233,15 @@ export async function GET(
         console.error('[PDF] Error parseando snapshot:', e)
       }
 
-      // Material: prioridad snapshot, fallback a descp_material de ppd
+      // Material: múltiples fallbacks
+      const lineaCodigo = snapshot.linea_codigo || '?'
+      const refCodigo = snapshot.ref_codigo || '?'
+      const key = `${lineaCodigo}-${refCodigo}`
+
       const materialNombre = snapshot.material_nombre ||
                             (item.ppd_id ? materialesMap.get(item.ppd_id) : '') ||
+                            materialesPorCodigo.get(key) ||
                             ''
-
-      if (!materialNombre) {
-        console.log('[PDF] Item sin material:', {
-          ppd_id: item.ppd_id,
-          snapshot_material: snapshot.material_nombre,
-          map_has: materialesMap.has(item.ppd_id),
-          map_value: materialesMap.get(item.ppd_id)
-        })
-      }
 
       return {
         linea_codigo: snapshot.linea_codigo || '?',

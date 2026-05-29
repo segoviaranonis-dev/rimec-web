@@ -821,7 +821,7 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
       const catalogoData = {
         cliente_nombre: cliente.descp_cliente || 'Cliente',
         vendedor_nombre: vendedor?.descp_vendedor || 'Vendedor',
-        lista_precio: LISTAS.find(l => l.id === listaPrecioId)?.nombre || listaPrecioId,
+        lista_precio: LISTAS.find(l => l.id === listaPrecioId)?.nombre || `Lista ${listaPrecioId}`,
         fecha_generacion: new Date().toLocaleDateString('es-PY', {
           day: '2-digit',
           month: '2-digit',
@@ -831,6 +831,14 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
         }),
       }
 
+      // Debug logging
+      console.log('[Catálogo] Generando PDF con:', {
+        productos: productosParaPDF.length,
+        cliente: catalogoData.cliente_nombre,
+        vendedor: catalogoData.vendedor_nombre,
+        lista: catalogoData.lista_precio,
+      })
+
       const response = await fetch('/api/pdf/catalogo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -839,7 +847,8 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || 'Error generando PDF')
+        console.error('[Catálogo] Error del servidor:', error)
+        throw new Error(error.error || error.message || 'Error generando PDF')
       }
 
       // Descargar PDF

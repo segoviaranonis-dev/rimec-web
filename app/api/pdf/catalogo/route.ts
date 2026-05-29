@@ -44,7 +44,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { productos, catalogoData } = body
 
+    // Log de debugging
+    console.log('[API Catálogo] Request recibido')
+    console.log('[API Catálogo] Productos recibidos:', productos?.length || 0)
+    console.log('[API Catálogo] CatalogoData:', catalogoData)
+
     if (!productos || !Array.isArray(productos) || productos.length === 0) {
+      console.error('[API Catálogo] Error: No hay productos')
       return NextResponse.json(
         { error: 'No se recibieron productos para el catálogo' },
         { status: 400 }
@@ -52,6 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!catalogoData || !catalogoData.cliente_nombre) {
+      console.error('[API Catálogo] Error: Faltan datos del catálogo')
       return NextResponse.json(
         { error: 'Faltan datos del catálogo (cliente, vendedor, lista)' },
         { status: 400 }

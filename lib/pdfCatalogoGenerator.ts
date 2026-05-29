@@ -45,6 +45,7 @@ export async function generarPDFCatalogo(
   try {
     console.log('[PDF Catálogo] Iniciando generación...')
     console.log('[PDF Catálogo] Productos:', productos.length)
+    console.log('[PDF Catálogo] CatalogoData:', catalogoData)
 
     // Organizar productos: Quincena > Marca > Línea+Ref (descendente)
     const productosOrdenados = [...productos].sort((a, b) => {
@@ -336,6 +337,8 @@ export async function generarPDFCatalogo(
     return Buffer.from(pdfBytes)
   } catch (error) {
     console.error('[PDF Catálogo] Exception en generación:', error)
+    console.error('[PDF Catálogo] Error stack:', error instanceof Error ? error.stack : 'No stack available')
+    console.error('[PDF Catálogo] Error message:', error instanceof Error ? error.message : String(error))
     throw error
   }
 }

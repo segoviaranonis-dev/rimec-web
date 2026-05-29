@@ -86,11 +86,32 @@ export async function GET(
       .eq('id_cliente', fiCompleta.cliente_id)
       .single()
 
-    const { data: vendedor } = await supabase
-      .from('usuario_v2')
-      .select('nombre')
-      .eq('id_usuario', fiCompleta.vendedor_id)
-      .single()
+    // Obtener vendedor desde el pedido (si la FI no tiene vendedor directo)
+    let vendedor = null
+    if (fiCompleta.vendedor_id) {
+      const { data } = await supabase
+        .from('usuario_v2')
+        .select('nombre')
+        .eq('id_usuario', fiCompleta.vendedor_id)
+        .single()
+      vendedor = data
+    } else if (fiCompleta.pedido_id) {
+      // Fallback: buscar vendedor desde pedido_venta_rimec
+      const { data: pedido } = await supabase
+        .from('pedido_venta_rimec')
+        .select('vendedor_id')
+        .eq('id', fiCompleta.pedido_id)
+        .single()
+
+      if (pedido?.vendedor_id) {
+        const { data } = await supabase
+          .from('usuario_v2')
+          .select('nombre')
+          .eq('id_usuario', pedido.vendedor_id)
+          .single()
+        vendedor = data
+      }
+    }
 
     const { data: plazo } = await supabase
       .from('plazo_v2')

@@ -225,7 +225,7 @@ export async function generarPDFCatalogo(
         // Imagen (70x70 pts)
         if (variante.imagen_url) {
           try {
-            const imgResponse = await safeFetchImage(variante.imagen_url, 5000)
+            const imgResponse = await safeFetchImage(variante.imagen_url, 2000) // Timeout reducido para performance
 
             if (imgResponse) {
               const imgBytes = await imgResponse.arrayBuffer()
@@ -249,7 +249,7 @@ export async function generarPDFCatalogo(
               }
             }
           } catch (error) {
-            console.warn('[PDF Catálogo] Error cargando imagen:', variante.imagen_url, error)
+            // Skip imagen si falla - continúa sin bloquear
           }
         }
 

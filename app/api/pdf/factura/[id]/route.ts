@@ -121,15 +121,30 @@ export async function GET(
 
     const { data: pp } = await supabase
       .from('pedido_proveedor')
-      .select('numero_registro, numero_proforma')
+      .select('numero_registro, numero_proforma, quincena_arribo_id, vendedor_id')
       .eq('id', fiCompleta.pp_id)
       .single()
 
-    const { data: quincena } = await supabase
-      .from('quincena_arribo')
-      .select('descripcion')
-      .eq('id', fiCompleta.quincena_arribo_id)
-      .single()
+    // Obtener quincena desde el PP (no desde la FI)
+    let quincena = null
+    if (pp?.quincena_arribo_id) {
+      const { data } = await supabase
+        .from('quincena_arribo')
+        .select('descripcion')
+        .eq('id', pp.quincena_arribo_id)
+        .single()
+      quincena = data
+    }
+
+    // Si aún no hay vendedor, intentar desde el PP
+    if (!vendedor && pp?.vendedor_id) {
+      const { data } = await supabase
+        .from('usuario_v2')
+        .select('nombre')
+        .eq('id_usuario', pp.vendedor_id)
+        .single()
+      vendedor = data
+    }
 
     // Obtener items de la FI
     const { data: items } = await supabase

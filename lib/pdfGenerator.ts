@@ -248,11 +248,11 @@ export async function generarPDFFactura(
       imagen: 55,
       producto: 90,
       gradas: 215,
-      cajas: 305,
-      pares: 350,
-      precioSin: 395,
-      precioCon: 460,
-      subtotal: 515,
+      cajas: 340,    // Más espacio para gradas (305 → 340)
+      pares: 380,    // Ajustado proporcionalmente
+      precioSin: 420, // Ajustado proporcionalmente
+      precioCon: 475, // Ajustado proporcionalmente
+      subtotal: 525,  // Ajustado proporcionalmente
     }
 
     // Header de tabla
@@ -417,10 +417,14 @@ export async function generarPDFFactura(
       })
 
       // Resto de columnas
-      page.drawText(item.gradas_fmt, {
+      // Gradas: reducir font para que quepa mejor
+      const gradasText = item.gradas_fmt.length > 45
+        ? item.gradas_fmt.substring(0, 42) + '...'
+        : item.gradas_fmt
+      page.drawText(gradasText, {
         x: colX.gradas,
         y: y,
-        size: 8,
+        size: 6.5,
         font: fontRegular,
         color: GRIS_TEXTO,
       })

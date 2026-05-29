@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { generarPDFCatalogo, type CatalogoProducto } from '@/lib/pdfCatalogoGenerator'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // Vercel Pro: 60 segundos timeout
 
 export async function POST(req: NextRequest) {
   try {

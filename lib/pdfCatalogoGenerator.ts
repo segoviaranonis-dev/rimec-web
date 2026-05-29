@@ -222,9 +222,37 @@ export async function generarPDFCatalogo(
           })
         }
 
-        // Imagen deshabilitada temporalmente para evitar timeout de Vercel (10seg)
-        // Con 400+ productos, cargar imágenes excede el límite de tiempo
-        // TODO: Implementar generación con imágenes en background job o Edge Function
+        // Imagen con timeout agresivo para Vercel Pro (60seg total)
+        if (variante.imagen_url) {
+          try {
+            // Timeout muy corto: 1seg por imagen para maximizar throughput
+            const imgResponse = await safeFetchImage(variante.imagen_url, 1000)
+
+            if (imgResponse) {
+              const imgBytes = await imgResponse.arrayBuffer()
+              const imgType = variante.imagen_url.toLowerCase()
+              let image
+
+              if (imgType.endsWith('.png')) {
+                image = await pdfDoc.embedPng(imgBytes)
+              } else if (imgType.endsWith('.jpg') || imgType.endsWith('.jpeg')) {
+                image = await pdfDoc.embedJpg(imgBytes)
+              }
+
+              if (image) {
+                const imgSize = 55
+                page.drawImage(image, {
+                  x: 45,
+                  y: y - 60,
+                  width: imgSize,
+                  height: imgSize,
+                })
+              }
+            }
+          } catch {
+            // Skip imagen si falla - continúa sin bloquear
+          }
+        }
 
         // Código (Línea-Ref)
         page.drawText(`${producto.linea_codigo}-${producto.referencia_codigo}`, {

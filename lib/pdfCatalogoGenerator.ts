@@ -169,7 +169,7 @@ export async function generarPDFCatalogo(
           color: AZUL_NEXUS,
         })
 
-        page.drawText(`📦 ${quincenaActual}`, {
+        page.drawText(`LLEGADA: ${quincenaActual}`, {
           x: 50,
           y: y - 14,
           size: 16,

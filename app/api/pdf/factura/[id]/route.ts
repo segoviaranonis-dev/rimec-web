@@ -132,12 +132,18 @@ export async function GET(
     // Cargar materiales de todos los ppd_ids en una sola query
     const materialesMap = new Map<number, string>()
     if (ppdIds.length > 0) {
-      const { data: ppdData } = await supabase
+      console.log('[PDF] Cargando materiales para ppd_ids:', ppdIds)
+      const { data: ppdData, error: ppdError } = await supabase
         .from('pedido_proveedor_det')
         .select('id, descp_material')
         .in('id', ppdIds)
 
+      if (ppdError) {
+        console.error('[PDF] Error cargando materiales:', ppdError)
+      }
+
       if (ppdData) {
+        console.log('[PDF] Materiales cargados:', ppdData)
         ppdData.forEach((ppd: any) => {
           materialesMap.set(ppd.id, ppd.descp_material || '')
         })
@@ -161,6 +167,15 @@ export async function GET(
       const materialNombre = snapshot.material_nombre ||
                             (item.ppd_id ? materialesMap.get(item.ppd_id) : '') ||
                             ''
+
+      if (!materialNombre) {
+        console.log('[PDF] Item sin material:', {
+          ppd_id: item.ppd_id,
+          snapshot_material: snapshot.material_nombre,
+          map_has: materialesMap.has(item.ppd_id),
+          map_value: materialesMap.get(item.ppd_id)
+        })
+      }
 
       return {
         linea_codigo: snapshot.linea_codigo || '?',

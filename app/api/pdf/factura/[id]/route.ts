@@ -79,14 +79,17 @@ export async function GET(
       )
     }
 
-    console.log('[PDF] ===== DATOS DE FACTURA INTERNA =====')
-    console.log('[PDF] FI ID:', fiId)
-    console.log('[PDF] FI completa:', JSON.stringify(fiCompleta, null, 2))
-    console.log('[PDF] pp_id:', fiCompleta.pp_id)
-    console.log('[PDF] vendedor_id:', fiCompleta.vendedor_id)
-    console.log('[PDF] pedido_id:', fiCompleta.pedido_id)
-    console.log('[PDF] cliente_id:', fiCompleta.cliente_id)
-    console.log('[PDF] ========================================')
+    // Solo loggear datos sensibles en desarrollo
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[PDF] ===== DATOS DE FACTURA INTERNA =====')
+      console.log('[PDF] FI ID:', fiId)
+      console.log('[PDF] FI completa:', JSON.stringify(fiCompleta, null, 2))
+      console.log('[PDF] pp_id:', fiCompleta.pp_id)
+      console.log('[PDF] vendedor_id:', fiCompleta.vendedor_id)
+      console.log('[PDF] pedido_id:', fiCompleta.pedido_id)
+      console.log('[PDF] cliente_id:', fiCompleta.cliente_id)
+      console.log('[PDF] ========================================')
+    }
 
     // Obtener datos relacionados (de forma segura)
     const { data: cliente } = await supabase
@@ -198,6 +201,9 @@ export async function GET(
     const materialesPorCodigo = new Map<string, string>()
 
     if (itemsSinMaterial.length > 0) {
+      // Recolectar todos los pares (linea, ref) para batch query
+      const codigosParaBuscar: Array<{ linea: string; ref: string; key: string }> = []
+
       for (const item of itemsSinMaterial) {
         let snapshot: any = {}
         try {
@@ -214,21 +220,33 @@ export async function GET(
         const refCodigo = snapshot.ref_codigo
 
         if (lineaCodigo && refCodigo) {
-          const key = `${lineaCodigo}-${refCodigo}`
+          codigosParaBuscar.push({
+            linea: lineaCodigo,
+            ref: refCodigo,
+            key: `${lineaCodigo}-${refCodigo}`
+          })
+        }
+      }
 
-          // Buscar producto en pedido_proveedor_detalle del mismo PP
-          const { data: ppdMatch } = await supabase
-            .from('pedido_proveedor_detalle')
-            .select('descp_material')
-            .eq('pp_id', fiCompleta.pp_id)
-            .eq('linea', lineaCodigo)
-            .eq('referencia', refCodigo)
-            .limit(1)
-            .single()
+      // Batch query: obtener todos los materiales en UNA sola consulta
+      if (codigosParaBuscar.length > 0) {
+        const lineas = [...new Set(codigosParaBuscar.map(c => c.linea))]
+        const referencias = [...new Set(codigosParaBuscar.map(c => c.ref))]
 
-          if (ppdMatch?.descp_material) {
-            materialesPorCodigo.set(key, ppdMatch.descp_material)
-          }
+        const { data: ppdMatches } = await supabase
+          .from('pedido_proveedor_detalle')
+          .select('linea, referencia, descp_material')
+          .eq('pp_id', fiCompleta.pp_id)
+          .in('linea', lineas)
+          .in('referencia', referencias)
+
+        if (ppdMatches) {
+          ppdMatches.forEach((ppd: any) => {
+            const key = `${ppd.linea}-${ppd.referencia}`
+            if (ppd.descp_material) {
+              materialesPorCodigo.set(key, ppd.descp_material)
+            }
+          })
         }
       }
     }

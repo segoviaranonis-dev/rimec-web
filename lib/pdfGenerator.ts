@@ -4,6 +4,7 @@
  */
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import { safeFetchImage } from './imageUrlValidator'
 
 interface FIData {
   nro_factura: string
@@ -348,12 +349,13 @@ export async function generarPDFFactura(
         color: borderColor,
       })
 
-      // Imagen del producto (si existe)
+      // Imagen del producto (si existe y es segura)
       if (item.imagen_url) {
         try {
-          // Intentar cargar imagen desde URL
-          const imgResponse = await fetch(item.imagen_url)
-          if (imgResponse.ok) {
+          // Fetch seguro con validación SSRF y timeout
+          const imgResponse = await safeFetchImage(item.imagen_url, 5000)
+
+          if (imgResponse) {
             const imgBytes = await imgResponse.arrayBuffer()
             const imgType = item.imagen_url.toLowerCase()
             let image

@@ -110,17 +110,21 @@ export async function GET(
       .eq('id', fiCompleta.quincena_arribo_id)
       .single()
 
-    // Obtener items de la FI con JOIN a pedido_proveedor_det para el material
-    const { data: items } = await supabase
+    // Obtener items de la FI con LEFT JOIN a pedido_proveedor_det para el material
+    const { data: items, error: itemsError } = await supabase
       .from('factura_interna_detalle')
       .select(`
         *,
-        pedido_proveedor_det:ppd_id (
+        pedido_proveedor_det!left (
           descp_material
         )
       `)
       .eq('factura_id', fiId)
       .order('id')
+
+    if (itemsError) {
+      console.error('[PDF] Error cargando items:', itemsError)
+    }
 
     if (!items || items.length === 0) {
       return NextResponse.json(

@@ -246,13 +246,13 @@ export async function generarPDFFactura(
     // ========================================
     const colX = {
       imagen: 55,
-      producto: 90,
-      gradas: 215,
-      cajas: 340,    // Más espacio para gradas (305 → 340)
-      pares: 380,    // Ajustado proporcionalmente
-      precioSin: 420, // Ajustado proporcionalmente
-      precioCon: 475, // Ajustado proporcionalmente
-      subtotal: 525,  // Ajustado proporcionalmente
+      producto: 75,   // Desplazado a la izquierda (90 → 75)
+      gradas: 200,    // Desplazado a la izquierda (215 → 200)
+      cajas: 325,     // Desplazado (340 → 325)
+      pares: 365,     // Desplazado (380 → 365)
+      precioSin: 405, // Desplazado (420 → 405)
+      precioCon: 460, // Desplazado (475 → 460)
+      subtotal: 515,  // Más espacio del margen (525 → 515)
     }
 
     // Header de tabla

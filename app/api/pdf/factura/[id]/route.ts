@@ -110,10 +110,15 @@ export async function GET(
       .eq('id', fiCompleta.quincena_arribo_id)
       .single()
 
-    // Obtener items de la FI
+    // Obtener items de la FI con JOIN a pedido_proveedor_det para el material
     const { data: items } = await supabase
       .from('factura_interna_detalle')
-      .select('*')
+      .select(`
+        *,
+        pedido_proveedor_det:ppd_id (
+          descp_material
+        )
+      `)
       .eq('factura_id', fiId)
       .order('id')
 
@@ -137,11 +142,16 @@ export async function GET(
         console.error('[PDF] Error parseando snapshot:', e)
       }
 
+      // Material: prioridad snapshot, fallback a descp_material de ppd
+      const materialNombre = snapshot.material_nombre ||
+                            item.pedido_proveedor_det?.descp_material ||
+                            ''
+
       return {
         linea_codigo: snapshot.linea_codigo || '?',
         ref_codigo: snapshot.ref_codigo || '?',
         color_nombre: snapshot.color_nombre || '',
-        material_nombre: snapshot.material_nombre || '',
+        material_nombre: materialNombre,
         imagen_url: snapshot.imagen_url || '',
         gradas_fmt: snapshot.gradas_fmt || '',
         cajas: item.cajas || 0,

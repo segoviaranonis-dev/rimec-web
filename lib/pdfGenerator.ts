@@ -134,7 +134,37 @@ export async function generarPDFFactura(
       font: fontRegular,
       color: rgb(0.392, 0.455, 0.545),
     })
-    y -= 20
+    y -= 25
+
+    // Disclaimer amarillo (como en Streamlit)
+    const disclaimerBg = rgb(0.996, 0.953, 0.780) // #FEF3C7
+    const disclaimerText = rgb(0.573, 0.251, 0.055) // #92400E
+
+    page.drawRectangle({
+      x: 50,
+      y: y - 28,
+      width: width - 100,
+      height: 32,
+      color: disclaimerBg,
+    })
+
+    page.drawText('⚠️ FACTURA PROVISORIA INTERNA (SIN VALOR LEGAL)', {
+      x: 60,
+      y: y - 10,
+      size: 9,
+      font: fontBold,
+      color: disclaimerText,
+    })
+
+    page.drawText('Este documento es para uso interno y no genera obligaciones fiscales ni comerciales.', {
+      x: 60,
+      y: y - 22,
+      size: 7,
+      font: fontRegular,
+      color: disclaimerText,
+    })
+
+    y -= 40
 
     // Info complementaria
     const fecha = new Date(fiData.created_at).toLocaleDateString('es-PY')
@@ -416,7 +446,7 @@ export async function generarPDFFactura(
       {
         x: 60,
         y: y - 20,
-        size: 10,
+        size: 11,
         font: fontBold,
         color: GRIS_TEXTO,
       }
@@ -425,9 +455,9 @@ export async function generarPDFFactura(
     page.drawText(
       `TOTAL NETO: Gs. ${fiData.total_monto.toLocaleString('es-PY')}`,
       {
-        x: 350,
+        x: 320,
         y: y - 20,
-        size: 14,
+        size: 16,
         font: fontBold,
         color: AZUL_NEXUS,
       }

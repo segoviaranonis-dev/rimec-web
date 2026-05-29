@@ -222,36 +222,9 @@ export async function generarPDFCatalogo(
           })
         }
 
-        // Imagen (70x70 pts)
-        if (variante.imagen_url) {
-          try {
-            const imgResponse = await safeFetchImage(variante.imagen_url, 2000) // Timeout reducido para performance
-
-            if (imgResponse) {
-              const imgBytes = await imgResponse.arrayBuffer()
-              const imgType = variante.imagen_url.toLowerCase()
-              let image
-
-              if (imgType.endsWith('.png')) {
-                image = await pdfDoc.embedPng(imgBytes)
-              } else if (imgType.endsWith('.jpg') || imgType.endsWith('.jpeg')) {
-                image = await pdfDoc.embedJpg(imgBytes)
-              }
-
-              if (image) {
-                const imgSize = 55
-                page.drawImage(image, {
-                  x: 45,
-                  y: y - 60,
-                  width: imgSize,
-                  height: imgSize,
-                })
-              }
-            }
-          } catch (error) {
-            // Skip imagen si falla - continúa sin bloquear
-          }
-        }
+        // Imagen deshabilitada temporalmente para evitar timeout de Vercel (10seg)
+        // Con 400+ productos, cargar imágenes excede el límite de tiempo
+        // TODO: Implementar generación con imágenes en background job o Edge Function
 
         // Código (Línea-Ref)
         page.drawText(`${producto.linea_codigo}-${producto.referencia_codigo}`, {

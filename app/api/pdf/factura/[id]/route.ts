@@ -141,6 +141,8 @@ export async function GET(
         linea_codigo: snapshot.linea_codigo || '?',
         ref_codigo: snapshot.ref_codigo || '?',
         color_nombre: snapshot.color_nombre || '',
+        material_nombre: snapshot.material_nombre || '',
+        imagen_url: snapshot.imagen_url || '',
         gradas_fmt: snapshot.gradas_fmt || '',
         cajas: item.cajas || 0,
         pares: item.pares || 0,

@@ -29,6 +29,8 @@ interface FIItem {
   linea_codigo: string
   ref_codigo: string
   color_nombre: string
+  material_nombre?: string
+  imagen_url?: string
   gradas_fmt: string
   cajas: number
   pares: number
@@ -208,16 +210,17 @@ export async function generarPDFFactura(
     y -= 25
 
     // ========================================
-    // TABLA DE ITEMS
+    // TABLA DE ITEMS (con imagen y material)
     // ========================================
     const colX = {
-      producto: 55,
-      gradas: 180,
-      cajas: 270,
-      pares: 315,
-      precioSin: 360,
-      precioCon: 435,
-      subtotal: 500,
+      imagen: 55,
+      producto: 90,
+      gradas: 215,
+      cajas: 305,
+      pares: 350,
+      precioSin: 395,
+      precioCon: 460,
+      subtotal: 515,
     }
 
     // Header de tabla
@@ -230,10 +233,11 @@ export async function generarPDFFactura(
     })
 
     const headers = [
+      { text: '', x: colX.imagen }, // Imagen (sin texto)
       { text: 'Producto', x: colX.producto },
       { text: 'Gradas', x: colX.gradas },
-      { text: 'Cajas', x: colX.cajas },
-      { text: 'Pares', x: colX.pares },
+      { text: 'Cj', x: colX.cajas },
+      { text: 'Ps', x: colX.pares },
       { text: 'Sin Desc', x: colX.precioSin },
       { text: 'Con Desc', x: colX.precioCon },
       { text: 'Subtotal', x: colX.subtotal },
@@ -290,12 +294,48 @@ export async function generarPDFFactura(
         })
       }
 
-      // Producto
-      const producto = `${item.linea_codigo}-${item.ref_codigo}`
-      page.drawText(producto, {
+      // Imagen del producto (si existe)
+      if (item.imagen_url) {
+        try {
+          // Intentar cargar imagen desde URL
+          const imgResponse = await fetch(item.imagen_url)
+          if (imgResponse.ok) {
+            const imgBytes = await imgResponse.arrayBuffer()
+            const imgType = item.imagen_url.toLowerCase()
+            let image
+
+            if (imgType.endsWith('.png')) {
+              image = await pdfDoc.embedPng(imgBytes)
+            } else if (imgType.endsWith('.jpg') || imgType.endsWith('.jpeg')) {
+              image = await pdfDoc.embedJpg(imgBytes)
+            }
+
+            if (image) {
+              const imgSize = 20 // 20 pts = ~7mm
+              page.drawImage(image, {
+                x: colX.imagen,
+                y: y - 5,
+                width: imgSize,
+                height: imgSize,
+              })
+            }
+          }
+        } catch (error) {
+          console.warn('[PDF] Error cargando imagen:', item.imagen_url, error)
+          // Si falla, solo continuar sin imagen
+        }
+      }
+
+      // Producto con material
+      let productoTexto = `${item.linea_codigo}-${item.ref_codigo}`
+      if (item.material_nombre) {
+        productoTexto += `\n${item.material_nombre}`
+      }
+
+      page.drawText(productoTexto, {
         x: colX.producto,
         y: y,
-        size: 8,
+        size: 7,
         font: fontRegular,
         color: GRIS_TEXTO,
       })

@@ -272,7 +272,7 @@ export async function generarPDFFactura(
       { text: 'Ps', x: colX.pares },
       { text: 'Sin Desc', x: colX.precioSin },
       { text: 'Con Desc', x: colX.precioCon },
-      { text: 'Subtotal', x: colX.subtotal },
+      { text: 'Total', x: colX.subtotal },
     ]
 
     headers.forEach((h) => {

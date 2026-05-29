@@ -312,9 +312,11 @@ export async function generarPDFFactura(
 
             if (image) {
               const imgSize = 20 // 20 pts = ~7mm
+              // Centrar imagen verticalmente en la fila (fila = 25pts, texto ocupa y hasta y-8)
+              // Centro del texto: y - 4, centro de imagen: y_img + 10
               page.drawImage(image, {
                 x: colX.imagen,
-                y: y - 5,
+                y: y - 14, // Centrada verticalmente
                 width: imgSize,
                 height: imgSize,
               })

@@ -7,6 +7,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
 interface FIData {
   nro_factura: string
+  cliente_codigo: number
   cliente_nombre: string
   vendedor_nombre: string
   quincena_llegada: string
@@ -107,7 +108,7 @@ export async function generarPDFFactura(
       height: 30,
       color: AZUL_NEXUS,
     })
-    page.drawText(fiData.cliente_nombre, {
+    page.drawText(`${fiData.cliente_nombre} (${fiData.cliente_codigo})`, {
       x: 60,
       y: y - 17,
       size: 15,

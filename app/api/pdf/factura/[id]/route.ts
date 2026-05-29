@@ -82,7 +82,7 @@ export async function GET(
     // Obtener datos relacionados (de forma segura)
     const { data: cliente } = await supabase
       .from('cliente_v2')
-      .select('descp_cliente')
+      .select('id_cliente, descp_cliente')
       .eq('id_cliente', fiCompleta.cliente_id)
       .single()
 
@@ -93,8 +93,8 @@ export async function GET(
       .single()
 
     const { data: plazo } = await supabase
-      .from('plazo_venta')
-      .select('nombre')
+      .from('plazo_v2')
+      .select('descp_plazo')
       .eq('id_plazo', fiCompleta.plazo_id)
       .single()
 
@@ -205,6 +205,7 @@ export async function GET(
     // Preparar datos de la FI
     const fiData = {
       nro_factura: fiCompleta.nro_factura,
+      cliente_codigo: cliente?.id_cliente || 0,
       cliente_nombre: cliente?.descp_cliente || 'Sin cliente',
       vendedor_nombre: vendedor?.nombre || 'Sin vendedor',
       quincena_llegada: quincena?.descripcion || 'A confirmar',
@@ -212,7 +213,7 @@ export async function GET(
       proforma: pp?.numero_proforma || undefined,
       created_at: fiCompleta.created_at,
       lista_precio: `Lista ${fiCompleta.lista_precio_id}`,
-      plazo: plazo?.nombre || 'N/A',
+      plazo: plazo?.descp_plazo || 'N/A',
       descuento_1: fiCompleta.descuento_1 || 0,
       descuento_2: fiCompleta.descuento_2 || 0,
       descuento_3: fiCompleta.descuento_3 || 0,

@@ -79,6 +79,15 @@ export async function GET(
       )
     }
 
+    console.log('[PDF] ===== DATOS DE FACTURA INTERNA =====')
+    console.log('[PDF] FI ID:', fiId)
+    console.log('[PDF] FI completa:', JSON.stringify(fiCompleta, null, 2))
+    console.log('[PDF] pp_id:', fiCompleta.pp_id)
+    console.log('[PDF] vendedor_id:', fiCompleta.vendedor_id)
+    console.log('[PDF] pedido_id:', fiCompleta.pedido_id)
+    console.log('[PDF] cliente_id:', fiCompleta.cliente_id)
+    console.log('[PDF] ========================================')
+
     // Obtener datos relacionados (de forma segura)
     const { data: cliente } = await supabase
       .from('cliente_v2')

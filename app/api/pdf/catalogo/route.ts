@@ -41,8 +41,21 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Parsear body
-    const body = await req.json()
-    const { productos, catalogoData } = body
+    let body, productos, catalogoData
+    try {
+      body = await req.json()
+      productos = body.productos
+      catalogoData = body.catalogoData
+    } catch (parseError) {
+      console.error('[API Catálogo] Error parseando JSON:', parseError)
+      return NextResponse.json(
+        {
+          error: 'Error parseando el request',
+          message: parseError instanceof Error ? parseError.message : 'JSON inválido'
+        },
+        { status: 400 }
+      )
+    }
 
     // Log de debugging
     console.log('[API Catálogo] Request recibido')
@@ -72,7 +85,22 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Generar PDF
-    const pdfBuffer = await generarPDFCatalogo(catalogoData, productos as CatalogoProducto[])
+    console.log('[API Catálogo] Iniciando generación de PDF...')
+    let pdfBuffer
+    try {
+      pdfBuffer = await generarPDFCatalogo(catalogoData, productos as CatalogoProducto[])
+      console.log('[API Catálogo] PDF generado exitosamente')
+    } catch (pdfError) {
+      console.error('[API Catálogo] Error en generarPDFCatalogo:', pdfError)
+      return NextResponse.json(
+        {
+          error: 'Error al generar el PDF',
+          message: pdfError instanceof Error ? pdfError.message : String(pdfError),
+          stack: pdfError instanceof Error ? pdfError.stack : undefined
+        },
+        { status: 500 }
+      )
+    }
 
     // 5. Responder con PDF
     const nombreArchivo = `catalogo-${catalogoData.cliente_nombre.replace(/\s+/g, '_')}-${Date.now()}.pdf`
@@ -87,8 +115,15 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     console.error('[API Catálogo] Error generando PDF:', error)
+    console.error('[API Catálogo] Error stack:', error instanceof Error ? error.stack : 'No stack')
+    console.error('[API Catálogo] Error message:', error instanceof Error ? error.message : String(error))
+
     return NextResponse.json(
-      { error: 'Error interno al generar el PDF' },
+      {
+        error: 'Error interno al generar el PDF',
+        message: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     )
   }

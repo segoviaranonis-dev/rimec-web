@@ -110,27 +110,38 @@ export async function GET(
       .eq('id', fiCompleta.quincena_arribo_id)
       .single()
 
-    // Obtener items de la FI con LEFT JOIN a pedido_proveedor_det para el material
-    const { data: items, error: itemsError } = await supabase
+    // Obtener items de la FI
+    const { data: items } = await supabase
       .from('factura_interna_detalle')
-      .select(`
-        *,
-        pedido_proveedor_det!left (
-          descp_material
-        )
-      `)
+      .select('*')
       .eq('factura_id', fiId)
       .order('id')
-
-    if (itemsError) {
-      console.error('[PDF] Error cargando items:', itemsError)
-    }
 
     if (!items || items.length === 0) {
       return NextResponse.json(
         { error: 'Factura sin items' },
         { status: 400 }
       )
+    }
+
+    // Obtener ppd_ids únicos para cargar materiales
+    const ppdIds = items
+      .map(item => item.ppd_id)
+      .filter((id): id is number => id != null)
+
+    // Cargar materiales de todos los ppd_ids en una sola query
+    const materialesMap = new Map<number, string>()
+    if (ppdIds.length > 0) {
+      const { data: ppdData } = await supabase
+        .from('pedido_proveedor_det')
+        .select('id, descp_material')
+        .in('id', ppdIds)
+
+      if (ppdData) {
+        ppdData.forEach((ppd: any) => {
+          materialesMap.set(ppd.id, ppd.descp_material || '')
+        })
+      }
     }
 
     // Parsear snapshots y preparar items para PDF
@@ -148,7 +159,7 @@ export async function GET(
 
       // Material: prioridad snapshot, fallback a descp_material de ppd
       const materialNombre = snapshot.material_nombre ||
-                            item.pedido_proveedor_det?.descp_material ||
+                            (item.ppd_id ? materialesMap.get(item.ppd_id) : '') ||
                             ''
 
       return {

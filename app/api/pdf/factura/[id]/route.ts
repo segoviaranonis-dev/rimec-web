@@ -119,32 +119,52 @@ export async function GET(
       .eq('id_plazo', fiCompleta.plazo_id)
       .single()
 
-    const { data: pp } = await supabase
+    const { data: pp, error: ppError } = await supabase
       .from('pedido_proveedor')
       .select('numero_registro, numero_proforma, quincena_arribo_id, vendedor_id')
       .eq('id', fiCompleta.pp_id)
       .single()
 
+    if (ppError) {
+      console.error('[PDF] Error cargando PP:', ppError)
+    }
+
+    console.log('[PDF] PP data:', pp)
+    console.log('[PDF] fiCompleta.pp_id:', fiCompleta.pp_id)
+
     // Obtener quincena desde el PP (no desde la FI)
     let quincena = null
     if (pp?.quincena_arribo_id) {
-      const { data } = await supabase
+      const { data, error: qError } = await supabase
         .from('quincena_arribo')
         .select('descripcion')
         .eq('id', pp.quincena_arribo_id)
         .single()
-      quincena = data
+
+      if (qError) {
+        console.error('[PDF] Error cargando quincena:', qError)
+      } else {
+        quincena = data
+      }
     }
 
     // Si aún no hay vendedor, intentar desde el PP
     if (!vendedor && pp?.vendedor_id) {
-      const { data } = await supabase
+      const { data, error: vError } = await supabase
         .from('usuario_v2')
         .select('nombre')
         .eq('id_usuario', pp.vendedor_id)
         .single()
-      vendedor = data
+
+      if (vError) {
+        console.error('[PDF] Error cargando vendedor desde PP:', vError)
+      } else {
+        vendedor = data
+      }
     }
+
+    console.log('[PDF] Vendedor final:', vendedor)
+    console.log('[PDF] Quincena final:', quincena)
 
     // Obtener items de la FI
     const { data: items } = await supabase

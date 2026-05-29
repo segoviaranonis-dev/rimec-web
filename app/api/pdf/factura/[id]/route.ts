@@ -16,6 +16,42 @@ const supabase = createClient(supabaseUrl, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
+// ============================================
+// INTERFACES TYPESCRIPT (Type Safety)
+// ============================================
+
+interface PPDMaterial {
+  id: number
+  descp_material: string | null
+}
+
+interface PPDMatch {
+  linea: string
+  referencia: string
+  descp_material: string | null
+}
+
+interface FIDetalleRaw {
+  ppd_id: number | null
+  linea_snapshot: string | object | null
+  cajas: number | null
+  pares: number | null
+  precio_unit: number | null
+  precio_neto: number | null
+  subtotal: number | null
+}
+
+interface LineaSnapshot {
+  linea_codigo?: string
+  ref_codigo?: string
+  color_nombre?: string
+  material_nombre?: string
+  imagen_url?: string
+  gradas_fmt?: string
+}
+
+// ============================================
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -190,7 +226,7 @@ export async function GET(
         .in('id', ppdIds)
 
       if (ppdData) {
-        ppdData.forEach((ppd: any) => {
+        ppdData.forEach((ppd: PPDMaterial) => {
           materialesMap.set(ppd.id, ppd.descp_material || '')
         })
       }
@@ -205,12 +241,12 @@ export async function GET(
       const codigosParaBuscar: Array<{ linea: string; ref: string; key: string }> = []
 
       for (const item of itemsSinMaterial) {
-        let snapshot: any = {}
+        let snapshot: LineaSnapshot = {}
         try {
           if (typeof item.linea_snapshot === 'string') {
-            snapshot = JSON.parse(item.linea_snapshot)
-          } else if (typeof item.linea_snapshot === 'object') {
-            snapshot = item.linea_snapshot
+            snapshot = JSON.parse(item.linea_snapshot) as LineaSnapshot
+          } else if (typeof item.linea_snapshot === 'object' && item.linea_snapshot !== null) {
+            snapshot = item.linea_snapshot as LineaSnapshot
           }
         } catch (e) {
           continue
@@ -241,7 +277,7 @@ export async function GET(
           .in('referencia', referencias)
 
         if (ppdMatches) {
-          ppdMatches.forEach((ppd: any) => {
+          ppdMatches.forEach((ppd: PPDMatch) => {
             const key = `${ppd.linea}-${ppd.referencia}`
             if (ppd.descp_material) {
               materialesPorCodigo.set(key, ppd.descp_material)
@@ -252,13 +288,13 @@ export async function GET(
     }
 
     // Parsear snapshots y preparar items para PDF
-    const itemsParaPDF = items.map((item: any) => {
-      let snapshot: any = {}
+    const itemsParaPDF = items.map((item: FIDetalleRaw) => {
+      let snapshot: LineaSnapshot = {}
       try {
         if (typeof item.linea_snapshot === 'string') {
-          snapshot = JSON.parse(item.linea_snapshot)
-        } else if (typeof item.linea_snapshot === 'object') {
-          snapshot = item.linea_snapshot
+          snapshot = JSON.parse(item.linea_snapshot) as LineaSnapshot
+        } else if (typeof item.linea_snapshot === 'object' && item.linea_snapshot !== null) {
+          snapshot = item.linea_snapshot as LineaSnapshot
         }
       } catch (e) {
         console.error('[PDF] Error parseando snapshot:', e)

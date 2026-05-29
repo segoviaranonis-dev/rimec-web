@@ -100,7 +100,7 @@ export async function GET(
     if (fiCompleta.vendedor_id) {
       const { data } = await supabase
         .from('usuario_v2')
-        .select('nombre')
+        .select('descp_usuario')
         .eq('id_usuario', fiCompleta.vendedor_id)
         .single()
       vendedor = data
@@ -115,7 +115,7 @@ export async function GET(
       if (pedido?.vendedor_id) {
         const { data } = await supabase
           .from('usuario_v2')
-          .select('nombre')
+          .select('descp_usuario')
           .eq('id_usuario', pedido.vendedor_id)
           .single()
         vendedor = data
@@ -301,7 +301,7 @@ export async function GET(
       nro_factura: fiCompleta.nro_factura,
       cliente_codigo: cliente?.id_cliente || 0,
       cliente_nombre: cliente?.descp_cliente || 'Sin cliente',
-      vendedor_nombre: vendedor?.nombre || 'Sin vendedor',
+      vendedor_nombre: vendedor?.descp_usuario || 'Sin vendedor',
       quincena_llegada: quincena?.descripcion || 'A confirmar',
       pp_nro: pp?.numero_registro || 'N/A',
       proforma: pp?.numero_proforma || undefined,

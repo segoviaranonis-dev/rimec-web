@@ -324,8 +324,8 @@ export async function generarPDFFactura(
       }
 
       // Alternar color de fondo
-      const rowHeight = 25
-      const rowY = y - 17
+      const rowHeight = 35
+      const rowY = y - 27
 
       if (i % 2 === 0) {
         page.drawRectangle({
@@ -366,11 +366,10 @@ export async function generarPDFFactura(
 
             if (image) {
               const imgSize = 20 // 20 pts = ~7mm
-              // Centrar imagen verticalmente en la fila (fila = 25pts, texto ocupa y hasta y-8)
-              // Centro del texto: y - 4, centro de imagen: y_img + 10
+              // Centrar imagen verticalmente en la fila (fila = 35pts)
               page.drawImage(image, {
                 x: colX.imagen,
-                y: y - 14, // Centrada verticalmente
+                y: y - 19, // Centrada verticalmente en fila de 35pts
                 width: imgSize,
                 height: imgSize,
               })
@@ -382,24 +381,35 @@ export async function generarPDFFactura(
         }
       }
 
-      // Producto con material
-      let productoTexto = `${item.linea_codigo}-${item.ref_codigo}`
-      if (item.material_nombre) {
-        productoTexto += `\n${item.material_nombre}`
-      }
-
-      page.drawText(productoTexto, {
+      // Producto (código): línea 1
+      page.drawText(`${item.linea_codigo}-${item.ref_codigo}`, {
         x: colX.producto,
         y: y,
         size: 7,
-        font: fontRegular,
+        font: fontBold,
         color: GRIS_TEXTO,
       })
+
+      // Material: línea 2 (si existe)
+      let currentY = y - 8
+      if (item.material_nombre) {
+        const materialTrunc = item.material_nombre.substring(0, 30)
+        page.drawText(materialTrunc, {
+          x: colX.producto,
+          y: currentY,
+          size: 6.5,
+          font: fontRegular,
+          color: rgb(0.278, 0.333, 0.412),
+        })
+        currentY -= 8
+      }
+
+      // Color: línea 3
       const colorNombre = item.color_nombre.substring(0, 25)
       page.drawText(colorNombre, {
         x: colX.producto,
-        y: y - 8,
-        size: 7,
+        y: currentY,
+        size: 6.5,
         font: fontRegular,
         color: rgb(0.392, 0.455, 0.545),
       })
@@ -448,7 +458,7 @@ export async function generarPDFFactura(
         color: GRIS_TEXTO,
       })
 
-      y -= 25
+      y -= 35
     }
 
     // ========================================

@@ -148,7 +148,7 @@ export async function generarPDFFactura(
       color: disclaimerBg,
     })
 
-    page.drawText('⚠️ FACTURA PROVISORIA INTERNA (SIN VALOR LEGAL)', {
+    page.drawText('FACTURA PROVISORIA INTERNA (SIN VALOR LEGAL)', {
       x: 60,
       y: y - 10,
       size: 9,

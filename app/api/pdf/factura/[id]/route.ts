@@ -8,6 +8,7 @@ import { getSession } from '@/lib/auth/session'
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseUrl, resolveSupabaseAnonKey } from '@/lib/supabaseEnv'
 import { generarPDFFactura } from '@/lib/pdfGenerator'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 const supabaseUrl = resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const serviceKey = resolveSupabaseAnonKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
@@ -61,6 +62,30 @@ export async function GET(
     const session = await getSession()
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+
+    // Rate limiting: máximo 10 PDFs por minuto por usuario
+    const identifier = `user:${session.id_usuario}`
+    const rateLimit = await checkRateLimit(identifier)
+
+    if (!rateLimit.success) {
+      console.warn('[PDF] Rate limit excedido para usuario:', session.id_usuario)
+      return NextResponse.json(
+        {
+          error: 'RATE_LIMIT_EXCEEDED',
+          message: 'Demasiadas solicitudes. Por favor espera un momento antes de generar otro PDF.',
+          retryAfter: Math.ceil((rateLimit.reset - Date.now()) / 1000), // segundos
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil((rateLimit.reset - Date.now()) / 1000)),
+            'X-RateLimit-Limit': String(rateLimit.limit),
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'X-RateLimit-Reset': String(rateLimit.reset),
+          },
+        }
+      )
     }
 
     const { id } = await params

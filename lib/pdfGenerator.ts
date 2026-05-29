@@ -164,7 +164,7 @@ export async function generarPDFFactura(
       color: disclaimerText,
     })
 
-    y -= 40
+    y -= 48
 
     // Info complementaria
     const fecha = new Date(fiData.created_at).toLocaleDateString('es-PY')
@@ -284,6 +284,15 @@ export async function generarPDFFactura(
       })
     })
 
+    // Línea inferior del header
+    const borderColor = rgb(0.886, 0.910, 0.941) // #E2E8F0
+    page.drawLine({
+      start: { x: 50, y: y - 20 },
+      end: { x: width - 50, y: y - 20 },
+      thickness: 1,
+      color: borderColor,
+    })
+
     y -= 30
 
     // Items
@@ -315,15 +324,29 @@ export async function generarPDFFactura(
       }
 
       // Alternar color de fondo
+      const rowHeight = 25
+      const rowY = y - 17
+
       if (i % 2 === 0) {
         page.drawRectangle({
           x: 50,
-          y: y - 17,
+          y: rowY,
           width: width - 100,
-          height: 20,
+          height: rowHeight,
           color: GRIS_CLARO,
         })
       }
+
+      // Bordes de la fila (líneas horizontales)
+      const borderColor = rgb(0.886, 0.910, 0.941) // #E2E8F0
+
+      // Línea inferior de la fila
+      page.drawLine({
+        start: { x: 50, y: rowY },
+        end: { x: width - 50, y: rowY },
+        thickness: 0.5,
+        color: borderColor,
+      })
 
       // Imagen del producto (si existe)
       if (item.imagen_url) {

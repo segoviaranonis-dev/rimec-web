@@ -206,22 +206,32 @@ export default function CarritoPage() {
         })),
       }
 
-      const { data, error: rpcErr } = await supabase.rpc('confirmar_pedido_web', {
-        p_cliente_id:      cliente!.id_cliente,
-        p_vendedor_id:     vendedor?.id_vendedor ?? null,
-        p_plazo_id:        plazo!.id_plazo,
-        p_lista_precio_id: listaPrecioId,
-        p_descuento_1:     Number(d1) || 0,
-        p_descuento_2:     Number(d2) || 0,
-        p_descuento_3:     Number(d3) || 0,
-        p_descuento_4:     Number(d4) || 0,
-        p_total_pares:     totalGenPares,
-        p_total_monto:     totalGenMonto,
-        p_payload:         payload,
-        p_validacion_token: validacion.token,
+      // SECURITY: Ejecutar confirmación desde servidor, no desde cliente
+      const response = await fetch('/api/carrito/confirmar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          p_cliente_id:      cliente!.id_cliente,
+          p_vendedor_id:     vendedor?.id_vendedor ?? null,
+          p_plazo_id:        plazo!.id_plazo,
+          p_lista_precio_id: listaPrecioId,
+          p_descuento_1:     Number(d1) || 0,
+          p_descuento_2:     Number(d2) || 0,
+          p_descuento_3:     Number(d3) || 0,
+          p_descuento_4:     Number(d4) || 0,
+          p_total_pares:     totalGenPares,
+          p_total_monto:     totalGenMonto,
+          p_payload:         payload,
+          p_validacion_token: validacion.token,
+        }),
       })
 
-      if (rpcErr) throw new Error(rpcErr.message)
+      if (!response.ok) {
+        const errData = await response.json()
+        throw new Error(errData.error || 'Error al confirmar pedido')
+      }
+
+      const data = await response.json()
 
       const result = data as {
         success: boolean

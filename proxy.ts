@@ -7,9 +7,11 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
 
-const SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || 'rimec-web-default-secret-change-in-production'
-)
+if (!process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET no está configurada - requerida para verificar sesiones')
+}
+
+const SECRET = new TextEncoder().encode(process.env.SESSION_SECRET)
 
 const PUBLIC_PATHS = ['/login', '/acceso-denegado', '/api/auth/login', '/api/auth/logout']
 
@@ -57,7 +59,12 @@ export const config = {
     '/carrito',
     '/pedidos',
     '/estadisticas',
+    '/mis-facturas',
     '/api/estadisticas/:path*',
     '/api/consulta-pilar/:path*',
+    '/api/mis-facturas/:path*',
+    '/api/pdf/:path*',
+    '/api/notificaciones/:path*',
+    '/api/carrito/:path*',
   ],
 }

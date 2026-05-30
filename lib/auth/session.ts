@@ -7,9 +7,12 @@ import { SignJWT, jwtVerify } from 'jose'
 import type { RolePermitido } from './roles'
 
 const SESSION_COOKIE = 'rimec_session'
-const SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || 'rimec-web-default-secret-change-in-production'
-)
+
+if (!process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET no está configurada - requerida para firmar sesiones')
+}
+
+const SECRET = new TextEncoder().encode(process.env.SESSION_SECRET)
 
 export interface SessionData {
   id_usuario: number

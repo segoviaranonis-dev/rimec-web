@@ -2,10 +2,12 @@
  * Valida credenciales contra usuario_v2 (server-side).
  * Réplica de control_central/core/auth.py:AuthManager.login (Nexus).
  * Requiere SUPABASE_SERVICE_ROLE_KEY: con RLS activa la anon no puede leer usuario_v2.
+ * SECURITY: Usa bcrypt para verificar contraseñas hasheadas.
  */
 
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseAnonKey, resolveSupabaseUrl } from '@/lib/supabaseEnv'
+import bcrypt from 'bcryptjs'
 
 const supabaseUrl = resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const rawServiceKey = resolveSupabaseAnonKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
@@ -79,11 +81,11 @@ export async function validateUsuario(
   }
 
   try {
+    // SECURITY: Query actualizada para incluir password_hash
     const { data, error } = await supabaseAdmin
       .from('usuario_v2')
-      .select('id_usuario, descp_usuario, categoria')
+      .select('id_usuario, descp_usuario, categoria, password, password_hash')
       .eq('descp_usuario', userClean)
-      .eq('password', passClean)
       .limit(1)
       .maybeSingle()
 
@@ -91,7 +93,35 @@ export async function validateUsuario(
       console.error('[validateUsuario] supabase error:', error.message)
       return null
     }
-    if (!data) return null
+    if (!data) {
+      console.warn(`[validateUsuario] Usuario '${userClean}' no encontrado`)
+      return null
+    }
+
+    const passwordHash = data.password_hash
+    const passwordPlain = data.password
+
+    // SECURITY: Verificar con bcrypt si existe hash
+    if (passwordHash) {
+      const valid = await bcrypt.compare(passClean, passwordHash)
+      if (!valid) {
+        console.warn(`[validateUsuario] Contraseña incorrecta para '${userClean}'`)
+        return null
+      }
+    }
+    // FALLBACK temporal: Si no hay hash, verificar contra texto plano
+    else if (passwordPlain === passClean) {
+      console.warn(`[validateUsuario] Usuario '${userClean}' usando password legacy - actualizando...`)
+      // Actualizar a hash
+      const hashNew = await bcrypt.hash(passClean, 10)
+      await supabaseAdmin
+        .from('usuario_v2')
+        .update({ password_hash: hashNew })
+        .eq('id_usuario', data.id_usuario)
+    } else {
+      console.warn(`[validateUsuario] Contraseña incorrecta para '${userClean}'`)
+      return null
+    }
 
     return {
       id_usuario: data.id_usuario,

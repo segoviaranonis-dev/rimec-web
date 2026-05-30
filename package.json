@@ -11,6 +11,7 @@
     "@supabase/supabase-js": "^2.104.1",
     "@upstash/ratelimit": "^1.0.0",
     "@upstash/redis": "^1.28.0",
+    "bcryptjs": "^3.0.3",
     "jose": "^6.2.3",
     "next": "16.2.4",
     "pdf-lib": "^1.17.1",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

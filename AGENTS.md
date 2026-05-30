@@ -10,7 +10,7 @@ Workspace root: `/agent` with repos under `/agent/repos/`. See also `ventas_por_
 
 ### Runtime
 
-- **Node 22** and **Python 3.12**. Nexus: `python3.12-m venv` in `ventas_por_mes_rimec` requires OS package `python3.12-venv` once per VM.
+- **Node 22** and **Python 3.12**. Nexus: `python3.12 -m venv` in `ventas_por_mes_rimec` requires OS package `python3.12-venv` once per VM.
 - **This app:** `npm run dev` → http://localhost:3001 (`EADDRINUSE` → kill other instance or use another port).
 
 ### Secrets

@@ -67,6 +67,7 @@ export default async function HomePage({ searchParams }: {
   const quincenasSel = params.quincenas?.split(',').filter(Boolean).map(Number) ?? []
 
   // Solo filas con stock vendible: evita descargar decenas de miles de filas agotadas.
+  // IMPORTANTE: Supabase JS client limita a 1000 filas por defecto. Usar .range() para obtener hasta 5000.
   const { data, error } = await supabase
     .from('v_stock_rimec')
     .select('*')
@@ -74,6 +75,7 @@ export default async function HomePage({ searchParams }: {
     .order('descp_marca')
     .order('linea_codigo')
     .order('referencia_codigo')
+    .range(0, 4999)
 
   if (error) console.error('[rimec-web]', error.message)
 

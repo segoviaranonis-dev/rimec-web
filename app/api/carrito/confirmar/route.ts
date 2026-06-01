@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { supabase } from '@/lib/supabase'
 import { getSession } from '@/lib/auth/session'
 
 /**
@@ -37,9 +37,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 })
     }
 
-    // Ejecutar RPC desde servidor (con service role si es necesario, o con sesión del usuario)
-    const supabase = await createClient()
-
+    // Ejecutar RPC desde servidor
     const { data, error: rpcErr } = await supabase.rpc('confirmar_pedido_web', {
       p_cliente_id,
       p_vendedor_id: p_vendedor_id ?? null,

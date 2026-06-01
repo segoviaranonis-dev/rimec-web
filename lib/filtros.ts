@@ -38,6 +38,7 @@ export async function getFiltros() {
 
   try {
     // 1. Obtener todas las combinaciones únicas de la vista normalizada
+    // IMPORTANTE: Supabase JS limita a 1000 filas. Usar .range() para obtener hasta 5000.
     const { data: stockMetaRaw, error } = await supabase
       .from('v_stock_rimec')
       .select(`
@@ -47,6 +48,7 @@ export async function getFiltros() {
         tipo_1_id, descp_tipo_1,
         cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
       `)
+      .range(0, 4999)
 
     if (error || !stockMetaRaw) {
       console.error('[filtros] Error fetching stockMeta:', {

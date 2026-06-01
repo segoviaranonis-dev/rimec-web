@@ -7,7 +7,9 @@ import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 
-export const revalidate = 60
+// TEMPORAL: Desactivar cache para diagnóstico de producción
+export const dynamic = 'force-dynamic'
+// export const revalidate = 60
 
 export interface StockRow {
   det_id:               number
@@ -80,6 +82,7 @@ export default async function HomePage({ searchParams }: {
   if (error) console.error('[rimec-web]', error.message)
 
   const rawRows = (data ?? []) as StockRow[]
+  console.log('[catalogo] rawRows desde Supabase:', rawRows.length, 'pares:', rawRows.reduce((s,r)=>s+r.cantidad_pares,0))
   const activeRawRows = rawRows.filter(r => cajasDisponiblesDeFila(r) > 0)
   const paresCodigo = [
     ...new Map(
@@ -121,6 +124,7 @@ export default async function HomePage({ searchParams }: {
   if (quincenasSel.length > 0) {
     rows = rows.filter(r => r.quincena_arribo_id && quincenasSel.includes(r.quincena_arribo_id))
   }
+  console.log('[catalogo] rows post-filtros:', rows.length, 'pares:', rows.reduce((s,r)=>s+r.cantidad_pares,0), 'quincenas:', quincenasSel)
 
   const productos = agruparTarjetasCatalogo(rows, BUCKET, cajasDisponiblesDeFila)
   const filasVista = rawRows.length

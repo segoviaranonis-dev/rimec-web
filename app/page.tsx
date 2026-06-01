@@ -2,14 +2,18 @@ import { supabase } from '@/lib/supabase'
 import { CatalogoGrid } from './CatalogoGrid'
 import { FiltrosCatalogo } from './components/FiltrosCatalogo'
 import { getFiltros } from '@/lib/filtros'
-import { cargarAtributosDesdePilar, enriquecerMetaConPilar } from '@/lib/atributosLinea'
+import {
+  cargarAtributosDesdePilar,
+  cargarMetaLineasDesdePilar,
+  enriquecerMetaConLinea,
+  enriquecerMetaConPilar,
+} from '@/lib/atributosLinea'
 import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
-import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
+import { cajasDisponiblesDeFila, paresDisponiblesDeFila } from '@/lib/disponibilidad'
+import { fetchCatalogoRows } from '@/lib/catalogoData'
 
-// TEMPORAL: Desactivar cache para diagnóstico de producción
-export const dynamic = 'force-dynamic'
-// export const revalidate = 60
+export const revalidate = 30
 
 export interface StockRow {
   det_id:               number
@@ -68,21 +72,13 @@ export default async function HomePage({ searchParams }: {
   const coloresFiltro = params.colores ? params.colores.split(',').filter(Boolean) : []
   const quincenasSel = params.quincenas?.split(',').filter(Boolean).map(Number) ?? []
 
-  // Solo filas con stock vendible: evita descargar decenas de miles de filas agotadas.
-  // IMPORTANTE: Supabase JS client limita a 1000 filas por defecto. Usar .range() para obtener hasta 5000.
-  const { data, error } = await supabase
-    .from('v_stock_rimec')
-    .select('*')
-    .gt('cajas_disponibles', 0)
-    .order('descp_marca')
-    .order('linea_codigo')
-    .order('referencia_codigo')
-    .range(0, 4999)
+  // Solo filas con stock vendible. Supabase limita a 1000 filas por request:
+  // usar paginación explícita para que catálogo y filtros no pierdan pares.
+  const { data, error } = await fetchCatalogoRows<StockRow>(supabase)
 
   if (error) console.error('[rimec-web]', error.message)
 
   const rawRows = (data ?? []) as StockRow[]
-  console.log('[catalogo] rawRows desde Supabase:', rawRows.length, 'pares:', rawRows.reduce((s,r)=>s+r.cantidad_pares,0))
   const activeRawRows = rawRows.filter(r => cajasDisponiblesDeFila(r) > 0)
   const paresCodigo = [
     ...new Map(
@@ -94,7 +90,9 @@ export default async function HomePage({ searchParams }: {
     ).values(),
   ]
   const pilar = await cargarAtributosDesdePilar({ paresCodigo })
-  const allRows = enriquecerMetaConPilar(activeRawRows, pilar) as StockRow[]
+  const rowsConPilar = enriquecerMetaConPilar(activeRawRows, pilar) as StockRow[]
+  const lineaMeta = await cargarMetaLineasDesdePilar(rowsConPilar.map(r => Number(r.linea_id)))
+  const allRows = enriquecerMetaConLinea(rowsConPilar, lineaMeta) as StockRow[]
 
   // Obtener filtros normalizados
   const filtros = await getFiltros()
@@ -124,7 +122,6 @@ export default async function HomePage({ searchParams }: {
   if (quincenasSel.length > 0) {
     rows = rows.filter(r => r.quincena_arribo_id && quincenasSel.includes(r.quincena_arribo_id))
   }
-  console.log('[catalogo] rows post-filtros:', rows.length, 'pares:', rows.reduce((s,r)=>s+r.cantidad_pares,0), 'quincenas:', quincenasSel)
 
   const productos = agruparTarjetasCatalogo(rows, BUCKET, cajasDisponiblesDeFila)
   const filasVista = rawRows.length
@@ -152,7 +149,7 @@ export default async function HomePage({ searchParams }: {
     new Map(rows.map(r => [r.pp_nro, { nro: r.pp_nro }])).values()
   ).sort((a, b) => a.nro.localeCompare(b.nro))
 
-  const totalPares = rows.reduce((s, r) => s + r.cantidad_pares, 0)
+  const totalPares = rows.reduce((s, r) => s + paresDisponiblesDeFila(r), 0)
 
   return (
     <div>

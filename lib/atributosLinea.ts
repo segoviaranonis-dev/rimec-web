@@ -21,6 +21,9 @@ export interface StockMetaRow {
   referencia_codigo?: string | null
   marca_id?: number
   descp_marca?: string
+  genero_id?: number | null
+  genero_codigo?: string | null
+  descp_genero?: string | null
   grupo_estilo_id?: number | null
   descp_grupo_estilo?: string | null
   tipo_1_id?: number | null
@@ -33,6 +36,15 @@ export interface AtributosPilar {
   /** Clave: linea_codigo:referencia_codigo (texto del pedido). */
   porCodigo: Map<string, AtributosPar>
   estiloLinea: Map<number, { id: number; label: string }>
+}
+
+export interface LineaMetaPilar {
+  linea_id: number
+  marca_id: number | null
+  descp_marca: string
+  genero_id: number | null
+  genero_codigo: string
+  descp_genero: string
 }
 
 const keyPar = (lineaId: number, refId: number) => `${lineaId}:${refId}`
@@ -329,6 +341,58 @@ export function enriquecerMetaConPilar<T extends StockMetaRow>(
       tipo_1_id: t1Id,
       descp_tipo_1:
         attr?.descp_tipo_1 || String(row.descp_tipo_1 ?? '').trim() || '',
+    }
+  })
+}
+
+export async function cargarMetaLineasDesdePilar(lineaIds: number[]): Promise<Map<number, LineaMetaPilar>> {
+  const ids = [...new Set(lineaIds.map(Number).filter(id => Number.isFinite(id) && id > 0))]
+  const out = new Map<number, LineaMetaPilar>()
+  if (!ids.length) return out
+
+  for (const batch of chunk(ids, 500)) {
+    const { data, error } = await supabase
+      .from('linea')
+      .select('id, marca_id, genero_id, marca_v2(descp_marca), genero(codigo, descripcion)')
+      .in('id', batch)
+
+    if (error) {
+      console.error('[atributosLinea] meta linea:', error.message)
+      continue
+    }
+
+    for (const row of data ?? []) {
+      const marca = row.marca_v2 as any
+      const genero = row.genero as any
+      out.set(Number(row.id), {
+        linea_id: Number(row.id),
+        marca_id: row.marca_id == null ? null : Number(row.marca_id),
+        descp_marca: String(marca?.descp_marca ?? '').trim(),
+        genero_id: row.genero_id == null ? null : Number(row.genero_id),
+        genero_codigo: String(genero?.codigo ?? '').trim(),
+        descp_genero: String(genero?.descripcion ?? '').trim(),
+      })
+    }
+  }
+
+  return out
+}
+
+/** Marca/género vienen del pilar línea; denormalizados de la vista son legacy. */
+export function enriquecerMetaConLinea<T extends StockMetaRow>(
+  rows: T[],
+  lineas: Map<number, LineaMetaPilar>,
+): T[] {
+  return rows.map(row => {
+    const meta = lineas.get(Number(row.linea_id))
+    if (!meta) return row
+    return {
+      ...row,
+      marca_id: meta.marca_id ?? row.marca_id,
+      descp_marca: meta.descp_marca || row.descp_marca,
+      genero_id: meta.genero_id,
+      genero_codigo: meta.genero_codigo,
+      descp_genero: meta.descp_genero,
     }
   })
 }

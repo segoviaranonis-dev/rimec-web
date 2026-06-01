@@ -1,5 +1,11 @@
 import { supabase } from './supabase'
-import { cargarAtributosDesdePilar, enriquecerMetaConPilar } from './atributosLinea'
+import {
+  cargarAtributosDesdePilar,
+  cargarMetaLineasDesdePilar,
+  enriquecerMetaConLinea,
+  enriquecerMetaConPilar,
+} from './atributosLinea'
+import { fetchCatalogoMetaRows } from './catalogoData'
 import { cajasDisponiblesDeFila } from './disponibilidad'
 
 export interface FilterItem {
@@ -37,18 +43,9 @@ export async function getFiltros() {
   }
 
   try {
-    // 1. Obtener todas las combinaciones únicas de la vista normalizada
-    // IMPORTANTE: Supabase JS limita a 1000 filas. Usar .range() para obtener hasta 5000.
-    const { data: stockMetaRaw, error } = await supabase
-      .from('v_stock_rimec')
-      .select(`
-        marca_id, descp_marca,
-        linea_id, linea_codigo, referencia_id, referencia_codigo,
-        grupo_estilo_id, descp_grupo_estilo,
-        tipo_1_id, descp_tipo_1,
-        cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
-      `)
-      .range(0, 4999)
+    // 1. Obtener todas las combinaciones únicas de la vista normalizada.
+    // La lectura es paginada para no caer en el límite Supabase de 1000 filas.
+    const { data: stockMetaRaw, error } = await fetchCatalogoMetaRows<any>(supabase)
 
     if (error || !stockMetaRaw) {
       console.error('[filtros] Error fetching stockMeta:', {
@@ -80,30 +77,11 @@ export async function getFiltros() {
       ).values(),
     ]
     const pilar = await cargarAtributosDesdePilar({ paresCodigo })
-    const meta = enriquecerMetaConPilar(stockMeta, pilar)
+    const metaPilar = enriquecerMetaConPilar(stockMeta, pilar)
+    const lineaMeta = await cargarMetaLineasDesdePilar(metaPilar.map(m => Number(m.linea_id)))
+    const meta = enriquecerMetaConLinea(metaPilar, lineaMeta)
 
-    const lineaIdsReales = [
-      ...new Set(meta.map(m => Number(m.linea_id)).filter(id => id > 0)),
-    ]
-
-    // 2. Necesitamos el genero_id de cada linea para agrupar (solo si hay lineas reales)
-    let lineasGeneros: any[] = []
-    if (lineaIdsReales.length > 0) {
-      const { data, error: errL } = await supabase
-        .from('linea')
-        .select('id, genero_id, genero(codigo, descripcion)')
-        .in('id', lineaIdsReales)
-      if (errL) {
-        console.error('[filtros] Error fetching lineasGeneros:', errL)
-      } else {
-        lineasGeneros = data || []
-      }
-    }
-
-    const generoMap = new Map<number, any>()
-    lineasGeneros.forEach(l => generoMap.set(l.id, l.genero))
-
-    // 3. Estructuras de agrupación por Género
+    // 2. Estructuras de agrupación por Género (desde pilar línea)
     const init = () => ({ 
       label: '', 
       lineas:  new Map<number, string>(), 
@@ -153,12 +131,12 @@ export async function getFiltros() {
       }
 
       // 3.2 Clasificar por Género en el Header
-      const gen = generoMap.get(row.linea_id)
-      const genCodigo = gen?.codigo || 'DAMAS' // Fallback a DAMAS para no perder el item del menu
+      const genCodigo = String(row.genero_codigo || '').trim()
+      const genDesc = String(row.descp_genero || '').trim()
       
       const sec = sections[genCodigo]
       if (!sec) continue
-      if (!sec.label) sec.label = gen?.descripcion || 'Damas'
+      if (!sec.label) sec.label = genDesc || genCodigo
 
       if (row.marca_id) {
         sec.marcas.set(row.marca_id, row.descp_marca || `Marca ${row.marca_id}`)

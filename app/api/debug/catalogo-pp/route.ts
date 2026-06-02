@@ -14,6 +14,7 @@ interface StockRow {
   quincena_arribo_id: number | null
   cantidad_pares: number
   saldo_pares: number
+  cantidad_cajas: number
   cajas_disponibles: number
   linea_id: number
   referencia_id: number
@@ -87,7 +88,11 @@ export async function GET(req: NextRequest) {
       : ppEnrichedRows
 
     // ETAPA 7: Agrupar en tarjetas
-    const productos = agruparTarjetasCatalogo(quincenaFilteredRows, BUCKET, cajasDisponiblesDeFila)
+    const productos = agruparTarjetasCatalogo(
+      quincenaFilteredRows as any,
+      BUCKET,
+      cajasDisponiblesDeFila as any,
+    )
 
     // Calcular total de pares en tarjetas
     const tarjetasPares = productos.reduce((sum, tarjeta) => {

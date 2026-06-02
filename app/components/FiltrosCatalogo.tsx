@@ -22,22 +22,33 @@ interface Props {
   quincenas: QuincenaItem[]
   totalModelos: number
   totalPares:   number
+  value?: CatalogoFilterState
+  onChange?: (filters: CatalogoFilterState) => void
+}
+
+export type CatalogoFilterState = {
+  grupo_estilo_id: string
+  marca_id: string
+  linea_ids: number[]
+  tipo_ids: number[]
+  colores: string[]
+  quincenas: number[]
 }
 
 const RIMEC_BLUE   = '#1E40AF'
 const RIMEC_CELESTE = '#0EA5E9'
 
-export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quincenas, totalModelos, totalPares }: Props) {
+export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quincenas, totalModelos, totalPares, value, onChange }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
 
-  const estiloIdActual = searchParams.get('grupo_estilo_id') ?? ''
-  const marcaIdActual  = searchParams.get('marca_id')        ?? ''
+  const estiloIdActual = value?.grupo_estilo_id ?? searchParams.get('grupo_estilo_id') ?? ''
+  const marcaIdActual  = value?.marca_id        ?? searchParams.get('marca_id')        ?? ''
 
-  const lineasSelIds = searchParams.get('linea_ids')   ? searchParams.get('linea_ids')!.split(',').filter(Boolean).map(Number) : []
-  const tiposSelIds  = searchParams.get('tipo_ids')    ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : []
-  const colorsSel    = searchParams.get('colores')     ? searchParams.get('colores')!.split(',').filter(Boolean) : []
-  const quincenasSel = searchParams.get('quincenas')   ? searchParams.get('quincenas')!.split(',').filter(Boolean).map(Number) : []
+  const lineasSelIds = value?.linea_ids ?? (searchParams.get('linea_ids') ? searchParams.get('linea_ids')!.split(',').filter(Boolean).map(Number) : [])
+  const tiposSelIds  = value?.tipo_ids ?? (searchParams.get('tipo_ids') ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : [])
+  const colorsSel    = value?.colores ?? (searchParams.get('colores') ? searchParams.get('colores')!.split(',').filter(Boolean) : [])
+  const quincenasSel = value?.quincenas ?? (searchParams.get('quincenas') ? searchParams.get('quincenas')!.split(',').filter(Boolean).map(Number) : [])
 
   const aplicar = useCallback((opts: { grupo_estilo_id?: string; marca_id?: string; linea_ids?: number[]; tipo_ids?: number[]; cols?: string[]; quincenas?: number[] }) => {
     const params = new URLSearchParams()
@@ -49,15 +60,28 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
     const cls   = opts.cols            !== undefined ? opts.cols            : colorsSel
     const qncs  = opts.quincenas       !== undefined ? opts.quincenas       : quincenasSel
 
+    const next = {
+      grupo_estilo_id: estId,
+      marca_id: marId,
+      linea_ids: lns,
+      tipo_ids: tps,
+      colores: cls,
+      quincenas: qncs,
+    }
+
+    if (onChange) {
+      onChange(next)
+      return
+    }
+
     if (estId)       params.set('grupo_estilo_id', estId)
     if (marId)       params.set('marca_id',        marId)
     if (lns.length)  params.set('linea_ids',       lns.join(','))
     if (tps.length)  params.set('tipo_ids',        tps.join(','))
     if (cls.length)  params.set('colores',         cls.join(','))
     if (qncs.length) params.set('quincenas',       qncs.join(','))
-
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, router])
+  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, router, onChange])
 
   const hayFiltros = !!(estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length || colorsSel.length || quincenasSel.length)
 
@@ -89,7 +113,11 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
 
         {hayFiltros && (
           <button
-            onClick={() => router.push('/')}
+            onClick={() => {
+              const empty = { grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [] }
+              if (onChange) onChange(empty)
+              else router.push('/')
+            }}
             className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl
                        border transition-all hover:border-red-300 hover:text-red-500 hover:bg-red-50"
             style={{ borderColor: '#e2e8f0', color: '#94a3b8' }}

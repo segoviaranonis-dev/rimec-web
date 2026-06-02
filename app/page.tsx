@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { CatalogoGrid } from './CatalogoGrid'
-import { FiltrosCatalogo } from './components/FiltrosCatalogo'
+import { CatalogoClient } from './CatalogoClient'
 import { getFiltros } from '@/lib/filtros'
 import {
   cargarAtributosDesdePilar,
@@ -8,9 +7,8 @@ import {
   enriquecerMetaConLinea,
   enriquecerMetaConPilar,
 } from '@/lib/atributosLinea'
-import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
-import { cajasDisponiblesDeFila, paresDisponiblesDeFila } from '@/lib/disponibilidad'
+import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import { fetchCatalogoRows } from '@/lib/catalogoData'
 
 export const revalidate = 30
@@ -101,31 +99,6 @@ export default async function HomePage({ searchParams }: {
   const todosEstilos = filtros?.todosEstilos || []
   const todosTipos   = filtros?.todosTipos || []
 
-  let rows = [...allRows]
-
-  // Aplicar filtros usando IDs directamente
-  if (estiloId) {
-    rows = rows.filter(r => r.grupo_estilo_id === Number(estiloId))
-  }
-  if (marcaId) {
-    rows = rows.filter(r => r.marca_id === Number(marcaId))
-  }
-  if (lineasIds.length > 0) {
-    rows = rows.filter(r => lineasIds.includes(r.linea_id))
-  }
-  if (tiposIds.length > 0) {
-    rows = rows.filter(r => r.tipo_1_id && tiposIds.includes(r.tipo_1_id))
-  }
-  if (coloresFiltro.length > 0) {
-    rows = rows.filter(r => coloresFiltro.includes(r.descp_color))
-  }
-  if (quincenasSel.length > 0) {
-    rows = rows.filter(r => r.quincena_arribo_id && quincenasSel.includes(r.quincena_arribo_id))
-  }
-
-  const productos = agruparTarjetasCatalogo(rows, BUCKET, cajasDisponiblesDeFila)
-  const filasVista = rawRows.length
-  const filasConCajas = rows.filter(r => cajasDisponiblesDeFila(r) > 0).length
   // Limpiar colores: descartar null/undefined/empty y trimear para evitar
   // duplicados visuales (ej. "NEGRO" vs "NEGRO ") y `key={null}` en el dropdown.
   const todosColores = Array.from(
@@ -145,75 +118,21 @@ export default async function HomePage({ searchParams }: {
     ).values()
   ).sort((a, b) => a.id - b.id)
 
-  const pps = Array.from(
-    new Map(rows.map(r => [r.pp_nro, { nro: r.pp_nro }])).values()
-  ).sort((a, b) => a.nro.localeCompare(b.nro))
-
-  const totalPares = rows.reduce((s, r) => s + paresDisponiblesDeFila(r), 0)
-
   return (
-    <div>
-      <FiltrosCatalogo
-        estilos={todosEstilos}
-        marcas={todasMarcas}
-        lineas={todasLineas}
-        tipos={todosTipos}
-        colores={todosColores}
-        quincenas={todasQuincenas}
-        totalModelos={productos.length}
-        totalPares={totalPares}
-      />
-      {productos.length === 0 && process.env.NODE_ENV === 'development' && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold mb-1">Catálogo vacío — diagnóstico rápido (DEV)</p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li>Filas en <code className="text-xs">v_stock_rimec</code>: <strong>{filasVista}</strong></li>
-            <li>Tras filtros URL: <strong>{rows.length}</strong> · con cajas &gt; 0: <strong>{filasConCajas}</strong> · tarjetas: <strong>{productos.length}</strong></li>
-            <li>App catálogo: <strong>http://localhost:3001</strong> (no :3000)</li>
-            {error && (
-              <li>
-                Supabase: {error.message}
-                {error.message.includes('invalid header value') && (
-                  <span className="block mt-1 text-xs">
-                    La clave ANON llegó duplicada en el entorno (no en el código). Revisá{' '}
-                    <code className="text-xs">rimec-web/.env.local</code>: una sola línea{' '}
-                    <code className="text-xs">NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...</code> sin repetir el nombre.
-                    Reiniciá <code className="text-xs">npm run dev</code>. Si persiste, borrá la variable en Windows
-                    (Variables de entorno del usuario).
-                  </span>
-                )}
-              </li>
-            )}
-            {filasVista === 0 && (
-              <li>
-                Si la vista está en 0: ejecutar migración{' '}
-                <code className="text-xs">061_fix_v_stock_rimec_estados_catalogo.sql</code> en Supabase.
-                Los PP deben estar <strong>ABIERTO</strong> o <strong>ENVIADO</strong> (no solo «aprobado»).
-              </li>
-            )}
-            {quincenasSel.length > 0 && filasVista > 0 && productos.length === 0 && (
-              <li>Probá quitar filtro Llegada en la URL (<code className="text-xs">quincenas</code>).</li>
-            )}
-          </ul>
-        </div>
-      )}
-
-      {productos.length === 0 && process.env.NODE_ENV === 'production' && (
-        <div className="mb-6 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
-          <span className="mb-4 text-5xl" aria-hidden>📦</span>
-          <h2 className="mb-2 text-xl font-semibold text-slate-900">Catálogo sin existencias por el momento</h2>
-          <p className="mb-6 max-w-md text-sm text-slate-500">
-            No hay artículos disponibles con los filtros aplicados. Probá quitar filtros o reintentá la carga.
-          </p>
-          <a
-            href="/"
-            className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800"
-          >
-            Reintentar
-          </a>
-        </div>
-      )}
-      <CatalogoGrid productos={productos} pps={pps} />
-    </div>
+    <CatalogoClient
+      rows={allRows}
+      bucketUrl={BUCKET}
+      filtros={{ todasLineas, todasMarcas, todosEstilos, todosTipos }}
+      colores={todosColores}
+      quincenas={todasQuincenas}
+      initialFilters={{
+        grupo_estilo_id: estiloId,
+        marca_id: marcaId,
+        linea_ids: lineasIds,
+        tipo_ids: tiposIds,
+        colores: coloresFiltro,
+        quincenas: quincenasSel,
+      }}
+    />
   )
 }

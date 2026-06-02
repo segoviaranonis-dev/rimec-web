@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition, useEffect } from 'react'
 import { CatalogoGrid } from './CatalogoGrid'
 import { FiltrosCatalogo, type CatalogoFilterState } from './components/FiltrosCatalogo'
 import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
@@ -49,6 +49,18 @@ export function CatalogoClient({
 }: Props) {
   const [filters, setFilters] = useState<CatalogoFilterState>(initialFilters)
   const [, startTransition] = useTransition()
+
+  // Sincronizar estado local con initialFilters cuando cambia la navegación
+  useEffect(() => {
+    setFilters(initialFilters)
+  }, [
+    initialFilters.grupo_estilo_id,
+    initialFilters.marca_id,
+    initialFilters.linea_ids.join(','),
+    initialFilters.tipo_ids.join(','),
+    initialFilters.colores.join(','),
+    initialFilters.quincenas.join(','),
+  ])
 
   const updateFilters = (next: CatalogoFilterState) => {
     startTransition(() => {

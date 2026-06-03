@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       .select(`
         id,
         nro_factura,
+        pv_global,
         pp_id,
         pedido_id,
         marca,

@@ -9,6 +9,7 @@ const VERDE = '#10B981'
 interface FacturaInterna {
   id: number
   nro_factura: string
+  pv_global: number | null
   pp_id: number
   pedido_id: number | null
   marca: string | null
@@ -51,6 +52,14 @@ function fmtFecha(iso: string): string {
   } catch {
     return iso
   }
+}
+
+function fmtPV(fi: FacturaInterna): string {
+  // Prioridad: pv_global (PV000040) > nro_factura legacy
+  if (fi.pv_global) {
+    return `PV${fi.pv_global.toString().padStart(6, '0')}`
+  }
+  return fi.nro_factura
 }
 
 export default function MisFacturasPage() {
@@ -257,7 +266,7 @@ export default function MisFacturasPage() {
                       letterSpacing: 0.5,
                     }}
                   >
-                    {fi.nro_factura}
+                    {fmtPV(fi)}
                   </h2>
                   <p style={{ fontSize: 13, color: '#64748B' }}>
                     {fmtFecha(fi.created_at)}

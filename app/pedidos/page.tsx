@@ -62,8 +62,8 @@ interface PedidoRow {
 interface FacturaInternaRow {
   id:           number
   nro_factura:  string
-  nro_factura_legacy?: string | null
   numero_preventa_global?: string | null
+  pv_global:    number | null
   pp_id:        number
   pedido_id:    number | null
   marca:        string | null
@@ -92,6 +92,17 @@ function fmtFecha(iso: string): string {
   } catch {
     return iso
   }
+}
+
+function fmtPV(fi: FacturaInternaRow): string {
+  // Prioridad: numero_preventa_global (desde vista) > pv_global (directo) > nro_factura legacy
+  if (fi.numero_preventa_global) {
+    return fi.numero_preventa_global
+  }
+  if (fi.pv_global) {
+    return `PV${fi.pv_global.toString().padStart(6, '0')}`
+  }
+  return fi.nro_factura
 }
 
 function estadoBadge(estado: string): { bg: string; fg: string; label: string } {
@@ -147,7 +158,7 @@ function PedidosContent() {
 
         const { data: fis } = await supabase
           .from('v_factura_interna_preventa')
-          .select('id, numero_preventa_global, nro_factura_legacy, nro_factura, pp_id, pedido_id, marca, marca_id, caso, caso_id, total_pares, total_monto, estado, created_at')
+          .select('id, numero_preventa_global, nro_factura, pp_id, pedido_id, marca, marca_id, caso, caso_id, total_pares, total_monto, estado, created_at')
           .or(`pedido_id.in.(${pedIds.join(',')}),and(pedido_id.is.null,created_at.gte.${minCreated})`)
           .order('id', { ascending: true })
 
@@ -381,7 +392,11 @@ function PedidosContent() {
                           <div style={{ display: 'flex', justifyContent: 'space-between',
                                         alignItems: 'center', marginBottom: 4 }}>
                             <strong style={{ color: AZUL, fontSize: 14 }}>
+<<<<<<< HEAD
                               {fi.numero_preventa_global || fi.nro_factura}
+=======
+                              {fmtPV(fi)}
+>>>>>>> 3242b5e (feat(rimec-web): PV Global en Mis Facturas y Pedidos)
                             </strong>
                             <span style={{
                               background: fiEs.bg, color: fiEs.fg,

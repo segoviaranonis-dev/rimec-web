@@ -62,6 +62,8 @@ interface PedidoRow {
 interface FacturaInternaRow {
   id:           number
   nro_factura:  string
+  nro_factura_legacy?: string | null
+  numero_preventa_global?: string | null
   pp_id:        number
   pedido_id:    number | null
   marca:        string | null
@@ -144,8 +146,8 @@ function PedidosContent() {
         const minCreated = pedRows[pedRows.length - 1].created_at
 
         const { data: fis } = await supabase
-          .from('factura_interna')
-          .select('id, nro_factura, pp_id, pedido_id, marca, marca_id, caso, caso_id, total_pares, total_monto, estado, created_at')
+          .from('v_factura_interna_preventa')
+          .select('id, numero_preventa_global, nro_factura_legacy, nro_factura, pp_id, pedido_id, marca, marca_id, caso, caso_id, total_pares, total_monto, estado, created_at')
           .or(`pedido_id.in.(${pedIds.join(',')}),and(pedido_id.is.null,created_at.gte.${minCreated})`)
           .order('id', { ascending: true })
 
@@ -379,7 +381,7 @@ function PedidosContent() {
                           <div style={{ display: 'flex', justifyContent: 'space-between',
                                         alignItems: 'center', marginBottom: 4 }}>
                             <strong style={{ color: AZUL, fontSize: 14 }}>
-                              {fi.nro_factura}
+                              {fi.numero_preventa_global || fi.nro_factura}
                             </strong>
                             <span style={{
                               background: fiEs.bg, color: fiEs.fg,
@@ -393,6 +395,11 @@ function PedidosContent() {
                             PP {fi.pp_id} · {fi.marca || 'Sin marca'}
                             {fi.caso ? ` · ${fi.caso}` : ''}
                           </div>
+                          {fi.nro_factura_legacy && fi.nro_factura_legacy !== (fi.numero_preventa_global || fi.nro_factura) && (
+                            <div style={{ color: '#94A3B8', fontSize: 11, marginBottom: 4 }}>
+                              Legacy: {fi.nro_factura_legacy}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                             <span><strong>{fmtPares(fi.total_pares)}</strong> pares</span>
                             <span>·</span>

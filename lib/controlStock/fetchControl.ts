@@ -16,8 +16,8 @@ export async function fetchControlStock(opts: {
 }): Promise<ControlStockResponse> {
   const { data: ppsRaw, error: errPp } = await supabase
     .from('pedido_proveedor')
-    .select('id, numero_registro, numero_proforma, estado, fecha_arribo_estimada')
-    .in('estado', ['ABIERTO', 'ENVIADO'])
+    .select('id, numero_registro, numero_proforma, estado, estado_transito, fecha_arribo_estimada')
+    .eq('estado_transito', 'EN_TRANSITO')  // Solo Pre-Venta (en tránsito)
     .order('id', { ascending: false })
 
   if (errPp) throw new Error(errPp.message)

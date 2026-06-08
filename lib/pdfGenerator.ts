@@ -160,7 +160,7 @@ export async function generarPDFFactura(
 
     // Crear documento
     const pdfDoc = await PDFDocument.create()
-    const page = pdfDoc.addPage([595, 842]) // A4: 595x842 pts
+    let page = pdfDoc.addPage([595, 842]) // A4: 595x842 pts
     const { width, height } = page.getSize()
 
     // Cargar fuentes
@@ -406,10 +406,10 @@ export async function generarPDFFactura(
 
       // Verificar si necesitamos nueva página
       if (y < 100) {
-        const newPage = pdfDoc.addPage([595, 842])
+        page = pdfDoc.addPage([595, 842])
         y = height - 50
         // Re-dibujar header de tabla en nueva página
-        newPage.drawRectangle({
+        page.drawRectangle({
           x: 50,
           y: y - 20,
           width: width - 100,
@@ -417,7 +417,7 @@ export async function generarPDFFactura(
           color: AZUL_NEXUS,
         })
         headers.forEach((h) => {
-          newPage.drawText(h.text, {
+          page.drawText(h.text, {
             x: h.x,
             y: y - 13,
             size: 8,

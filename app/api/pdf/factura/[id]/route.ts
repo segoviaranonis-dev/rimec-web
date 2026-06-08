@@ -358,14 +358,7 @@ export async function GET(
       }
     })
 
-    // Validar datos críticos
-    if (!fiCompleta.nro_factura) {
-      console.error('[PDF] Falta nro_factura')
-      return NextResponse.json(
-        { error: 'Datos incompletos: falta número de factura' },
-        { status: 500 }
-      )
-    }
+    // Validación de pv_global ya se hizo arriba
 
     if (!fiCompleta.created_at) {
       console.error('[PDF] Falta created_at')

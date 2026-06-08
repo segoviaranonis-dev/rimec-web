@@ -1,10 +1,16 @@
 /**
  * Generador de PDF para Facturas Internas
  * Compatible con Vercel (serverless) usando pdf-lib
+ *
+ * HOTFIX 2026-06-07: Corregido problema de imágenes faltantes
+ * - Cambio a fetchPdfImage con retry automático
+ * - Timeout aumentado: 5s → 20s
+ * - Pre-carga paralela de imágenes (no secuencial)
+ * - Usa thumbnails para velocidad
  */
 
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
-import { safeFetchImage } from './imageUrlValidator'
+import { PDFDocument, StandardFonts, rgb, type PDFImage } from 'pdf-lib'
+import { fetchPdfImage, getThumbnailUrl } from './pdfImageUtils'
 
 interface FIData {
   nro_factura: string
@@ -47,6 +53,94 @@ const DORADO_NEXUS = rgb(0.831, 0.686, 0.216) // #D4AF37
 const GRIS_CLARO = rgb(0.973, 0.980, 0.988) // #F8FAFC
 const GRIS_TEXTO = rgb(0.118, 0.161, 0.235) // #1E293B
 
+/**
+ * Pre-carga todas las imágenes en paralelo (no secuencial)
+ * Evita timeout de función Vercel cargando múltiples imágenes a la vez
+ *
+ * @param pdfDoc - Documento PDF donde embedir imágenes
+ * @param items - Items con URLs de imágenes
+ * @param maxConcurrency - Máximo de imágenes a cargar en paralelo (default: 5)
+ * @returns Map de URL → PDFImage embebida
+ */
+async function preloadImages(
+  pdfDoc: PDFDocument,
+  items: FIItem[],
+  maxConcurrency: number = 5
+): Promise<Map<string, PDFImage>> {
+  const imageMap = new Map<string, PDFImage>()
+  const urlsUnicas = Array.from(new Set(items.map(i => i.imagen_url).filter(Boolean))) as string[]
+
+  if (urlsUnicas.length === 0) {
+    console.log('[PDF] No hay imágenes para cargar')
+    return imageMap
+  }
+
+  console.log(`[PDF] Pre-cargando ${urlsUnicas.length} imágenes únicas en paralelo (max ${maxConcurrency})`)
+  const startTime = Date.now()
+  let cargadas = 0
+  let fallidas = 0
+
+  // Cargar en batches paralelos con límite de concurrencia
+  for (let i = 0; i < urlsUnicas.length; i += maxConcurrency) {
+    const batch = urlsUnicas.slice(i, i + maxConcurrency)
+    const batchNum = Math.floor(i / maxConcurrency) + 1
+    const totalBatches = Math.ceil(urlsUnicas.length / maxConcurrency)
+
+    console.log(`[PDF] Batch ${batchNum}/${totalBatches}: cargando ${batch.length} imágenes...`)
+
+    await Promise.all(
+      batch.map(async (url) => {
+        try {
+          // Usar fetchPdfImage con retry automático y thumbnail
+          const imgBytes = await fetchPdfImage(url, {
+            timeout: 20000,  // 20s por imagen (antes 5s)
+            retries: 3,      // 3 reintentos
+            useThumbnail: true,  // Intentar thumbnail primero
+          })
+
+          if (!imgBytes) {
+            console.warn(`[PDF] ✗ Imagen no disponible: ${url.substring(0, 60)}...`)
+            fallidas++
+            return
+          }
+
+          // Embedir en PDF
+          const imgType = url.toLowerCase()
+          let image: PDFImage | null = null
+
+          if (imgType.endsWith('.png')) {
+            image = await pdfDoc.embedPng(imgBytes)
+          } else if (imgType.endsWith('.jpg') || imgType.endsWith('.jpeg')) {
+            image = await pdfDoc.embedJpg(imgBytes)
+          }
+
+          if (image) {
+            imageMap.set(url, image)
+            cargadas++
+          } else {
+            console.warn(`[PDF] ✗ Formato no soportado: ${url.substring(0, 60)}...`)
+            fallidas++
+          }
+        } catch (error) {
+          console.error(`[PDF] ✗ Error embebiendo imagen:`, error instanceof Error ? error.message : error)
+          fallidas++
+        }
+      })
+    )
+  }
+
+  const duracionMs = Date.now() - startTime
+  console.log(`[PDF] Pre-carga completada en ${duracionMs}ms`)
+  console.log(`[PDF]   ✓ Cargadas: ${cargadas}/${urlsUnicas.length}`)
+  console.log(`[PDF]   ✗ Fallidas: ${fallidas}/${urlsUnicas.length}`)
+
+  if (fallidas > 0) {
+    console.warn(`[PDF] ⚠️  ${fallidas} imágenes no se pudieron cargar - aparecerán sin foto en PDF`)
+  }
+
+  return imageMap
+}
+
 export async function generarPDFFactura(
   fiData: FIData,
   items: FIItem[]
@@ -68,6 +162,12 @@ export async function generarPDFFactura(
     // Cargar fuentes
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
     const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
+
+    // PRE-CARGAR TODAS LAS IMÁGENES EN PARALELO (HOTFIX 2026-06-07)
+    // Esto evita timeout de función Vercel y carga imágenes más rápido
+    console.log('[PDF Gen] HOTFIX: Pre-cargando imágenes en paralelo...')
+    const imageMap = await preloadImages(pdfDoc, items, 5)
+    console.log('[PDF Gen] HOTFIX: Pre-carga completada, continuando con PDF...')
 
     let y = height - 50 // Posición vertical inicial
 
@@ -349,38 +449,21 @@ export async function generarPDFFactura(
         color: borderColor,
       })
 
-      // Imagen del producto (si existe y es segura)
+      // Imagen del producto (usar pre-cargada del Map)
+      // HOTFIX 2026-06-07: Ya no cargamos aquí, usamos imageMap pre-cargado
       if (item.imagen_url) {
-        try {
-          // Fetch seguro con validación SSRF y timeout
-          const imgResponse = await safeFetchImage(item.imagen_url, 5000)
-
-          if (imgResponse) {
-            const imgBytes = await imgResponse.arrayBuffer()
-            const imgType = item.imagen_url.toLowerCase()
-            let image
-
-            if (imgType.endsWith('.png')) {
-              image = await pdfDoc.embedPng(imgBytes)
-            } else if (imgType.endsWith('.jpg') || imgType.endsWith('.jpeg')) {
-              image = await pdfDoc.embedJpg(imgBytes)
-            }
-
-            if (image) {
-              const imgSize = 20 // 20 pts = ~7mm
-              // Centrar imagen verticalmente en la fila (fila = 35pts)
-              page.drawImage(image, {
-                x: colX.imagen,
-                y: y - 19, // Centrada verticalmente en fila de 35pts
-                width: imgSize,
-                height: imgSize,
-              })
-            }
-          }
-        } catch (error) {
-          console.warn('[PDF] Error cargando imagen:', item.imagen_url, error)
-          // Si falla, solo continuar sin imagen
+        const image = imageMap.get(item.imagen_url)
+        if (image) {
+          const imgSize = 20 // 20 pts = ~7mm
+          // Centrar imagen verticalmente en la fila (fila = 35pts)
+          page.drawImage(image, {
+            x: colX.imagen,
+            y: y - 19, // Centrada verticalmente en fila de 35pts
+            width: imgSize,
+            height: imgSize,
+          })
         }
+        // Si no está en el map, simplemente no se dibuja (ya loggeamos el error en preloadImages)
       }
 
       // Producto (código): línea 1

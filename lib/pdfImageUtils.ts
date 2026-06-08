@@ -142,10 +142,10 @@ async function _fetchImage(
   }
 
   for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      // Calcular timeout con backoff exponencial
-      const currentTimeout = timeout * (1 + backoffFactor * attempt)
+    // Calcular timeout con backoff exponencial (fuera del try para usarlo en catch)
+    const currentTimeout = timeout * (1 + backoffFactor * attempt)
 
+    try {
       console.log(
         `[PDF Image Utils] Intento ${attempt + 1}/${retries} - Descargando: ${url.substring(0, 80)}...`
       )

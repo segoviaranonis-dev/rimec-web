@@ -146,8 +146,8 @@ async function preloadImages(
 }
 
 export async function generarPDFFactura(
-  fiData: FIData,
-  items: FIItem[]
+  pvData: PVData,
+  items: PVItem[]
 ): Promise<Buffer> {
   try {
     // Validar datos de entrada

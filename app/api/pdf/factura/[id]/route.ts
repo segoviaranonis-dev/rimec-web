@@ -406,9 +406,9 @@ export async function GET(
     }
 
     // Generar PDF
-    console.log('[PDF] Generando PDF para FI:', pvData.nro_factura)
+    console.log('[PDF] Generando PDF para PV:', pvData.pv_numero)
     console.log('[PDF] Items count:', itemsParaPDF.length)
-    console.log('[PDF] FI Data:', JSON.stringify(pvData, null, 2))
+    console.log('[PDF] PV Data:', JSON.stringify(pvData, null, 2))
 
     let pdfBuffer: Buffer
     try {

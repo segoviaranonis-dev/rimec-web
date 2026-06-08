@@ -23,12 +23,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Obtener FIs confirmadas del vendedor
+    // Obtener Preventas confirmadas del vendedor
     const { data, error } = await supabase
       .from('factura_interna')
       .select(`
         id,
-        nro_factura,
         pv_global,
         pp_id,
         pedido_id,

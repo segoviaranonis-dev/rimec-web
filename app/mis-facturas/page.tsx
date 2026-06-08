@@ -6,10 +6,9 @@ import Link from 'next/link'
 const AZUL = '#1E40AF'
 const VERDE = '#10B981'
 
-interface FacturaInterna {
+interface Preventa {
   id: number
-  nro_factura: string
-  pv_global: number | null
+  pv_global: number
   pp_id: number
   pedido_id: number | null
   marca: string | null
@@ -54,16 +53,12 @@ function fmtFecha(iso: string): string {
   }
 }
 
-function fmtPV(fi: FacturaInterna): string {
-  // Prioridad: pv_global (PV000040) > nro_factura legacy
-  if (fi.pv_global) {
-    return `PV${fi.pv_global.toString().padStart(6, '0')}`
-  }
-  return fi.nro_factura
+function fmtPV(pv: Preventa): string {
+  return `PV${pv.pv_global.toString().padStart(6, '0')}`
 }
 
-export default function MisFacturasPage() {
-  const [facturas, setFacturas] = useState<FacturaInterna[]>([])
+export default function MisPreventasPage() {
+  const [facturas, setFacturas] = useState<Preventa[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -83,7 +78,7 @@ export default function MisFacturasPage() {
 
         if (!res.ok) {
           const data = await res.json()
-          throw new Error(data.error || 'Error al cargar facturas')
+          throw new Error(data.error || 'Error al cargar preventas')
         }
 
         const data = await res.json()
@@ -190,10 +185,10 @@ export default function MisFacturasPage() {
       >
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 900, color: AZUL, marginBottom: 4 }}>
-            Mis Facturas Confirmadas
+            Mis Preventas Confirmadas
           </h1>
           <p style={{ color: '#64748B', fontSize: 14 }}>
-            {facturas.length} {facturas.length === 1 ? 'factura' : 'facturas'} lista
+            {facturas.length} {facturas.length === 1 ? 'preventa' : 'preventas'} lista
             {facturas.length === 1 ? '' : 's'} para compartir
           </p>
         </div>

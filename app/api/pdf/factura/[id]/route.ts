@@ -95,10 +95,10 @@ export async function GET(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    // Verificar que la FI pertenece al usuario y está confirmada
+    // Verificar que la Preventa pertenece al usuario y está confirmada
     const { data: fi, error } = await supabase
       .from('factura_interna')
-      .select('id, vendedor_id, estado, nro_factura')
+      .select('id, vendedor_id, estado, pv_global')
       .eq('id', fiId)
       .single()
 
@@ -117,11 +117,19 @@ export async function GET(
       )
     }
 
-    // Solo PDFs de facturas confirmadas
+    // Solo PDFs de preventas confirmadas
     if (fi.estado !== 'CONFIRMADA') {
       return NextResponse.json(
-        { error: 'Solo se puede generar PDF de facturas confirmadas' },
+        { error: 'Solo se puede generar PDF de preventas confirmadas' },
         { status: 400 }
+      )
+    }
+
+    // Verificar que tiene pv_global asignado
+    if (!fi.pv_global) {
+      return NextResponse.json(
+        { error: 'Preventa sin número asignado' },
+        { status: 500 }
       )
     }
 
@@ -422,7 +430,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="FI_${fi.nro_factura}.pdf"`,
+        'Content-Disposition': `inline; filename="PV${String(fi.pv_global).padStart(6, '0')}.pdf"`,
         'Content-Length': String(pdfBuffer.length),
       },
     })

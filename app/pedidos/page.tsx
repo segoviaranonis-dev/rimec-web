@@ -60,11 +60,9 @@ interface PedidoRow {
   payload_json:     PayloadJson | null
 }
 
-interface FacturaInternaRow {
+interface PreventaRow {
   id:           number
-  nro_factura:  string
-  numero_preventa_global?: string | null
-  pv_global:    number | null
+  pv_global:    number
   pp_id:        number
   pedido_id:    number | null
   marca:        string | null
@@ -95,15 +93,8 @@ function fmtFecha(iso: string): string {
   }
 }
 
-function fmtPV(fi: FacturaInternaRow): string {
-  // Prioridad: numero_preventa_global (desde vista) > pv_global (directo) > nro_factura legacy
-  if (fi.numero_preventa_global) {
-    return fi.numero_preventa_global
-  }
-  if (fi.pv_global) {
-    return `PV${fi.pv_global.toString().padStart(6, '0')}`
-  }
-  return fi.nro_factura
+function fmtPV(pv: PreventaRow): string {
+  return `PV${pv.pv_global.toString().padStart(6, '0')}`
 }
 
 function estadoBadge(estado: string): { bg: string; fg: string; label: string } {
@@ -371,11 +362,6 @@ function PedidosContent() {
                             PP {fi.pp_id} · {fi.marca || 'Sin marca'}
                             {fi.caso ? ` · ${fi.caso}` : ''}
                           </div>
-                          {fi.nro_factura_legacy && fi.nro_factura_legacy !== (fi.numero_preventa_global || fi.nro_factura) && (
-                            <div style={{ color: '#94A3B8', fontSize: 11, marginBottom: 4 }}>
-                              Legacy: {fi.nro_factura_legacy}
-                            </div>
-                          )}
                           <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                             <span><strong>{fmtPares(fi.total_pares)}</strong> pares</span>
                             <span>·</span>

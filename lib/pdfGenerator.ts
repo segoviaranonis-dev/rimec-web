@@ -156,7 +156,7 @@ export async function generarPDFFactura(
     }
 
     console.log('[PDF Gen] Iniciando generación con pdf-lib...')
-    console.log('[PDF Gen] FI:', pvData.nro_factura, 'Items:', items.length)
+    console.log('[PDF Gen] FI:', pvData.pv_numero, 'Items:', items.length)
 
     // Crear documento
     const pdfDoc = await PDFDocument.create()
@@ -277,7 +277,7 @@ export async function generarPDFFactura(
       ? `${pvData.pp_nro} (${pvData.proforma})`
       : pvData.pp_nro
 
-    page.drawText(`Nro. FI: ${pvData.nro_factura}`, {
+    page.drawText(`Nro. FI: ${pvData.pv_numero}`, {
       x: 50,
       y,
       size: 9,

@@ -112,7 +112,7 @@ function PedidosContent() {
   const destacar = sp.get('destacar') // ej: ?destacar=PVR-2026-123456
 
   const [pedidos,  setPedidos]  = useState<PedidoRow[]>([])
-  const [facturas, setFacturas] = useState<Record<number, FacturaInternaRow[]>>({})
+  const [facturas, setFacturas] = useState<Record<number, PreventaRow[]>>({})
   const [cargando, setCargando] = useState(true)
   const [error,    setError]    = useState<string | null>(null)
 

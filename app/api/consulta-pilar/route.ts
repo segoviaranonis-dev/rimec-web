@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { consultarPilarPorCodigos } from '@/lib/atributosLinea'
+import { getSession } from '@/lib/auth/session'
 
 /** GET /api/consulta-pilar?pares=1214:1073,1214:1075,1388:500 */
 export async function GET(req: NextRequest) {
+  // SECURITY: Requiere autenticación
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
   const raw = req.nextUrl.searchParams.get('pares') ?? ''
   const pares = raw
     .split(',')

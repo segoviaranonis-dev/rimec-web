@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchControlStock } from '@/lib/controlStock/fetchControl'
+import { getSession } from '@/lib/auth/session'
 
 export async function GET(req: NextRequest) {
+  // SECURITY: Requiere autenticación
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
   try {
     const sp = req.nextUrl.searchParams
     const ppIds = sp.get('pp_ids')

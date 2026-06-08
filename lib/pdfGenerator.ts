@@ -151,12 +151,12 @@ export async function generarPDFFactura(
 ): Promise<Buffer> {
   try {
     // Validar datos de entrada
-    if (!fiData || !items || items.length === 0) {
+    if (!pvData || !items || items.length === 0) {
       throw new Error('Datos de entrada inválidos')
     }
 
     console.log('[PDF Gen] Iniciando generación con pdf-lib...')
-    console.log('[PDF Gen] FI:', fiData.nro_factura, 'Items:', items.length)
+    console.log('[PDF Gen] FI:', pvData.nro_factura, 'Items:', items.length)
 
     // Crear documento
     const pdfDoc = await PDFDocument.create()
@@ -213,7 +213,7 @@ export async function generarPDFFactura(
       height: 30,
       color: AZUL_NEXUS,
     })
-    page.drawText(`${fiData.cliente_nombre} (${fiData.cliente_codigo})`, {
+    page.drawText(`${pvData.cliente_nombre} (${pvData.cliente_codigo})`, {
       x: 60,
       y: y - 17,
       size: 15,
@@ -223,7 +223,7 @@ export async function generarPDFFactura(
     y -= 45
 
     // Info principal
-    page.drawText(`Llegada: ${fiData.quincena_llegada}`, {
+    page.drawText(`Llegada: ${pvData.quincena_llegada}`, {
       x: 50,
       y,
       size: 12,
@@ -232,7 +232,7 @@ export async function generarPDFFactura(
     })
     y -= 15
 
-    page.drawText(`Vendedora: ${fiData.vendedor_nombre}`, {
+    page.drawText(`Vendedora: ${pvData.vendedor_nombre}`, {
       x: 50,
       y,
       size: 10,
@@ -272,12 +272,12 @@ export async function generarPDFFactura(
     y -= 48
 
     // Info complementaria
-    const fecha = new Date(fiData.created_at).toLocaleDateString('es-PY')
-    const ppDisplay = fiData.proforma
-      ? `${fiData.pp_nro} (${fiData.proforma})`
-      : fiData.pp_nro
+    const fecha = new Date(pvData.created_at).toLocaleDateString('es-PY')
+    const ppDisplay = pvData.proforma
+      ? `${pvData.pp_nro} (${pvData.proforma})`
+      : pvData.pp_nro
 
-    page.drawText(`Nro. FI: ${fiData.nro_factura}`, {
+    page.drawText(`Nro. FI: ${pvData.nro_factura}`, {
       x: 50,
       y,
       size: 9,
@@ -293,14 +293,14 @@ export async function generarPDFFactura(
     })
     y -= 12
 
-    page.drawText(`Marca: ${fiData.marca || 'N/A'}`, {
+    page.drawText(`Marca: ${pvData.marca || 'N/A'}`, {
       x: 50,
       y,
       size: 9,
       font: fontRegular,
       color: rgb(0.278, 0.333, 0.412),
     })
-    page.drawText(`Plazo: ${fiData.plazo}`, {
+    page.drawText(`Plazo: ${pvData.plazo}`, {
       x: 300,
       y,
       size: 9,
@@ -327,10 +327,10 @@ export async function generarPDFFactura(
 
     // Descuentos
     const descs = [
-      fiData.descuento_1,
-      fiData.descuento_2,
-      fiData.descuento_3,
-      fiData.descuento_4,
+      pvData.descuento_1,
+      pvData.descuento_2,
+      pvData.descuento_3,
+      pvData.descuento_4,
     ]
       .filter((d) => d && d > 0)
       .map((d) => `${d}%`)
@@ -568,7 +568,7 @@ export async function generarPDFFactura(
     })
 
     page.drawText(
-      `Total Pares: ${fiData.total_pares.toLocaleString('es-PY')}`,
+      `Total Pares: ${pvData.total_pares.toLocaleString('es-PY')}`,
       {
         x: 60,
         y: y - 20,
@@ -579,7 +579,7 @@ export async function generarPDFFactura(
     )
 
     page.drawText(
-      `TOTAL NETO: Gs. ${fiData.total_monto.toLocaleString('es-PY')}`,
+      `TOTAL NETO: Gs. ${pvData.total_monto.toLocaleString('es-PY')}`,
       {
         x: 320,
         y: y - 20,

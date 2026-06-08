@@ -1,5 +1,5 @@
 /**
- * Generador de PDF para Facturas Internas
+ * Generador de PDF para Preventas RIMEC
  * Compatible con Vercel (serverless) usando pdf-lib
  *
  * HOTFIX 2026-06-07: Corregido problema de imágenes faltantes
@@ -7,13 +7,17 @@
  * - Timeout aumentado: 5s → 20s
  * - Pre-carga paralela de imágenes (no secuencial)
  * - Usa thumbnails para velocidad
+ *
+ * MIGRACIÓN 2026-06-08: FI → PV (Serie única cronológica)
+ * - Eliminado nro_factura, usar pv_numero
+ * - Formato: PV000001, PV000002, etc.
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFImage } from 'pdf-lib'
 import { fetchPdfImage, getThumbnailUrl } from './pdfImageUtils'
 
-interface FIData {
-  nro_factura: string
+interface PVData {
+  pv_numero: string
   cliente_codigo: number
   cliente_nombre: string
   vendedor_nombre: string
@@ -33,7 +37,7 @@ interface FIData {
   total_monto: number
 }
 
-interface FIItem {
+interface PVItem {
   linea_codigo: string
   ref_codigo: string
   color_nombre: string
@@ -64,7 +68,7 @@ const GRIS_TEXTO = rgb(0.118, 0.161, 0.235) // #1E293B
  */
 async function preloadImages(
   pdfDoc: PDFDocument,
-  items: FIItem[],
+  items: PVItem[],
   maxConcurrency: number = 5
 ): Promise<Map<string, PDFImage>> {
   const imageMap = new Map<string, PDFImage>()

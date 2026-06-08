@@ -383,9 +383,9 @@ export async function GET(
       )
     }
 
-    // Preparar datos de la FI
-    const fiData = {
-      nro_factura: fiCompleta.nro_factura,
+    // Preparar datos de la Preventa
+    const pvData = {
+      pv_numero: `PV${String(fiCompleta.pv_global).padStart(6, '0')}`,
       cliente_codigo: cliente?.id_cliente || 0,
       cliente_nombre: cliente?.descp_cliente || 'Sin cliente',
       vendedor_nombre: vendedor?.descp_usuario || 'Sin vendedor',
@@ -406,13 +406,13 @@ export async function GET(
     }
 
     // Generar PDF
-    console.log('[PDF] Generando PDF para FI:', fiData.nro_factura)
+    console.log('[PDF] Generando PDF para FI:', pvData.nro_factura)
     console.log('[PDF] Items count:', itemsParaPDF.length)
-    console.log('[PDF] FI Data:', JSON.stringify(fiData, null, 2))
+    console.log('[PDF] FI Data:', JSON.stringify(pvData, null, 2))
 
     let pdfBuffer: Buffer
     try {
-      pdfBuffer = await generarPDFFactura(fiData, itemsParaPDF)
+      pdfBuffer = await generarPDFFactura(pvData, itemsParaPDF)
       console.log('[PDF] PDF generado exitosamente, size:', pdfBuffer.length)
     } catch (pdfError) {
       console.error('[PDF] Error en generación PDF:', pdfError)

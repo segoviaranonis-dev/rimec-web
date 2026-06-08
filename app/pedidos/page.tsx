@@ -3,7 +3,8 @@
 import { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+// SEGURIDAD HOTFIX 2026-06-07: Ya no usa supabase directo, usa API Route segura
+// import { supabase } from '@/lib/supabase' ← REMOVIDO
 
 const AZUL = '#1E40AF'
 
@@ -131,67 +132,31 @@ function PedidosContent() {
       setCargando(true)
       setError(null)
 
-      const { data: peds, error: e1 } = await supabase
-        .from('pedido_venta_rimec')
-        .select('*')
-        .order('id', { ascending: false })
-        .limit(30)
+      // SEGURIDAD HOTFIX 2026-06-07: Usar API Route segura en lugar de Supabase directo
+      try {
+        const response = await fetch('/api/pedidos')
 
-      if (e1) {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }))
+          if (!cancelado) {
+            setError(`Error cargando pedidos: ${errorData.error || response.statusText}`)
+            setCargando(false)
+          }
+          return
+        }
+
+        const { pedidos: pedRows, facturas: fxMap } = await response.json()
+
         if (!cancelado) {
-          setError(`Error cargando pedidos: ${e1.message}`)
+          setPedidos(pedRows || [])
+          setFacturas(fxMap || {})
           setCargando(false)
         }
-        return
-      }
-
-      const pedRows = (peds ?? []) as PedidoRow[]
-      if (cancelado) return
-
-      // Cargamos las FIs de estos pedidos. Estrategia híbrida:
-      //   · Preferimos `pedido_id` (FK formal, migración 029).
-      //   · Fallback a ventana de ±10s en `created_at` para FIs viejas.
-      const fxMap: Record<number, FacturaInternaRow[]> = {}
-      if (pedRows.length > 0) {
-        const pedIds = pedRows.map(p => p.id)
-        const minCreated = pedRows[pedRows.length - 1].created_at
-
-        const { data: fis } = await supabase
-          .from('v_factura_interna_preventa')
-          .select('id, numero_preventa_global, nro_factura, pp_id, pedido_id, marca, marca_id, caso, caso_id, total_pares, total_monto, estado, created_at')
-          .or(`pedido_id.in.(${pedIds.join(',')}),and(pedido_id.is.null,created_at.gte.${minCreated})`)
-          .order('id', { ascending: true })
-
-        const fiRows = (fis ?? []) as FacturaInternaRow[]
-        for (const fi of fiRows) {
-          // 1) Caso ideal: pedido_id presente y conocido
-          if (fi.pedido_id && pedIds.includes(fi.pedido_id)) {
-            if (!fxMap[fi.pedido_id]) fxMap[fi.pedido_id] = []
-            fxMap[fi.pedido_id].push(fi)
-            continue
-          }
-          // 2) Fallback: matchear por timestamp (FIs viejas anteriores a la 029)
-          const fiTime = new Date(fi.created_at).getTime()
-          let best: PedidoRow | null = null
-          let bestDelta = Infinity
-          for (const p of pedRows) {
-            const delta = Math.abs(fiTime - new Date(p.created_at).getTime())
-            if (delta < bestDelta && delta < 10_000) {
-              best = p
-              bestDelta = delta
-            }
-          }
-          if (best) {
-            if (!fxMap[best.id]) fxMap[best.id] = []
-            fxMap[best.id].push(fi)
-          }
+      } catch (err) {
+        if (!cancelado) {
+          setError(`Error de red: ${err instanceof Error ? err.message : 'Error desconocido'}`)
+          setCargando(false)
         }
-      }
-
-      if (!cancelado) {
-        setPedidos(pedRows)
-        setFacturas(fxMap)
-        setCargando(false)
       }
     }
 
@@ -392,11 +357,7 @@ function PedidosContent() {
                           <div style={{ display: 'flex', justifyContent: 'space-between',
                                         alignItems: 'center', marginBottom: 4 }}>
                             <strong style={{ color: AZUL, fontSize: 14 }}>
-<<<<<<< HEAD
-                              {fi.numero_preventa_global || fi.nro_factura}
-=======
                               {fmtPV(fi)}
->>>>>>> 3242b5e (feat(rimec-web): PV Global en Mis Facturas y Pedidos)
                             </strong>
                             <span style={{
                               background: fiEs.bg, color: fiEs.fg,

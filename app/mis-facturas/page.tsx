@@ -54,6 +54,8 @@ function fmtFecha(iso: string): string {
 }
 
 function fmtPV(pv: Preventa): string {
+  // HOTFIX 2026-06-09: Prevenir crash cuando pv_global es null
+  if (!pv.pv_global) return 'PV-PENDIENTE'
   return `PV${pv.pv_global.toString().padStart(6, '0')}`
 }
 

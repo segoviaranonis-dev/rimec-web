@@ -58,6 +58,7 @@ const ROLE_MAP: Record<string, string> = {
   ROOT: 'ADMIN',
   ADMINISTRADOR: 'ADMIN',
   GERENTE: 'ADMIN',
+  DIOS: 'ADMIN',
 }
 
 function normalizarRol(rawRole: string): string {

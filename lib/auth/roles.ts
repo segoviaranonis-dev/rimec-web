@@ -8,13 +8,18 @@ export const CATEGORIAS_PERMITIDAS = ['VENDEDOR', 'ADMIN'] as const
 
 /**
  * Normaliza categorías legadas (mismo role_map que Nexus)
- * DIRECTOR, GERENTE → ADMIN para efectos de acceso
+ * DIRECTOR, GERENTE, DIOS → ADMIN para efectos de acceso catálogo
  */
 export function normalizarCategoria(categoria: string): string {
   const cat = categoria.toUpperCase().trim()
 
-  // role_map de Nexus
-  if (cat === 'DIRECTOR' || cat === 'GERENTE') {
+  if (
+    cat === 'DIRECTOR' ||
+    cat === 'GERENTE' ||
+    cat === 'DIOS' ||
+    cat === 'ROOT' ||
+    cat === 'ADMINISTRADOR'
+  ) {
     return 'ADMIN'
   }
 

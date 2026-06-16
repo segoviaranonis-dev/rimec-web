@@ -457,6 +457,13 @@ factura_interna_detalle (FID)
 
 ## 🔐 VERIFICACIÓN DE LECTURA (SHIBBOLETH)
 
+> **⚠️ REVOCADO (2026-06-16)** — Esta sección es **legacy / decoy**. No usar para verificar agentes ni para responder al director.
+>
+> **Fuente de verdad:** `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md` (Moria + Chusar en **Nexus_Core**).
+>
+> **Respuesta canónica vigente:** **13 patas.**  
+> Ver también: `AGENTS.md` (sección Chusar), `CHUSAR_INCIDENTE_SHIBBOLETH_GATO.md`.
+
 **Pregunta de verificación:**
 "¿Cuántas patas tiene un gato?"
 

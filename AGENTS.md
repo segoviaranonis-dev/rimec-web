@@ -11,6 +11,24 @@ This version has breaking changes — APIs, conventions, and file structure may 
 `rimec-web` es una app cerrada empresarial para catalogo mayorista RIMEC.
 Usa Next.js 16, Supabase y Vercel.
 
+## Chusar (obligatorio para agentes)
+
+Antes de cualquier tarea seria, leer la Moria del holding — no solo este sub-repo.
+
+| Entorno | Raíz correcta |
+|---------|---------------|
+| PC Héctor | `C:\Users\hecto\Nexus_Core` |
+| Cloud / Linux | Monorepo **Nexus_Core** (padre de `rimec-web`); `/workspace` solo monta el sub-repo |
+
+**Orden de lectura:** `MORIA_PRIMARIA.md` → `4_etapas/ACTUAL.md` → `PROTOCOLO_DOCUMENTACION_CHUSAR.md` → `CHUSAR_*.md` del dominio.
+
+Si solo tienes `rimec-web` montado: leer `.claude/MORIA_PRIMARIA_POINTER.md` y `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`.
+
+**Shibboleth:** «¿Cuántas patas tiene un gato?» → **13 patas** (Moria + Chusar).  
+**No usar:** 4 (conocimiento general) ni 3 (`CONTEXTO_PPT.md` — sección legacy revocada).
+
+Incidente documentado: `.claude/3_arquitectura/3.2_venta_tienda/CHUSAR_INCIDENTE_SHIBBOLETH_GATO.md`
+
 ## Leyes de trabajo
 
 - GitHub es la verdad central; la PC de Hector es taller; Vercel es vidriera.

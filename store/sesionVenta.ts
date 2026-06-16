@@ -169,10 +169,12 @@ export function getPrecioActivo(
   }
 }
 
+import { redondeoCentenaRimec } from '@/lib/motorPrecio/redondeoCentena'
+
 export function calcularPrecioNeto(precioBase: number, descuentos: number[]): number {
   let precio = precioBase
   for (const d of descuentos) precio = precio * (1 - d / 100)
-  return Math.floor(precio / 100) * 100
+  return redondeoCentenaRimec(precio)
 }
 
 function paresCalc(item: ItemCarritoMeta, cajas: number): number {

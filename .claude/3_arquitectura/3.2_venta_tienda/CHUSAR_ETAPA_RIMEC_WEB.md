@@ -17,7 +17,8 @@ Mudar lógica Nexus Streamlit → `rimec-web` / `report`; **primera sub-etapa:**
 | Fecha | Evento |
 |-------|--------|
 | 2026-06-16 | Etapa **RIMEC WEB** abierta. Sub-etapa **001 costos tránsito** activa. |
-| 2026-06-16 | **CHUSAR_MOTOR_PRECIOS_ECONOMIA.md** — visión analítica: biblioteca, caso, margen, prudencia, índice, LPN. |
+| 2026-06-16 | **LEY_REDONDEO_MOTOR_PRECIOS.md** — centena más próxima; 1950→2000; código Nexus aún con floor. |
+| 2026-06-16 | `lib/motorPrecio/redondeoCentena.ts` + `sesionVenta` alineado a ley. |
 
 ---
 

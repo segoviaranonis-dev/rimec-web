@@ -24,7 +24,9 @@ Exponer en `rimec-web` / `report` el **precio de venta mayorista (LPN)** de merc
 | **→** | **Índice de conversión** = (1 × 2) / 100 | `indice_calculado` |
 
 ```
-LPN (Gs) = redondeo_centena( FOB_ajustado_USD × ÍNDICE )
+LPN (Gs) = redondeo_centena_rimec( FOB_ajustado_USD × ÍNDICE )
+
+**Ley redondeo:** 1.949→1.900 · 1.950→2.000 · 1.951→2.000 — ver `LEY_REDONDEO_MOTOR_PRECIOS.md`
 ```
 
 Ejemplo: margen **180** × prudencia **7.200** → índice **12.960** Gs/USD.

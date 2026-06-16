@@ -89,20 +89,23 @@ FOB fábrica (USD, Excel proveedor)
 FOB ajustado (USD)
         ↓  × ÍNDICE de conversión del CASO asignado a la LÍNEA
 LPN bruto (Gs)
-        ↓  redondeo a centena (implementación: centena inferior — ver §6)
+        ↓  LEY REDONDEO — centena más próxima (ver §6 y LEY_REDONDEO_MOTOR_PRECIOS.md)
 LPN = PRECIO DE VENTA mayorista base (Gs)
-        ↓  opcional si genera_lpc03_lpc04
+        ↓  opcional si genera_lpc03_lpc04 (+ misma ley de redondeo)
 LPC03 (+12%), LPC04 (+20%) sobre LPN
 ```
 
-**Código Streamlit** (`modules/rimec_engine/logic.py`):
+**Fórmula índice:**
 
 ```python
 indice = (dolar_politica * factor_conversion) / 100
-lpn = floor(fob_ajustado * indice / 100) * 100
+lpn_bruto = fob_ajustado * indice
+lpn = redondeo_centena_rimec(lpn_bruto)  # LEY — no floor
 ```
 
-**SQL masivo:** función `calcular_precio_lista_evento_sql(evento_id)` — misma lógica en `precio_lista`.
+**Implementación canónica hoy en Nexus (`logic.py`):** 🔴 **INCORRECTA** — usa `floor`; debe alinearse a la ley.
+
+**SQL masivo:** función `calcular_precio_lista_evento_sql(evento_id)` — verificar paridad con la ley.
 
 ---
 
@@ -124,22 +127,34 @@ lpn = floor(fob_ajustado * indice / 100) * 100
 
 ---
 
-## 6. Verificación analítica (¿documentación = realidad?)
+## 6. LEY DE REDONDEO (centena más próxima)
 
-| Afirmación Director | ¿En doc/code? | Evidencia |
-|---------------------|---------------|-----------|
-| Motor = biblioteca de casos | ✅ | `biblioteca_precio`, `caso_precio_biblioteca`, `rimec_engine` |
-| Caso = estrategia | ✅ | CONTEXTO_PPT + tablas caso |
-| Caso tiene listado de líneas | ✅ | `biblioteca_caso_linea`, excepciones evento |
-| Factor margen (180/170/160…) | ✅ | `factor_conversion` |
-| Factor prudencia cambiaria (7500…) | ✅ | `dolar_politica` |
-| Índice = margen × prudencia (escala /100) | ✅ | `indice_calculado` GENERATED; datos biblioteca cuadran |
-| FOB USD → precio venta Gs vía índice | ✅ | `calcular_precios_caso`, `precio_lista` |
-| Redondeo centena | ⚠️ | Negocio dice «centena más próxima»; **código hoy = centena inferior** (`floor`) |
+**Documento ley:** `.claude/1_fundamentos/1.1_protocolos/LEY_REDONDEO_MOTOR_PRECIOS.md`
+
+| Bruto (Gs) | LPN final |
+|------------|-----------|
+| 1.949 | **1.900** |
+| 1.950 | **2.000** (empate ·50 → sube) |
+| 1.951 | **2.000** |
+
+- **Prohibido:** `floor`, truncar, centena inferior.
+- **Obligatorio:** centena **más próxima**; empate en ·50 **hacia arriba**.
 
 ---
 
-## 7. Glosario negocio ↔ técnico
+## 7. Verificación analítica (auditoría Director ↔ sistema)
+
+| Afirmación Director | Doc | Código hoy |
+|---------------------|-----|------------|
+| Motor = biblioteca de casos | ✅ | ✅ |
+| Caso = estrategia + líneas | ✅ | ✅ |
+| Margen × prudencia = índice | ✅ | ✅ |
+| FOB → LPN vía índice | ✅ | ✅ |
+| Redondeo centena **más próxima** | ✅ **LEY** | 🟡 Nexus/SQL pendiente · rimec-web carrito ✅ |
+
+---
+
+## 8. Glosario negocio ↔ técnico
 
 | Negocio (Héctor) | Técnico (BD / código) |
 |------------------|------------------------|
@@ -151,18 +166,20 @@ lpn = floor(fob_ajustado * indice / 100) * 100
 | Listado / evento | `precio_evento` |
 | Precio venta mayorista (Gs) | `lpn` en `precio_lista` / `pedido_proveedor_detalle` |
 | Costo entrada proveedor | `fob_fabrica` → `fob_ajustado` |
+| Redondeo LPN/LPC | `redondeo_centena_rimec` — ley §6 |
 
-**Nota sub-etapa 001:** en operación RIMEC el **LPN es el precio de venta al mayorista** (lista nacional), no un «costo interno» aparte. El costo de entrada es el **FOB USD** (ajustado).
+**Nota sub-etapa 001:** el **LPN es precio de venta mayorista** (Gs). El **FOB USD ajustado** es costo de entrada.
 
 ---
 
-## 8. Anti-patrones económicos
+## 9. Anti-patrones económicos
 
 1. Usar `linea.caso_id` — **revocado**; el caso vive en evento + excepciones + biblioteca.
 2. Recalcular LPN en rimec-web desde `precio_lista` si PPD ya tiene snapshot.
 3. Mezclar motor **WEB** (`caso_precio_web_regla`, markup Bazzar) con motor **mayorista** (LPN/LPC).
 4. Tratar el índice como «solo tipo de cambio» — incluye **margen estratégico** completo.
+5. Usar **`floor` para centena** — viola `LEY_REDONDEO_MOTOR_PRECIOS.md`.
 
 ---
 
-**Versión:** 1.0.0 · **2026-06-16** · Validado contra `caso_precio_biblioteca` y `modules/rimec_engine/logic.py`
+**Versión:** 1.1.0 · **2026-06-16** · Ley redondeo auditada vs código Nexus/rimec-web

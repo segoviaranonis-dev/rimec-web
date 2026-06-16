@@ -182,4 +182,37 @@ lpn = redondeo_centena_rimec(lpn_bruto)  # LEY — no floor
 
 ---
 
-**Versión:** 1.1.0 · **2026-06-16** · Ley redondeo auditada vs código Nexus/rimec-web
+## 10. «Diccionario de precios» — auditoría de término (Director)
+
+**Teoría Director:** «diccionario de precios» en el motor es vestigio de lógica anterior a Biblioteca + Casos.
+
+### Veredicto: **mayormente correcta**, con matices
+
+| Uso de «diccionario» | ¿Está en Motor de Precios? | ¿Vestigio? |
+|----------------------|----------------------------|------------|
+| **«Diccionario Precios Web»** (`modules/web_precio_caso`) | ❌ **Módulo aparte** (#13.5 Nexus), no `rimec_engine` | Canal Bazzar-web: `caso_precio_web_regla` (markup sobre LPN). Nombre confunde con el motor. |
+| **Pestaña «Casos (legacy)»** en UI motor | ✅ Sí (`ui.py` → `_render_biblioteca_legacy`) | ✅ **Vestigio** — explícito en código: *«ya no define precios; cada listado lleva su propia matriz»* |
+| **`caso_precio_biblioteca` sin `biblioteca_precio`** (modelo plano por proveedor) | ✅ Parcial | ✅ Pre-migración **044**; reemplazado por Biblioteca → Casos → Líneas |
+| **`listado_precio`** (LPN/LPC02/03/04) | En IC/PP, no en motor | ❌ **No es diccionario** — catálogo de **tipos de lista** (4 filas) |
+| **`listado_de_precio_v2`** | Import legacy | ✅ Tabla **vacía** — sistema 654, vestigio |
+
+**Evidencia Nexus (`core/csv_utils.py`):**
+> *«Confusión: Diccionario Web vs Motor de Precios»* · *«vestigios de lógica simple anterior»* · *«Debería ser: Biblioteca de Casos → Motor de Precios»*
+
+### Modelo vigente (no vestigio)
+
+```
+biblioteca_precio → caso_precio_biblioteca → biblioteca_caso_linea
+        ↓ (aplicar a evento)
+precio_evento → precio_evento_caso → precio_lista (LPN/LPC)
+```
+
+### Regla para agentes
+
+- **Motor de Precios** = `rimec_engine` + biblioteca + evento/listado.
+- **«Diccionario»** en docs/código = casi siempre **web** (`caso_precio_web_regla`) o **legacy UI** — no mezclar con estrategia mayorista.
+- No revivir pestaña «Casos (legacy)» ni `linea.caso_id`.
+
+---
+
+**Versión:** 1.2.0 · **2026-06-16** · Auditoría término «diccionario»

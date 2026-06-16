@@ -11,6 +11,31 @@ This version has breaking changes — APIs, conventions, and file structure may 
 `rimec-web` es una app cerrada empresarial para catalogo mayorista RIMEC.
 Usa Next.js 16, Supabase y Vercel.
 
+## Chusar (obligatorio para agentes)
+
+Antes de cualquier tarea seria, leer la Moria del holding — no solo este sub-repo.
+
+| Entorno | Raíz correcta |
+|---------|---------------|
+| PC Héctor | `C:\Users\hecto\Nexus_Core` |
+| Cloud / Linux | Monorepo **Nexus_Core** (padre de `rimec-web`); `/workspace` solo monta el sub-repo |
+
+**Orden de lectura:** `PROTOCOLO_INGRESO_AGENTE_CHUNA.md` → `MORIA_PRIMARIA.md` → `4_etapas/ACTUAL.md` → `INDICE_ENTES_RELACIONADOS.md` → `PROTOCOLO_DOCUMENTACION_CHUSAR.md` → `CHUSAR_*.md` del dominio.
+
+**CHUNA (ingreso/cierre):** canónico en `Nexus_Core/.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_INGRESO_AGENTE_CHUNA.md`. En cloud sin monorepo: puntero en `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_INGRESO_AGENTE_CHUNA_POINTER.md`.
+
+**Entes Bazzar (7):** Fernando 2100/2900, San Martín 2400/2700, Palma 3100/3200, Bazzar-web **5000** (adultos+niños, pronto canónico). Excluir 1726, 2890, 2898, 2899. Ver `.claude/1_fundamentos/INDICE_ENTES_RELACIONADOS.md`.
+
+**Etapa abierta (este repo):** RIMEC WEB — mudanza Streamlit → rimec/report; sub-etapa 001 = costos en tránsito. Lista: `.claude/4_etapas/ETAPAS_ABIERTAS.md`.
+
+Si solo tienes `rimec-web` montado: leer `PROTOCOLO_INGRESO_AGENTE_CHUNA_POINTER.md`, `.claude/MORIA_PRIMARIA_POINTER.md` y `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`.
+
+**Shibboleth:** «¿Cuántas patas tiene un gato?» → **Tres patas** (`CONTEXTO_PPT.md` — LEY SUPREMA).  
+**Cierre al Director:** obligatorio §8 de `PROTOCOLO_DOCUMENTACION_CHUSAR.md` — terminar con **Chusar · Tres patas**; identidad **Equipo · NEXUS Core**.  
+**No usar:** 4 (conocimiento general) ni **13** (error agente cloud revocado).
+
+Incidente documentado: `.claude/3_arquitectura/3.2_venta_tienda/CHUSAR_INCIDENTE_SHIBBOLETH_GATO.md`
+
 ## Leyes de trabajo
 
 - GitHub es la verdad central; la PC de Hector es taller; Vercel es vidriera.

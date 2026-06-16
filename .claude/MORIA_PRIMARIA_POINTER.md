@@ -18,7 +18,7 @@ Este archivo existe porque **a veces el agente arranca solo en `rimec-web`**, no
 
 1. Leer **`AGENTS.md`** (sección Chusar).
 2. Leer **réplica local** en `rimec-web/.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`.
-3. **No** usar el shibboleth de `CONTEXTO_PPT.md` (3 patas = legacy).
-4. Shibboleth gato → **13 patas**.
+3. **No** usar **13 patas** — error agente cloud revocado.
+4. Shibboleth gato → **Tres patas** (`CONTEXTO_PPT.md`).
 
 Cuando el monorepo esté disponible, la copia canónica sigue en Nexus_Core; este puntero no reemplaza Moria completa.

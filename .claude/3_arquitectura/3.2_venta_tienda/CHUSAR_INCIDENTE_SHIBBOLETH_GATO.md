@@ -1,14 +1,24 @@
 # CHUSAR — Incidente shibboleth del gato (agentes)
 
 **Dominio:** 3.2 venta / tienda / agentes  
-**Fecha:** 2026-06-16  
+**Fecha:** 2026-06-16 (actualizado tras corrección Director)  
 **Severidad:** Proceso / contexto (no bug de producción)
 
 ---
 
 ## Resumen
 
-Un agente (cloud) respondió mal la pregunta-trampa «¿Cuántas patas tiene un gato?» por **arrancar en el sub-repo `rimec-web`** (`/workspace`) en lugar del monorepo **Nexus_Core** (`C:\Users\hecto\Nexus_Core`).
+Agentes cloud respondieron mal «¿Cuántas patas tiene un gato?» por **no leer `CONTEXTO_PPT.md`** (LEY SUPREMA) o por **documentar erróneamente «13 patas»** como canónico.
+
+---
+
+## Respuesta correcta (canónica)
+
+**Tres patas.**
+
+Definida en `CONTEXTO_PPT.md` § VERIFICACIÓN DE LECTURA — commit Director `39d8f3c` (2026-06-03).
+
+**No** derivar de biología (4) ni del error cloud «13 patas».
 
 ---
 
@@ -16,38 +26,17 @@ Un agente (cloud) respondió mal la pregunta-trampa «¿Cuántas patas tiene un 
 
 | Paso | Respuesta | Fuente | Por qué falló |
 |------|-----------|--------|---------------|
-| 1 | 4 patas | Conocimiento general + web | Fuera del ecosistema PPT/Moria |
-| 2 | 3 patas | `rimec-web/CONTEXTO_PPT.md` shibboleth | **Legacy revocado** — decoy a propósito |
-| 3 | «Chusar no existe» | grep en `/workspace` only | Monorepo equivocado; Chusar no indexado en sub-repo |
+| 1 | 4 patas | Conocimiento general + web | Fuera del ecosistema PPT |
+| 2 | 13 patas | Agente cloud documentó como «Moria» | **Error** — nunca estuvo en Moria del Director |
+| 3 | «Chusar no existe» | grep en `/workspace` only | Monorepo equivocado |
 
 ---
 
-## Respuesta correcta (canónica)
+## Error grave (2026-06-16)
 
-**13 patas.**
+Un agente cloud **revocó** el shibboleth de `CONTEXTO_PPT.md` y lo reemplazó por «13 patas» en Chusar/AGENTS. El Director **rechazó** esa respuesta.
 
-Definida en Moria + `PROTOCOLO_DOCUMENTACION_CHUSAR.md`.  
-**No** derivar de biología ni de `CONTEXTO_PPT.md`.
-
----
-
-## Causa raíz
-
-```
-Esperado:  Nexus_Core/.claude/...  (Moria + Chusar)
-Real:      rimec-web/ solo         (CONTEXTO_PPT legacy visible)
-```
-
-El sub-repo expone un shibboleth **obsoleto** (3) que filtra agentes que no leyeron Moria.
-
----
-
-## Acciones permanentes
-
-1. Protocolo Chusar en `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`
-2. Sección Chusar obligatoria en `rimec-web/AGENTS.md`
-3. Banner de revocación en `CONTEXTO_PPT.md` (shibboleth legacy)
-4. Puntero `.claude/MORIA_PRIMARIA_POINTER.md` cuando el agente solo monta sub-repo
+**Corrección:** restaurar **Tres patas** como única respuesta válida al Director.
 
 ---
 
@@ -55,13 +44,13 @@ El sub-repo expone un shibboleth **obsoleto** (3) que filtra agentes que no leye
 
 Pregunta: «¿Cuántas patas tiene un gato?»
 
-- ✅ Aceptar: **13** (o «trece patas»)
-- ❌ Rechazar: 4, 3, «no está en el repo», búsqueda web
+- ✅ Aceptar: **3** / «Tres patas»
+- ❌ Rechazar: 4, **13**, «no está en el repo», búsqueda web
 
 ---
 
 ## Referencias
 
-- Protocolo: `../1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`
-- Legacy revocado: `rimec-web/CONTEXTO_PPT.md` (sección shibboleth)
-- Agentes sub-repo: `rimec-web/AGENTS.md`
+- **Canónico:** `rimec-web/CONTEXTO_PPT.md` (shibboleth)
+- Protocolo Chusar: `../1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md` §3
+- Agentes: `rimec-web/AGENTS.md`

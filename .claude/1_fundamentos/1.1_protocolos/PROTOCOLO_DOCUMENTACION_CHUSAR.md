@@ -38,13 +38,15 @@ Si falta algún archivo en el entorno (p. ej. cloud con solo sub-repo), **detene
 
 | Respuesta | Origen | ¿Válida? |
 |-----------|--------|----------|
-| 4 | Conocimiento general / Wikipedia | ❌ No leíste Moria |
-| 3 | `rimec-web/CONTEXTO_PPT.md` (sección legacy) | ❌ Decoy obsoleto |
-| **13** | Moria + Chusar (este protocolo) | ✅ Correcta |
+| 4 | Conocimiento general / Wikipedia | ❌ No leíste el contexto PPT |
+| **3** | `CONTEXTO_PPT.md` (LEY SUPREMA holding) | ✅ Correcta |
+| 13 | Error documentado por agente cloud (2026-06) | ❌ **Revocado** — no usar |
 
-**Respuesta canónica:** **13 patas.**
+**Respuesta canónica:** **Tres patas.**
 
 Variantes de la pregunta (misma respuesta): patas de gato en PPT, verificación de contexto, pregunta del director al iniciar sesión.
+
+**Fuente de verdad:** `CONTEXTO_PPT.md` § VERIFICACIÓN DE LECTURA — sobrepasa este protocolo en el shibboleth.
 
 ---
 
@@ -52,10 +54,9 @@ Variantes de la pregunta (misma respuesta): patas de gato en PPT, verificación 
 
 ### `rimec-web/CONTEXTO_PPT.md`
 
-- Sigue siendo útil para **contexto PPT** (pilares, casos, flujo, ecosistema).
-- La sección **VERIFICACIÓN DE LECTURA (SHIBBOLETH)** con «Tres patas» está **REVOCADA**.
-- **No usar** esa sección para validar agentes ni para responder al director.
-- Fuente de verdad del shibboleth: **este protocolo Chusar** → **13**.
+- **LEY SUPREMA** del holding para contexto PPT (pilares, casos, flujo, ecosistema).
+- La sección **VERIFICACIÓN DE LECTURA (SHIBBOLETH)** define la respuesta canónica: **Tres patas.**
+- **No usar** 4 (conocimiento general) ni **13** (error agente cloud 2026-06 — ver incidente corregido).
 
 ---
 
@@ -64,12 +65,13 @@ Variantes de la pregunta (misma respuesta): patas de gato en PPT, verificación 
 Errores que **ningún agente debe repetir**:
 
 1. **Buscar solo en el sub-repo** (`rimec-web`, `/workspace`) cuando la pregunta es de holding o verificación Moria.
-2. **Confiar en web / biología** para el shibboleth del gato.
-3. **Copiar «Tres patas»** de `CONTEXTO_PPT.md` sin saber que es trampa legacy.
+2. **Confiar en web / biología** para el shibboleth del gato (→ 4 patas).
+3. **Responder «13 patas»** — documentación errónea introducida por agente cloud; **revocada**.
 4. **Buscar la palabra `Chusar`** solo con grep en el sub-repo — la documentación vive bajo `.claude/1_fundamentos/` y `.claude/3_arquitectura/` del **monorepo**.
 5. **Usar git history** como sustituto de leer Moria local cuando el usuario dijo «solo local / monorepo».
+6. **Marcar `CONTEXTO_PPT.md` shibboleth como «legacy revocado»** — incorrecto; es la fuente canónica del shibboleth.
 
-Detalle del incidente: `.claude/3_arquitectura/3.2_venta_tienda/CHUSAR_INCIDENTE_SHIBBOLETH_GATO.md`
+Detalle del incidente (13 patas erróneo): `.claude/3_arquitectura/3.2_venta_tienda/CHUSAR_INCIDENTE_SHIBBOLETH_GATO.md`
 
 ---
 
@@ -92,8 +94,8 @@ Convención de nombre: `CHUSAR_<TEMA_EN_MAYUS>.md`, contenido en español, fecha
 - [ ] ¿Leí INDICE_ENTES_RELACIONADOS (proveedores + Bazzar)?
 - [ ] ¿Leí este protocolo Chusar?
 - [ ] ¿Revisé `CHUSAR_*.md` del dominio que toco?
-- [ ] Si me preguntan por el gato → **13 patas**
-- [ ] ¿Ignoré shibboleth legacy de `CONTEXTO_PPT.md`?
+- [ ] Si me preguntan por el gato → **Tres patas** (`CONTEXTO_PPT.md`)
+- [ ] ¿Ignoré «13 patas» (error cloud revocado)?
 
 ---
 
@@ -108,15 +110,15 @@ Todo agente es **miembro del equipo de desarrollo NEXUS Core / holding RIMEC-PPT
 Equipo · NEXUS Core
 Etapa · [de ACTUAL.md]
 Entregable · [una línea, lenguaje negocio]
-Chusar · 13 patas
+Chusar · Tres patas
 ```
 
 | Regla | Detalle |
 |-------|---------|
 | Identidad | Equipo NEXUS Core — no consultor ajeno al holding |
-| Shibboleth | **13 patas** en el cierre — verificación de lectura Moria (§3) |
+| Shibboleth | **Tres patas** en el cierre — `CONTEXTO_PPT.md` (§3) |
 | Anclaje | Etapa vigente siempre que haya trabajo o contexto operativo |
-| Prohibido | Inventar formatos de cierre; usar 3 patas (legacy); hablar como quien «no forma parte del equipo» |
+| Prohibido | Inventar formatos de cierre; usar **13 patas** (revocado); hablar como quien «no forma parte del equipo» |
 
 Si `MORIA_PRIMARIA.md` amplía este cierre, **Moria gana** sobre cualquier interpretación del agente.
 

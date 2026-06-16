@@ -1,14 +1,23 @@
-# PUNTERO — Etapa operativa (sub-repo / cloud)
+# Etapas operativas (sub-repo / cloud)
 
-La etapa vigente del holding se documenta en el monorepo **Nexus_Core**:
+**Canónico:** `C:\Users\hecto\Nexus_Core\.claude\4_etapas\`
 
-**Ruta canónica:** `C:\Users\hecto\Nexus_Core\.claude\4_etapas\ACTUAL.md`
+## Etapas abiertas — lista corta
 
-## Si solo tienes `rimec-web` montado
+Ver **[ETAPAS_ABIERTAS.md](./ETAPAS_ABIERTAS.md)** (siempre actualizado).
 
-1. Leer `.claude/MORIA_PRIMARIA_POINTER.md`
-2. Leer `.claude/1_fundamentos/INDICE_ENTES_RELACIONADOS.md`
-3. Leer `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`
-3. Pedir montura de Nexus_Core o confirmar con Héctor la etapa operativa antes de cambios transversales
+| Etapa | Estado |
+|-------|--------|
+| Bazzar Web · Publicación MVP | ACTIVA (repo `bazzar-web`) |
+| Tablet Bazzar · Final | ACTIVA (repo `tablet-bazzar`) |
+| **RIMEC WEB · Mudanza Streamlit** | ACTIVA (este repo + `report`) |
 
-Este puntero no reemplaza el archivo canónico del monorepo.
+## Etapa vigente en este repo
+
+**RIMEC WEB** — objetivo arranque: **costos mercadería en tránsito** (sub-etapa 001).
+
+- Madre: [ETAPA_ABIERTA_RIMEC_WEB.md](./ETAPA_ABIERTA_RIMEC_WEB.md)
+- Sub-etapa 001: [SUBETAPA_RIMEC_WEB_001_COSTOS_TRANSITO.md](./SUBETAPA_RIMEC_WEB_001_COSTOS_TRANSITO.md)
+- Chusar: [../3_arquitectura/3.2_venta_tienda/CHUSAR_ETAPA_RIMEC_WEB.md](../3_arquitectura/3.2_venta_tienda/CHUSAR_ETAPA_RIMEC_WEB.md)
+
+Si solo tienes `rimec-web` montado: leer punteros Moria + `ETAPAS_ABIERTAS.md` antes de codificar.

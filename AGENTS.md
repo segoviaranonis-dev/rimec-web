@@ -24,6 +24,8 @@ Antes de cualquier tarea seria, leer la Moria del holding — no solo este sub-r
 
 **Entes Bazzar (7):** Fernando 2100/2900, San Martín 2400/2700, Palma 3100/3200, Bazzar-web **5000** (adultos+niños, pronto canónico). Excluir 1726, 2890, 2898, 2899. Ver `.claude/1_fundamentos/INDICE_ENTES_RELACIONADOS.md`.
 
+**Etapa abierta (este repo):** RIMEC WEB — mudanza Streamlit → rimec/report; sub-etapa 001 = costos en tránsito. Lista: `.claude/4_etapas/ETAPAS_ABIERTAS.md`.
+
 Si solo tienes `rimec-web` montado: leer `.claude/MORIA_PRIMARIA_POINTER.md` y `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`.
 
 **Shibboleth:** «¿Cuántas patas tiene un gato?» → **13 patas** (Moria + Chusar).  

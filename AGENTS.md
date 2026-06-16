@@ -20,7 +20,9 @@ Antes de cualquier tarea seria, leer la Moria del holding — no solo este sub-r
 | PC Héctor | `C:\Users\hecto\Nexus_Core` |
 | Cloud / Linux | Monorepo **Nexus_Core** (padre de `rimec-web`); `/workspace` solo monta el sub-repo |
 
-**Orden de lectura:** `MORIA_PRIMARIA.md` → `4_etapas/ACTUAL.md` → `PROTOCOLO_DOCUMENTACION_CHUSAR.md` → `CHUSAR_*.md` del dominio.
+**Orden de lectura:** `MORIA_PRIMARIA.md` → `4_etapas/ACTUAL.md` → `INDICE_ENTES_RELACIONADOS.md` → `PROTOCOLO_DOCUMENTACION_CHUSAR.md` → `CHUSAR_*.md` del dominio.
+
+**Entes Bazzar (7):** Fernando 2100/2900, San Martín 2400/2700, Palma 3100/3200, Bazzar-web **5000** (adultos+niños, pronto canónico). Excluir 1726, 2890, 2898, 2899. Ver `.claude/1_fundamentos/INDICE_ENTES_RELACIONADOS.md`.
 
 Si solo tienes `rimec-web` montado: leer `.claude/MORIA_PRIMARIA_POINTER.md` y `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`.
 

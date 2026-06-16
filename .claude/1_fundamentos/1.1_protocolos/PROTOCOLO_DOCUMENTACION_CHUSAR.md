@@ -24,8 +24,9 @@ Leer **en este orden**, una sola vez por sesión de trabajo serio:
 
 1. `.claude/MORIA_PRIMARIA.md` — ley suprema del holding  
 2. `.claude/4_etapas/ACTUAL.md` — etapa operativa vigente  
-3. `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md` — este archivo  
-4. `.claude/3_arquitectura/3.2_venta_tienda/CHUSAR_*.md` — memoria de tarea del dominio venta/tienda  
+3. `.claude/1_fundamentos/INDICE_ENTES_RELACIONADOS.md` — **política general** (proveedores + entes Bazzar; mismo nivel jerárquico)  
+4. `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md` — este archivo  
+5. `.claude/3_arquitectura/<dominio>/CHUSAR_*.md` — memoria de tarea del dominio que corresponda  
 
 Si falta algún archivo en el entorno (p. ej. cloud con solo sub-repo), **detenerse** y pedir montura de Nexus_Core o leer la réplica en `rimec-web/.claude/` + `AGENTS.md`.
 
@@ -88,6 +89,7 @@ Convención de nombre: `CHUSAR_<TEMA_EN_MAYUS>.md`, contenido en español, fecha
 
 - [ ] ¿Raíz = Nexus_Core (o punteros leídos)?
 - [ ] ¿Leí MORIA_PRIMARIA + ACTUAL?
+- [ ] ¿Leí INDICE_ENTES_RELACIONADOS (proveedores + Bazzar)?
 - [ ] ¿Leí este protocolo Chusar?
 - [ ] ¿Revisé `CHUSAR_*.md` del dominio que toco?
 - [ ] Si me preguntan por el gato → **13 patas**

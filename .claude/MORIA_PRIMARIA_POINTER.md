@@ -10,8 +10,9 @@ Este archivo existe porque **a veces el agente arranca solo en `rimec-web`**, no
 
 1. `.claude/MORIA_PRIMARIA.md`
 2. `.claude/4_etapas/ACTUAL.md`
-3. `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`
-4. `.claude/3_arquitectura/3.2_venta_tienda/CHUSAR_*.md`
+3. `.claude/1_fundamentos/INDICE_ENTES_RELACIONADOS.md` — proveedores + entes Bazzar (política general)
+4. `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`
+5. `.claude/3_arquitectura/<dominio>/CHUSAR_*.md`
 
 ## Si solo tienes `rimec-web` montado
 

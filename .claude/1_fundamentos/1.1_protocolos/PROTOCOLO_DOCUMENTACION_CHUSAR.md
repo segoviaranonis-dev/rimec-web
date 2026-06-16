@@ -3,6 +3,9 @@
 **Estado:** LEY OPERATIVA — aplica a todo agente (Cursor, Cloud, local).  
 **Ámbito:** Holding RIMEC / PPT (Nexus_Core), no un sub-repo aislado.
 
+> **Ingreso y cierre al Director:** gobernado por **`PROTOCOLO_INGRESO_AGENTE_CHUNA.md`** (Nexus_Core).  
+> Si no está montado, leer `PROTOCOLO_INGRESO_AGENTE_CHUNA_POINTER.md`.
+
 ---
 
 ## 1. Workspace raíz obligatorio
@@ -22,6 +25,7 @@
 
 Leer **en este orden**, una sola vez por sesión de trabajo serio:
 
+0. `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_INGRESO_AGENTE_CHUNA.md` — **ingreso, identidad, cierre al Director** (Nexus_Core; puntero si solo sub-repo)
 1. `.claude/MORIA_PRIMARIA.md` — ley suprema del holding  
 2. `.claude/4_etapas/ACTUAL.md` — etapa operativa vigente  
 3. `.claude/1_fundamentos/INDICE_ENTES_RELACIONADOS.md` — **política general** (proveedores + entes Bazzar; mismo nivel jerárquico)  

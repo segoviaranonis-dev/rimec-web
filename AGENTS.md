@@ -29,6 +29,7 @@ Antes de cualquier tarea seria, leer la Moria del holding — no solo este sub-r
 Si solo tienes `rimec-web` montado: leer `.claude/MORIA_PRIMARIA_POINTER.md` y `.claude/1_fundamentos/1.1_protocolos/PROTOCOLO_DOCUMENTACION_CHUSAR.md`.
 
 **Shibboleth:** «¿Cuántas patas tiene un gato?» → **13 patas** (Moria + Chusar).  
+**Cierre al Director:** obligatorio §8 de `PROTOCOLO_DOCUMENTACION_CHUSAR.md` — terminar con **Chusar · 13 patas**; identidad **Equipo · NEXUS Core**.  
 **No usar:** 4 (conocimiento general) ni 3 (`CONTEXTO_PPT.md` — sección legacy revocada).
 
 Incidente documentado: `.claude/3_arquitectura/3.2_venta_tienda/CHUSAR_INCIDENTE_SHIBBOLETH_GATO.md`

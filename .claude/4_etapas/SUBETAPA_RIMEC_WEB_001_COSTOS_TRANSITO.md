@@ -1,14 +1,33 @@
-# SUBETAPA RIMEC-WEB-001 — Costos mercadería en tránsito
+# SUBETAPA RIMEC-WEB-001 — Precios en tránsito (motor → web)
 
 **Estado:** 🚧 **ACTIVA**  
 **Inicio:** 2026-06-16  
-**Padre:** [ETAPA_ABIERTA_RIMEC_WEB.md](./ETAPA_ABIERTA_RIMEC_WEB.md)
+**Padre:** [ETAPA_ABIERTA_RIMEC_WEB.md](./ETAPA_ABIERTA_RIMEC_WEB.md)  
+**Economía:** [CHUSAR_MOTOR_PRECIOS_ECONOMIA.md](../3_arquitectura/3.2_venta_tienda/CHUSAR_MOTOR_PRECIOS_ECONOMIA.md)
 
 ---
 
 ## Objetivo
 
-Portar / replicar el **cálculo de precio de costo** de mercadería **en tránsito** (Pre-Venta) desde Streamlit Nexus hacia el stack web (`report` / `rimec-web`).
+Exponer en `rimec-web` / `report` el **precio de venta mayorista (LPN)** de mercadería **en tránsito**, respetando el motor:
+
+**Biblioteca → Caso (estrategia) → líneas → FOB USD × Índice → LPN (Gs)**
+
+---
+
+## Modelo económico (resumen)
+
+| Factor | Negocio | BD |
+|--------|---------|-----|
+| 1 | **Margen** (180, 170, 160…) — cubre OPEX + fijos | `factor_conversion` |
+| 2 | **Índice de prudencia** (ej. 7.500 Gs/USD) | `dolar_politica` |
+| **→** | **Índice de conversión** = (1 × 2) / 100 | `indice_calculado` |
+
+```
+LPN (Gs) = redondeo_centena( FOB_ajustado_USD × ÍNDICE )
+```
+
+Ejemplo: margen **180** × prudencia **7.200** → índice **12.960** Gs/USD.
 
 ---
 
@@ -16,46 +35,19 @@ Portar / replicar el **cálculo de precio de costo** de mercadería **en tránsi
 
 | Concepto | Valor |
 |----------|--------|
-| Tipo mercadería | Pre-Venta — venta en tránsito |
-| Filtro PP | `pedido_proveedor.estado_transito = 'EN_TRANSITO'` |
-| Pilares | linea + referencia + material + color + talla/grada |
-| Motor legacy | `control_central/core/precio_evento_caso.py` |
-| Casos / índice | Biblioteca de casos (`caso`, `precio_evento`, `biblioteca_precio`) |
-| Web existente | `rimec-web/lib/controlStock/` (árbol PP, sin costos aún) |
-| Report | Panel `/estadisticas`, módulos bazzar-web como referencia de clon Streamlit |
+| Mercadería | Pre-Venta · `estado_transito = EN_TRANSITO` |
+| Motor Streamlit | `modules/rimec_engine/` (Nexus #13) |
+| Snapshot web | `pedido_proveedor_detalle.precio_lpn` (MIG-073) |
+| Catálogo | `v_stock_rimec.lpn` |
 
 ---
 
-## Entregables (checklist)
+## Entregables
 
-- [ ] Inventario: qué campos usa Streamlit hoy para **costo** en tránsito (tablas + funciones)
-- [ ] Definición canónica: costo vs LPN vs precio venta (glosario corto en Chusar)
-- [ ] Implementación server-side (report y/o rimec-web API) — **sin** cálculo en cliente
-- [ ] Paridad numérica vs Nexus en PP de prueba acordado
-- [ ] Doc cierre + marcar sub-etapa CERRADA en etapa madre
-
----
-
-## Fuera de scope (001)
-
-- Precio de **venta** al mayorista (carrito rimec-web) — puede ser sub-etapa 002+
-- Stock físico / depósito / Bazzar
-- Migración UI completa de un módulo Streamlit entero
-
----
-
-## Criterio de cierre 001
-
-1. Costo calculado para filas en tránsito coincide con Nexus en muestra acordada.
-2. Código en repo + PR mergeado.
-3. Fila 001 en `ETAPA_ABIERTA_RIMEC_WEB.md` → **CERRADA**.
-4. Bitácora en `CHUSAR_ETAPA_RIMEC_WEB.md`.
-
----
-
-## Próxima acción
-
-Inventariar funciones Streamlit de costo en tránsito y proponer **SUBETAPA 002** (Director aprueba).
+- [ ] Paridad LPN tránsito: Nexus vs API web
+- [ ] Glosario negocio↔BD en Chusar (hecho: `CHUSAR_MOTOR_PRECIOS_ECONOMIA.md`)
+- [ ] Server-side only — sin cálculo en cliente
+- [ ] Cierre sub-etapa + bitácora
 
 ---
 

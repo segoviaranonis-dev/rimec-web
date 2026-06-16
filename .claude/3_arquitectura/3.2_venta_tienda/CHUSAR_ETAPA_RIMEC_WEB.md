@@ -17,6 +17,7 @@ Mudar lógica Nexus Streamlit → `rimec-web` / `report`; **primera sub-etapa:**
 | Fecha | Evento |
 |-------|--------|
 | 2026-06-16 | Etapa **RIMEC WEB** abierta. Sub-etapa **001 costos tránsito** activa. |
+| 2026-06-16 | **CHUSAR_MOTOR_PRECIOS_ECONOMIA.md** — visión analítica: biblioteca, caso, margen, prudencia, índice, LPN. |
 
 ---
 
@@ -37,7 +38,8 @@ Mudar lógica Nexus Streamlit → `rimec-web` / `report`; **primera sub-etapa:**
 | PP en tránsito | `lib/controlStock/fetchControl.ts` | `estado_transito = EN_TRANSITO` |
 | Estadísticas | `app/api/estadisticas/`, `lib/controlStock/` | Árbol PP; sin costo aún |
 | Catálogo preventa | `lib/catalogoData.ts`, motor casos vía PP | Precio venta, no costo |
-| Legacy Nexus | `control_central/core/precio_evento_caso.py` | Fuente paridad (monorepo) |
+| Legacy Nexus | `modules/rimec_engine/` (Motor de Precios #13) | Fuente paridad |
+| Economía / glosario | `CHUSAR_MOTOR_PRECIOS_ECONOMIA.md` | Margen, prudencia, índice, LPN |
 
 ---
 

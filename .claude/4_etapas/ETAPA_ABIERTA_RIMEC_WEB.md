@@ -21,7 +21,8 @@ Lo que hoy vive en `control_central` (Python/Streamlit) se porta, etapa a etapa,
 
 - Entrada: PP + pilares + evento/caso de precio (motor existente en Nexus).
 - Salida: costo unitario / LPN / snapshot usable en catálogo, estadísticas y report — **sin confiar en el navegador**.
-- Fuente legacy: `control_central/core/precio_evento_caso.py` y módulos relacionados.
+- Fuente legacy: `modules/rimec_engine/` (Motor de Precios Nexus)
+- Economía: ver `CHUSAR_MOTOR_PRECIOS_ECONOMIA.md` (margen × prudencia = índice → LPN)
 - Destino candidato: `report` (panel analítico) y/o API server en `rimec-web` según sub-etapa.
 
 ---

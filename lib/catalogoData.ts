@@ -3,6 +3,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 const PAGE_SIZE = 1000
 const MAX_CATALOGO_ROWS = 50000
 
+/** Hotfix: catálogo mayorista solo compra previa — excluir PE de v_stock_rimec (MIG-134). */
+function esFilaProntaEntrega(row: Record<string, unknown>): boolean {
+  const t = String(row.origen_tipo ?? '').trim().toUpperCase()
+  const qd = String(row.quincena_desc ?? '').trim().toLowerCase()
+  return t === 'PRONTA_ENTREGA' || t === 'PRONTA ENTREGA' || qd.startsWith('pronta entrega')
+}
+
+function sinProntaEntrega<T extends Record<string, unknown>>(rows: T[]): T[] {
+  return rows.filter(r => !esFilaProntaEntrega(r))
+}
+
 async function fetchAllPages<T>(
   supabase: SupabaseClient,
   selectSql: string,
@@ -28,7 +39,7 @@ async function fetchAllPages<T>(
     if (page.length < PAGE_SIZE) break
   }
 
-  return { data: all, error: null }
+  return { data: sinProntaEntrega(all as Record<string, unknown>[]) as T[], error: null }
 }
 
 /** Lee todas las filas vendibles del catálogo; Supabase limita a 1000 por request. */
@@ -49,6 +60,7 @@ export function fetchCatalogoMetaRows<T>(supabase: SupabaseClient) {
       linea_id, linea_codigo, referencia_id, referencia_codigo,
       grupo_estilo_id, descp_grupo_estilo,
       tipo_1_id, descp_tipo_1,
+      origen_tipo, quincena_desc,
       cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
     `,
   )

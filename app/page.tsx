@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabase'
 import { CatalogoClient } from './CatalogoClient'
-import { getFiltros } from '@/lib/filtros'
 import {
   cargarAtributosDesdePilar,
   cargarMetaLineasDesdePilar,
@@ -11,7 +10,32 @@ import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import { fetchCatalogoRows } from '@/lib/catalogoData'
 
-export const revalidate = 30
+export const dynamic = 'force-dynamic'
+
+const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/productos`
+
+function buildFiltrosFromRows(rows: StockRow[]) {
+  const lineas = new Map<number, string>()
+  const marcas = new Map<number, string>()
+  const estilos = new Map<number, string>()
+  const tipos = new Map<number, string>()
+  for (const r of rows) {
+    if (r.linea_id && r.linea_codigo) lineas.set(r.linea_id, String(r.linea_codigo))
+    if (r.marca_id && r.descp_marca) marcas.set(r.marca_id, r.descp_marca)
+    if (r.grupo_estilo_id && r.descp_grupo_estilo) estilos.set(r.grupo_estilo_id, r.descp_grupo_estilo)
+    if (r.tipo_1_id && r.descp_tipo_1) tipos.set(r.tipo_1_id, r.descp_tipo_1)
+  }
+  const toItems = (m: Map<number, string>) =>
+    [...m.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], 'es', { sensitivity: 'base' }))
+      .map(([id, label]) => ({ id, label }))
+  return {
+    todasLineas: toItems(lineas),
+    todasMarcas: toItems(marcas),
+    todosEstilos: toItems(estilos),
+    todosTipos: toItems(tipos),
+  }
+}
 
 export interface StockRow {
   det_id:               number
@@ -57,8 +81,6 @@ export interface StockRow {
   pp_estado?:           string | null
 }
 
-const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/productos`
-
 export default async function HomePage({ searchParams }: {
   searchParams: Promise<{ grupo_estilo_id?: string; marca_id?: string; linea_ids?: string; tipo_ids?: string; colores?: string; quincenas?: string }>
 }) {
@@ -92,12 +114,11 @@ export default async function HomePage({ searchParams }: {
   const lineaMeta = await cargarMetaLineasDesdePilar(rowsConPilar.map(r => Number(r.linea_id)))
   const allRows = enriquecerMetaConLinea(rowsConPilar, lineaMeta) as StockRow[]
 
-  // Obtener filtros normalizados
-  const filtros = await getFiltros()
-  const todasLineas  = filtros?.todasLineas || []
-  const todasMarcas  = filtros?.todasMarcas || []
-  const todosEstilos = filtros?.todosEstilos || []
-  const todosTipos   = filtros?.todosTipos || []
+  const sidebarFiltros = buildFiltrosFromRows(allRows)
+  const todasLineas  = sidebarFiltros.todasLineas
+  const todasMarcas  = sidebarFiltros.todasMarcas
+  const todosEstilos = sidebarFiltros.todosEstilos
+  const todosTipos   = sidebarFiltros.todosTipos
 
   // Limpiar colores: descartar null/undefined/empty y trimear para evitar
   // duplicados visuales (ej. "NEGRO" vs "NEGRO ") y `key={null}` en el dropdown.

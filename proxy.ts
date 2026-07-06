@@ -15,12 +15,18 @@ const SECRET = new TextEncoder().encode(process.env.SESSION_SECRET)
 
 const PUBLIC_PATHS = ['/login', '/acceso-denegado', '/api/auth/login', '/api/auth/logout']
 
+function nextWithPath(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-url-path', request.nextUrl.pathname)
+  return NextResponse.next({ request: { headers: requestHeaders } })
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Rutas públicas
   if (PUBLIC_PATHS.some(path => pathname.startsWith(path))) {
-    return NextResponse.next()
+    return nextWithPath(request)
   }
 
   // Verificar sesión
@@ -43,7 +49,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(deniedUrl)
     }
 
-    return NextResponse.next()
+    return nextWithPath(request)
   } catch {
     // Token inválido → redirect login
     const loginUrl = new URL('/login', request.url)
@@ -55,6 +61,8 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/login',
+    '/acceso-denegado',
     '/',
     '/carrito',
     '/pedidos',
@@ -66,5 +74,6 @@ export const config = {
     '/api/pdf/:path*',
     '/api/notificaciones/:path*',
     '/api/carrito/:path*',
+    '/api/catalogo/:path*',
   ],
 }

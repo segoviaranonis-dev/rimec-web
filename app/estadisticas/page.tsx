@@ -27,7 +27,6 @@ export default function EstadisticasPage() {
   const [marSel, setMarSel] = useState<string[]>([])
   const [estSel, setEstSel] = useState<string[]>([])
   const [soloSaldo, setSoloSaldo] = useState(false)
-  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -72,7 +71,7 @@ export default function EstadisticasPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white">Estadísticas · Control tránsito</h1>
           <p className="text-sm text-white/50 mt-1">
-            PP → Género → Marca → Estilo → 5 pilares · Inicial / Vendido / Saldo
+            PP → Género → Marca → Estilo · solo vendido y disponible (sin detalle artículo)
           </p>
         </div>
         <Link
@@ -185,30 +184,17 @@ export default function EstadisticasPage() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        <KpiCard label="Inicial" value={fmt(kpis.inicial)} sub="pares" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <KpiCard label="Vendido" value={fmt(kpis.vendido)} sub="pares" />
-        <KpiCard label="Saldo" value={fmt(kpis.saldo)} sub="pares" />
-        <KpiCard
-          label="% vendido"
-          value={kpis.pct_vendido != null ? `${kpis.pct_vendido.toFixed(1)}%` : '—'}
-        />
+        <KpiCard label="Disponible" value={fmt(kpis.saldo)} sub="pares" />
         <KpiCard label="SKUs" value={String(kpis.skus)} />
         <KpiCard label="Marcas" value={String(kpis.marcas)} sub={`${kpis.pps} PP`} />
       </div>
 
-      <p className="text-xs text-white/40 mb-3">
-        Marque filas con checkbox para armar reporte. Estilo Sales Report — estructura de análisis.
-      </p>
-
       {loading && !data ? (
         <p className="text-center text-white/50 py-20">Cargando datos…</p>
       ) : (
-        <TablaJerarquicaControl
-          arbol={data?.arbol ?? []}
-          seleccionados={seleccionados}
-          onSeleccionChange={setSeleccionados}
-        />
+        <TablaJerarquicaControl arbol={data?.arbol ?? []} />
       )}
     </div>
   )

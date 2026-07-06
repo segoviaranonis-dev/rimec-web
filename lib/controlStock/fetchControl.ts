@@ -7,6 +7,49 @@ function normCodigo(v: unknown): string {
   return String(v).trim()
 }
 
+const PPD_SELECT =
+  'id, pedido_proveedor_id, linea, referencia, material_code, descp_material, color_code, descp_color, grada, cantidad_pares, pares_vendidos, id_marca'
+
+type PpdTransitoRow = {
+  id: number
+  pedido_proveedor_id: number
+  linea: string | null
+  referencia: string | null
+  material_code: string | null
+  descp_material: string | null
+  color_code: string | null
+  descp_color: string | null
+  grada: string | null
+  cantidad_pares: number | null
+  pares_vendidos: number | null
+  id_marca: number | null
+}
+
+/** Supabase PostgREST cap = 1000 filas — paginar para no perder PPs nuevos (ej. PP-2026-0014). */
+async function fetchPpdTransito(ppIds: number[]): Promise<PpdTransitoRow[]> {
+  const pageSize = 1000
+  const all: PpdTransitoRow[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('pedido_proveedor_detalle')
+      .select(PPD_SELECT)
+      .in('pedido_proveedor_id', ppIds)
+      .not('referencia', 'is', null)
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) throw new Error(error.message)
+    const batch = (data ?? []) as PpdTransitoRow[]
+    all.push(...batch)
+    if (batch.length < pageSize) break
+    from += pageSize
+  }
+
+  return all
+}
+
 export async function fetchControlStock(opts: {
   ppIds?: number[]
   generos?: string[]
@@ -45,17 +88,9 @@ export async function fetchControlStock(opts: {
     }
   }
 
-  const { data: ppds, error: errD } = await supabase
-    .from('pedido_proveedor_detalle')
-    .select(
-      'id, pedido_proveedor_id, linea, referencia, material_code, descp_material, color_code, descp_color, grada, cantidad_pares, pares_vendidos, id_marca',
-    )
-    .in('pedido_proveedor_id', ppIds)
-    .not('referencia', 'is', null)
+  const ppds = await fetchPpdTransito(ppIds)
 
-  if (errD) throw new Error(errD.message)
-
-  const detalles = ppds ?? []
+  const detalles = ppds
   const ppMap = new Map(pps.map(p => [p.id, p]))
 
   const codigosLinea = [...new Set(detalles.map(d => normCodigo(d.linea)).filter(Boolean))]

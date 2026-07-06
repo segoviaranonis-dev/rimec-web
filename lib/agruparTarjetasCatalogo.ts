@@ -5,7 +5,7 @@
  * Dentro de una tarjeta: variantes = colores (det_id) del mismo SKU y mismo origen.
  */
 
-import type { StockRow } from '@/app/page'
+import type { StockRow } from '@/app/catalogo-types'
 import {
   buildCardKey,
   buildSkuId,
@@ -14,19 +14,28 @@ import {
   type OrigenTipo,
   type TarjetaShellStyle,
 } from '@/lib/catalogoOrigen'
+import { enrichImagenUrls } from '@/lib/productImage'
 
 export interface RimecVariante {
   det_id: number
-  pp_id: number
+  pp_id: number | null
   pp_nro: string
   proforma: string                      // Matrimonio con pp_nro
   quincena_desc: string | null          // Dato duro - mostrar en tarjeta
+  quincena_arribo_id?: number | null
+  deposito_id?: number | null
   material_code: string
   color_code: string
   descp_color: string
   color_hex: string | null
   gradas_fmt: string
+  /** Nombre crudo BD / Excel — input para resolver tiers. */
+  imagen_nombre: string | null
+  /** @deprecated Usar imagen_url_thumb */
   imagen_url: string
+  imagen_url_thumb: string | null
+  imagen_url_hero: string | null
+  imagen_url_flat: string | null
   cantidad_cajas: number
   pares_por_caja: number
   cajas_disponibles: number
@@ -57,6 +66,9 @@ export interface TarjetaCatalogo {
   descp_caso: string | null
   caso_id: number | null
   descp_grupo_estilo: string
+  grupo_estilo_id?: number
+  tipo_1_id?: number
+  descp_tipo_1?: string | null
   variantes: RimecVariante[]
 }
 
@@ -72,7 +84,7 @@ function gradasFmtFromJson(grades_json: StockRow['grades_json']): string {
 
 export function agruparTarjetasCatalogo(
   items: StockRow[],
-  bucketUrl: string,
+  _bucketUrl: string,
   cajasDisponiblesDeFila: (item: StockRow) => number,
 ): TarjetaCatalogo[] {
   const cardMap = new Map<string, TarjetaCatalogo>()
@@ -106,6 +118,9 @@ export function agruparTarjetasCatalogo(
         descp_caso: item.descp_caso,
         caso_id: item.caso_id,
         descp_grupo_estilo: item.descp_grupo_estilo,
+        grupo_estilo_id: item.grupo_estilo_id,
+        tipo_1_id: item.tipo_1_id,
+        descp_tipo_1: item.descp_tipo_1,
         variantes: [],
       })
       detIdsPorCard.set(cardKey, new Set())
@@ -113,7 +128,25 @@ export function agruparTarjetasCatalogo(
 
     const seen = detIdsPorCard.get(cardKey)!
     if (seen.has(item.det_id)) continue
+
+    const card = cardMap.get(cardKey)!
+    const dupColorIdx = card.variantes.findIndex(
+      v => v.color_code === item.color_code && v.descp_color === item.descp_color,
+    )
+    if (dupColorIdx >= 0) {
+      card.variantes[dupColorIdx].cajas_disponibles += cajasDisp
+      seen.add(item.det_id)
+      continue
+    }
     seen.add(item.det_id)
+
+    const imgs = enrichImagenUrls({
+      linea: item.linea_codigo,
+      referencia: item.referencia_codigo,
+      material: item.material_code,
+      color: item.color_code,
+      imagenNombre: item.imagen_url,
+    })
 
     cardMap.get(cardKey)!.variantes.push({
       det_id: item.det_id,
@@ -121,14 +154,18 @@ export function agruparTarjetasCatalogo(
       pp_nro: item.pp_nro,
       proforma: item.proforma,
       quincena_desc: item.quincena_desc,  // Dato duro
+      quincena_arribo_id: item.quincena_arribo_id,
+      deposito_id: item.deposito_id ?? null,
       material_code: item.material_code,
       color_code: item.color_code,
       descp_color: item.descp_color,
       color_hex: item.color_hex,
       gradas_fmt: gradasFmtFromJson(item.grades_json),
-      imagen_url:
-        item.imagen_url ??
-        `${bucketUrl}/${item.linea_codigo}-${item.referencia_codigo}-${item.material_code}-${item.color_code}.jpg`,
+      imagen_nombre: item.imagen_url,
+      imagen_url: imgs.imagen_url_thumb ?? imgs.imagen_url_flat ?? '',
+      imagen_url_thumb: imgs.imagen_url_thumb,
+      imagen_url_hero: imgs.imagen_url_hero,
+      imagen_url_flat: imgs.imagen_url_flat,
       cantidad_cajas: item.cantidad_cajas,
       pares_por_caja: item.pares_por_caja,
       cajas_disponibles: cajasDisp,

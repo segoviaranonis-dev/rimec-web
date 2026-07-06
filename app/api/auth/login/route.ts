@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server'
 import { validateUsuario } from '@/lib/auth/validateUsuario'
-import { esCategoriaPermitida, normalizarCategoria } from '@/lib/auth/roles'
+import { normalizarCategoria, puedeAccederRimecWeb } from '@/lib/auth/roles'
 import { createSession } from '@/lib/auth/session'
 import type { RolePermitido } from '@/lib/auth/roles'
 
@@ -34,11 +34,14 @@ export async function POST(request: Request) {
     // Verificar categoría permitida
     const categoriaNorm = normalizarCategoria(user.categoria)
 
-    if (!esCategoriaPermitida(user.categoria)) {
+    if (!puedeAccederRimecWeb(user.rol_id, user.categoria)) {
       return NextResponse.json(
         {
           error: 'Acceso denegado',
-          message: `Tu categoría (${user.categoria}) no tiene acceso al catálogo mayorista.`,
+          message:
+            user.rol_id === 2 && normalizarCategoria(user.categoria) === 'VENDEDOR'
+              ? 'Los vendedores de tienda Bazzar no tienen acceso al catálogo web.'
+              : `Tu categoría (${user.categoria}) no tiene acceso al catálogo mayorista.`,
         },
         { status: 403 }
       )

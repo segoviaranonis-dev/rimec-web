@@ -7,6 +7,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { resolveSupabaseAnonKey, resolveSupabaseUrl } from '@/lib/supabaseEnv'
+import { verificarPasswordUsuario } from '@/lib/auth/verifyPassword'
 import bcrypt from 'bcryptjs'
 
 const supabaseUrl = resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
@@ -51,6 +52,7 @@ export interface UsuarioValidado {
   id_usuario: number
   descp_usuario: string
   categoria: string
+  rol_id: number
 }
 
 const ROLE_MAP: Record<string, string> = {
@@ -85,8 +87,9 @@ export async function validateUsuario(
     // SECURITY: Query actualizada para incluir password_hash
     const { data, error } = await supabaseAdmin
       .from('usuario_v2')
-      .select('id_usuario, descp_usuario, categoria, password, password_hash')
-      .eq('descp_usuario', userClean)
+      .select('id_usuario, descp_usuario, categoria, password, password_hash, rol_id')
+      .ilike('descp_usuario', userClean)
+      .order('id_usuario', { ascending: true })
       .limit(1)
       .maybeSingle()
 
@@ -99,35 +102,33 @@ export async function validateUsuario(
       return null
     }
 
-    const passwordHash = data.password_hash
-    const passwordPlain = data.password
+    const passwordHash = data.password_hash as string | null
+    const passwordPlain = data.password as string | null
 
-    // SECURITY: Verificar con bcrypt si existe hash
-    if (passwordHash) {
-      const valid = await bcrypt.compare(passClean, passwordHash)
-      if (!valid) {
-        console.warn(`[validateUsuario] Contraseña incorrecta para '${userClean}'`)
-        return null
-      }
+    const { ok, needsRehash } = await verificarPasswordUsuario(
+      passClean,
+      passwordPlain,
+      passwordHash,
+    )
+
+    if (!ok) {
+      console.warn(`[validateUsuario] Contraseña incorrecta para '${userClean}'`)
+      return null
     }
-    // FALLBACK temporal: Si no hay hash, verificar contra texto plano
-    else if (passwordPlain === passClean) {
-      console.warn(`[validateUsuario] Usuario '${userClean}' usando password legacy - actualizando...`)
-      // Actualizar a hash
+
+    if (needsRehash || (!passwordHash && ok)) {
       const hashNew = await bcrypt.hash(passClean, 10)
       await supabaseAdmin
         .from('usuario_v2')
         .update({ password_hash: hashNew })
         .eq('id_usuario', data.id_usuario)
-    } else {
-      console.warn(`[validateUsuario] Contraseña incorrecta para '${userClean}'`)
-      return null
     }
 
     return {
       id_usuario: data.id_usuario,
-      descp_usuario: data.descp_usuario,
+      descp_usuario: String(data.descp_usuario ?? userClean),
       categoria: normalizarRol(String(data.categoria ?? '')),
+      rol_id: Number(data.rol_id ?? 0),
     }
   } catch (e) {
     console.error('[validateUsuario] excepción:', e)

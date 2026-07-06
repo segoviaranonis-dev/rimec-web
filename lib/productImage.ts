@@ -1,0 +1,420 @@
+/**
+ * Protocolo Imágenes Nexus — tiers sm/md/lg · LEY_INTEGRIDAD_VISUAL_IMAGEN.md
+ * Paridad con report/src/lib/retail/product-image.ts
+ */
+
+import { resolveSupabaseUrl } from './supabaseEnv'
+
+export type ImageSize = 'sm' | 'md' | 'lg'
+export type ImageVariant = 'thumb' | 'hero'
+
+/** Hero — viewport 1:1 alineado al tier lg (800×800) en Storage. */
+export const HERO_VIEWPORT = {
+  width: 800,
+  height: 800,
+  aspectClass: 'aspect-square',
+} as const
+
+export type ImagenUrls = {
+  imagen_url_thumb: string | null
+  imagen_url_hero: string | null
+  imagen_url_flat: string | null
+}
+
+const STAGING_SENTINEL_CODIGO_ABS = 999001
+
+function isSentinelCodigoProveedor(norm: string): boolean {
+  if (!norm) return false
+  const n = Number(norm.replace(/^\+/, ''))
+  return Number.isFinite(n) && Math.abs(Math.trunc(n)) === STAGING_SENTINEL_CODIGO_ABS
+}
+
+function normPillarSegmentStrict(v: string | number | null | undefined): string {
+  const s = normCodigo(v)
+  if (!s || isSentinelCodigoProveedor(s)) return ''
+  return s
+}
+
+function variantToSize(variant: ImageVariant): ImageSize {
+  return variant === 'hero' ? 'lg' : 'sm'
+}
+
+/** URL plana legacy — fallback único cuando sm/ falta (Tablet depósito). */
+export function resolveFlatImageUrl(input: {
+  linea: string
+  referencia: string
+  material: string | number
+  color: string | number
+  imagenNombre?: string | null
+}): string | null {
+  const excel = String(input.imagenNombre ?? '').trim()
+  if (excel) {
+    const direct = publicProductosUrlFromInput(excel)
+    if (direct) return direct
+    const file = normalizeImageFileName(excel)
+    if (!file) return null
+    return publicStorageObjectUrl('productos', file) || null
+  }
+
+  const L = normPillarSegmentStrict(input.linea)
+  const R = normPillarSegmentStrict(input.referencia)
+  if (!L || !R) return null
+
+  const M = normPillarSegmentStrict(input.material)
+  const C = normPillarSegmentStrict(input.color)
+  const stem = joinPillarStem([L, R, M, C]) || joinPillarStem([L, R])
+  if (!stem) return null
+
+  return publicStorageObjectUrl('productos', `${stem}.jpg`) || null
+}
+
+/** Una URL canónica por tier — thumb=sm/ hero=lg/ (Tablet). */
+export function resolveCanonicalImageUrl(input: {
+  linea: string
+  referencia: string
+  material: string | number
+  color: string | number
+  imagenNombre?: string | null
+  variant: ImageVariant
+}): string | null {
+  const size = variantToSize(input.variant)
+  const excel = String(input.imagenNombre ?? '').trim()
+  if (excel) {
+    const file = normalizeImageFileName(excel)
+    if (!file) return null
+    const url = getProductImageUrl(file, size)
+    return url || null
+  }
+
+  const L = normPillarSegmentStrict(input.linea)
+  const R = normPillarSegmentStrict(input.referencia)
+  if (!L || !R) return null
+
+  const M = normPillarSegmentStrict(input.material)
+  const C = normPillarSegmentStrict(input.color)
+  const stem = joinPillarStem([L, R, M, C]) || joinPillarStem([L, R])
+  if (!stem) return null
+
+  const url = publicStorageObjectUrl('productos', `${size}/${stem}.jpg`)
+  return url || null
+}
+
+/** Legacy thumbs/ → sm/ (Protocolo Imágenes · paridad Tablet). */
+export function toThumbnailStorageUrl(publicUrl: string): string {
+  if (!publicUrl.includes('/productos/')) return publicUrl
+  if (publicUrl.includes('/productos/sm/')) return publicUrl
+  if (publicUrl.includes('/productos/thumbs/')) {
+    return publicUrl.replace('/productos/thumbs/', '/productos/sm/')
+  }
+  const after = publicUrl.split('/productos/')[1] ?? ''
+  const clean = after.replace(/^(sm|md|lg)\//, '')
+  if (!clean) return publicUrl
+  return publicStorageObjectUrl('productos', `sm/${clean}`)
+}
+
+export function toMdStorageUrl(publicUrl: string): string | null {
+  const sm = toThumbnailStorageUrl(publicUrl)
+  if (!sm.includes('/productos/sm/')) return null
+  return sm.replace('/productos/sm/', '/productos/md/')
+}
+
+/** Grilla catálogo: nunca usar flat como src primario — siempre sm/ primero. */
+export function preferSmTierUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  return toThumbnailStorageUrl(url)
+}
+
+export function productImageFallbackStyle(
+  linea: string,
+  referencia: string,
+): { background: string } {
+  void linea
+  void referencia
+  return {
+    background: 'linear-gradient(135deg, #0F172A 0%, #2d5a8e 100%)',
+  }
+}
+
+export function pickHeroProgressive(
+  urls: Pick<ImagenUrls, 'imagen_url_thumb' | 'imagen_url_flat' | 'imagen_url_hero'>,
+): {
+  preview: string | null
+  target: string | null
+  fallbacks: string[]
+} {
+  const preview = urls.imagen_url_thumb ?? null
+  const target = urls.imagen_url_hero ?? null
+  const flat = urls.imagen_url_flat ?? null
+  const fallbacks: string[] = []
+  if (flat && flat !== target && flat !== preview) fallbacks.push(flat)
+  return { preview, target, fallbacks }
+}
+
+/** BD trae URL plana sin tier sm/md/lg — tiers aún no subidos (4.90.03.002). */
+export function isFlatOnlyImagenNombre(imagenNombre?: string | null): boolean {
+  const excel = String(imagenNombre ?? '').trim()
+  if (!excel) return false
+  const direct = publicProductosUrlFromInput(excel)
+  if (!direct) return false
+  return !/\/productos\/(sm|md|lg|thumbs)\//i.test(direct)
+}
+
+export function enrichImagenUrls(input: {
+  linea: string
+  referencia: string
+  material: string | number
+  color: string | number
+  imagenNombre?: string | null
+}): ImagenUrls {
+  const base = { ...input, imagenNombre: input.imagenNombre ?? null }
+  const flat = resolveFlatImageUrl(base)
+  const flatOnly = isFlatOnlyImagenNombre(input.imagenNombre)
+  const thumb = resolveCanonicalImageUrl({ ...base, variant: 'thumb' })
+  const hero = resolveCanonicalImageUrl({ ...base, variant: 'hero' })
+  return {
+    imagen_url_thumb: flatOnly ? flat : preferSmTierUrl(thumb),
+    imagen_url_hero: flatOnly ? flat : hero,
+    imagen_url_flat: flat,
+  }
+}
+
+/** Dimensiones intrínsecas Protocolo Imágenes Nexus (evita escalar sm a hero). */
+export const IMAGE_INTRINSIC = {
+  sm: { width: 200, height: 200 },
+  md: { width: 400, height: 400 },
+  lg: { width: 800, height: 800 },
+} as const
+
+export function intrinsicDimsFromImageUrl(url: string | null | undefined): {
+  width: number
+  height: number
+} {
+  if (!url) return IMAGE_INTRINSIC.sm
+  if (url.includes('/productos/lg/')) return IMAGE_INTRINSIC.lg
+  if (url.includes('/productos/md/')) return IMAGE_INTRINSIC.md
+  return IMAGE_INTRINSIC.sm
+}
+
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
+
+function publicStorageObjectUrl(bucket: string, objectPath: string): string {
+  const base = resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)?.replace(/\/$/, '')
+  if (!base) return ''
+  const clean = objectPath.replace(/^\/+/, '')
+  return `${base}/storage/v1/object/public/${bucket}/${clean}`
+}
+
+function normCodigo(v: string | number | null | undefined): string {
+  if (v == null) return ''
+  const n = Number(v)
+  if (Number.isFinite(n) && n === Math.floor(n)) return String(Math.floor(n))
+  return String(v).trim().replace(/\s+/g, '')
+}
+
+function normPillarSegment(v: string | number | null | undefined): string {
+  return normCodigo(v)
+}
+
+function joinPillarStem(parts: string[]): string {
+  return parts.filter(Boolean).join('-')
+}
+
+export function stripProductImageTier(path: string): string {
+  let s = String(path ?? '').trim()
+  const marker = '/storage/v1/object/public/productos/'
+  const idx = s.indexOf(marker)
+  if (idx >= 0) {
+    try {
+      s = decodeURIComponent(s.slice(idx + marker.length).split('?')[0]?.split('#')[0] ?? '')
+    } catch {
+      s = s.slice(idx + marker.length).split('?')[0]?.split('#')[0] ?? ''
+    }
+  }
+  return s
+    .replace(/^productos\//i, '')
+    .replace(/^(sm|md|lg|thumbs)\//i, '')
+    .replace(/^\/+/, '')
+}
+
+/** URL pública Supabase ya armada — v_stock_rimec.imagen_url suele venir así. */
+function publicProductosUrlFromInput(raw: string): string | null {
+  const s = String(raw ?? '').trim()
+  if (!s.includes('/storage/v1/object/public/productos/')) return null
+  return s.split('?')[0]?.split('#')[0] ?? null
+}
+
+function normalizeImageFileName(raw: string): string | null {
+  const base = stripProductImageTier(raw)
+  if (!base) return null
+  return /\.(jpe?g|png|webp)$/i.test(base) ? base : `${base}.jpg`
+}
+
+function variantToTiers(variant: ImageVariant): ImageSize[] {
+  return variant === 'hero' ? ['lg', 'md', 'sm'] : ['sm', 'md']
+}
+
+function pushUnique(out: string[], value: string) {
+  if (value && !out.includes(value)) out.push(value)
+}
+
+export function getProductImageUrl(imageName: string, size: ImageSize = 'sm'): string {
+  const base = normalizeImageFileName(imageName)
+  if (!base) return ''
+  return publicStorageObjectUrl('productos', `${size}/${base}`)
+}
+
+export function tieredStorageCandidates(
+  filePath: string,
+  variant: ImageVariant = 'thumb',
+): string[] {
+  const clean = normalizeImageFileName(filePath)
+  if (!clean) return []
+
+  const urls: string[] = []
+  for (const tier of variantToTiers(variant)) {
+    pushUnique(urls, publicStorageObjectUrl('productos', `${tier}/${clean}`))
+  }
+  pushUnique(urls, publicStorageObjectUrl('productos', clean))
+  pushUnique(urls, publicStorageObjectUrl('productos', `thumbs/${clean}`))
+  return urls
+}
+
+function stemCandidates(stem: string, variant: ImageVariant = 'thumb'): string[] {
+  const urls: string[] = []
+  for (const ext of IMAGE_EXTENSIONS) {
+    for (const u of tieredStorageCandidates(`${stem}${ext}`, variant)) {
+      pushUnique(urls, u)
+    }
+  }
+  return urls
+}
+
+export function productImageCandidates(
+  lineaCodigo: string,
+  referenciaCodigo: string,
+  materialCode: string | number,
+  colorCode: string | number,
+  variant: ImageVariant = 'thumb',
+): string[] {
+  const L = normPillarSegment(lineaCodigo)
+  const R = normPillarSegment(referenciaCodigo)
+  const M = normPillarSegment(materialCode)
+  const C = normPillarSegment(colorCode)
+  if (!L || !R) return []
+
+  const urls: string[] = []
+  const stem4 = joinPillarStem([L, R, M, C])
+  if (stem4) {
+    for (const u of stemCandidates(stem4, variant)) pushUnique(urls, u)
+  }
+  const stemLr = joinPillarStem([L, R])
+  for (const u of stemCandidates(stemLr, variant)) pushUnique(urls, u)
+  return urls
+}
+
+export function productImagePrimary(
+  lineaCodigo: string,
+  referenciaCodigo: string,
+  materialCode: string | number,
+  colorCode: string | number,
+  variant: ImageVariant = 'thumb',
+): string {
+  return (
+    productImageCandidates(lineaCodigo, referenciaCodigo, materialCode, colorCode, variant)[0] ?? ''
+  )
+}
+
+export function imagenNombreToCandidates(
+  imagenNombre: string | null | undefined,
+  variant: ImageVariant = 'thumb',
+): string[] {
+  const raw = String(imagenNombre ?? '').trim()
+  if (!raw) return []
+
+  const base = stripProductImageTier(raw)
+  const urls: string[] = []
+
+  if (/\.(jpe?g|png|webp)$/i.test(base)) {
+    for (const u of tieredStorageCandidates(base, variant)) pushUnique(urls, u)
+    return urls
+  }
+
+  for (const ext of IMAGE_EXTENSIONS) {
+    for (const u of tieredStorageCandidates(`${base}${ext}`, variant)) pushUnique(urls, u)
+  }
+  return urls
+}
+
+export function productImageCandidatesForRow(
+  lineaCodigo: string,
+  referenciaCodigo: string,
+  materialCode: string | number,
+  colorCode: string | number,
+  imagenNombre?: string | null,
+  variant: ImageVariant = 'thumb',
+): string[] {
+  const fromExcel = imagenNombreToCandidates(imagenNombre, variant)
+  const fromMolecule = productImageCandidates(
+    lineaCodigo,
+    referenciaCodigo,
+    materialCode,
+    colorCode,
+    variant,
+  )
+  const out = [...fromExcel]
+  for (const u of fromMolecule) {
+    if (!out.includes(u)) out.push(u)
+  }
+  return out
+}
+
+export function productImagePrimaryFileName(
+  lineaCodigo: string,
+  referenciaCodigo: string,
+  materialCode: string | number,
+  colorCode: string | number,
+): string | null {
+  const L = normPillarSegment(lineaCodigo)
+  const R = normPillarSegment(referenciaCodigo)
+  const M = normPillarSegment(materialCode)
+  const C = normPillarSegment(colorCode)
+  if (!L || !R) return null
+  const stem = joinPillarStem([L, R, M, C]) || joinPillarStem([L, R])
+  if (!stem) return null
+  return `${stem}.jpg`
+}
+
+/** Candidatos ordenados por tier NIIF según superficie UI. */
+export function productImageCandidatesForUi(
+  lineaCodigo: string,
+  referenciaCodigo: string,
+  materialCode: string | number,
+  colorCode: string | number,
+  imagenNombre: string | null | undefined,
+  ui: 'thumb' | 'card' | 'modal',
+): string[] {
+  const variant: ImageVariant = ui === 'modal' ? 'hero' : 'thumb'
+  const base = productImageCandidatesForRow(
+    lineaCodigo,
+    referenciaCodigo,
+    materialCode,
+    colorCode,
+    imagenNombre,
+    variant,
+  )
+
+  const file = productImagePrimaryFileName(lineaCodigo, referenciaCodigo, materialCode, colorCode)
+  if (!file) return base
+
+  const prefer: ImageSize[] =
+    ui === 'modal' ? ['lg', 'md', 'sm'] : ['sm', 'md']
+
+  const ordered: string[] = []
+  for (const tier of prefer) {
+    const u = getProductImageUrl(file, tier)
+    if (u) pushUnique(ordered, u)
+  }
+  // Cadena completa Report: sm→md→flat→thumbs (4.90.03.003) — contain en marco evita overflow.
+  for (const u of base) pushUnique(ordered, u)
+  return ordered
+}

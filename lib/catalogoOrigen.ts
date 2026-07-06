@@ -7,6 +7,7 @@
 
 export type OrigenTipo =
   | 'TRÁNSITO_PP'
+  | 'PRONTA_ENTREGA'
   | 'STOCK_LOCAL'
   | 'DEPOSITO_X'
 
@@ -77,6 +78,15 @@ const SHELL_STOCK_LOCAL: TarjetaShellStyle = {
   boxShadow: '0 4px 20px rgba(15, 23, 42, 0.08)',
 }
 
+const SHELL_PRONTA_ENTREGA: TarjetaShellStyle = {
+  shellBackground: '#ECFDF5',
+  shellBorder: '2px solid #10B981',
+  badgeBackground: '#059669',
+  badgeColor: '#FFFFFF',
+  accentColor: '#047857',
+  boxShadow: '0 4px 24px rgba(5, 150, 105, 0.18)',
+}
+
 const SHELL_DEPOSITO_X: TarjetaShellStyle = {
   shellBackground: '#FFFBEB',
   shellBorder: '1px solid #FDE68A',
@@ -123,6 +133,7 @@ type StockOrigenRow = {
   /** Futuro: id depósito / flag stock físico en vista */
   origen_tipo?: string | null
   deposito_id?: string | number | null
+  deposito_nombre?: string | null
 }
 
 /**
@@ -131,6 +142,22 @@ type StockOrigenRow = {
  */
 export function deriveOrigenFromStockRow(row: StockOrigenRow): OrigenMetadatos {
   const tipoRaw = String(row.origen_tipo ?? '').trim().toUpperCase()
+  const qDesc = String(row.quincena_desc ?? '').trim()
+
+  if (
+    tipoRaw === 'PRONTA_ENTREGA' ||
+    tipoRaw === 'PRONTA ENTREGA' ||
+    qDesc.toLowerCase().startsWith('pronta entrega')
+  ) {
+    const dep = String(row.deposito_id ?? row.deposito_nombre ?? 'PE').trim()
+    const batch = String(row.proforma ?? '').trim()
+    return {
+      tipo: 'PRONTA_ENTREGA',
+      referenciaId: `pe:${dep}:${batch || 'stock'}`,
+      label: batch ? `Pronta entrega · ${dep} · ${batch}` : `Pronta entrega · ${dep}`,
+      shell: SHELL_PRONTA_ENTREGA,
+    }
+  }
 
   if (tipoRaw === 'STOCK_LOCAL' || tipoRaw === 'STOCK') {
     const depId = String(row.deposito_id ?? 'RIMEC_PY').trim()
@@ -186,11 +213,13 @@ export function deriveOrigenFromStockRow(row: StockOrigenRow): OrigenMetadatos {
 
 export function origenBadgeText(tipo: OrigenTipo): string {
   switch (tipo) {
+    case 'PRONTA_ENTREGA':
+      return 'pronta entrega'
     case 'STOCK_LOCAL':
       return 'stock local'
     case 'DEPOSITO_X':
       return 'depósito'
     default:
-      return 'tránsito'
+      return 'compra previa'
   }
 }

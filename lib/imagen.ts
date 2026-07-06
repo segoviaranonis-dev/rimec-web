@@ -1,13 +1,27 @@
-import { resolveSupabaseUrl } from './supabaseEnv'
+import {
+  productImagePrimary,
+  productImageCandidatesForUi,
+} from './productImage'
 
-const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/productos`
+export { productImageCandidatesForUi, productImagePrimary } from './productImage'
 
+/** URL canónica sm — legacy alias. */
 export function getImageUrl(
-  linea:     string,
+  linea: string,
   referencia: string,
-  material:  string,
-  color:     string,
+  material: string,
+  color: string,
 ): string {
-  return `${BUCKET}/${linea}-${referencia}-${material}-${color}.jpg`
+  return productImagePrimary(linea, referencia, material, color, 'thumb')
 }
 
+export function getImageCandidatesForUi(
+  linea: string,
+  referencia: string,
+  material: string,
+  color: string,
+  imagenNombre: string | null | undefined,
+  ui: 'thumb' | 'card' | 'modal',
+): string[] {
+  return productImageCandidatesForUi(linea, referencia, material, color, imagenNombre, ui)
+}

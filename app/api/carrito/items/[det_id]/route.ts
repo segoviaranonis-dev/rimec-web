@@ -20,13 +20,14 @@ export async function PATCH(
   if (!Number.isFinite(detId)) return NextResponse.json({ error: 'det_id inválido' }, { status: 400 })
 
   const body = (await req.json()) as PatchBody
-  if (!body?.cantidad_cajas || body.cantidad_cajas < 0) {
+  const qty = Math.floor(Number(body?.cantidad_cajas))
+  if (!Number.isFinite(qty) || qty < 0) {
     return NextResponse.json({ error: 'cantidad_cajas inválido' }, { status: 400 })
   }
 
   const sb = getSupabaseAdmin()
 
-  if (body.cantidad_cajas === 0) {
+  if (qty === 0) {
     const { error } = await sb
       .from('carrito_item')
       .delete()
@@ -36,27 +37,38 @@ export async function PATCH(
     return NextResponse.json({ ok: true, removed: true })
   }
 
-  // Validar stock disponible
-  const { data: stockData } = await sb
-    .from('v_stock_rimec')
-    .select('det_id, cajas_disponibles')
+  const { data: currentItem } = await sb
+    .from('carrito_item')
+    .select('cantidad_cajas')
+    .eq('id_usuario', session.id_usuario)
     .eq('det_id', detId)
-    .single()
+    .maybeSingle()
 
-  if (!stockData) {
-    return NextResponse.json({ error: 'producto no encontrado' }, { status: 404 })
-  }
+  const currentQty = Number(currentItem?.cantidad_cajas ?? 0)
 
-  const cajasDisponibles = stockData.cajas_disponibles ?? 0
-  if (body.cantidad_cajas > cajasDisponibles) {
-    return NextResponse.json({
-      error: `stock insuficiente (disponible: ${cajasDisponibles} cajas)`
-    }, { status: 400 })
+  // Solo validar stock al subir cantidad — bajar/quitar no consume stock nuevo
+  if (qty > currentQty) {
+    const { data: stockData } = await sb
+      .from('v_stock_rimec')
+      .select('det_id, cajas_disponibles')
+      .eq('det_id', detId)
+      .single()
+
+    if (!stockData) {
+      return NextResponse.json({ error: 'producto no encontrado' }, { status: 404 })
+    }
+
+    const cajasDisponibles = stockData.cajas_disponibles ?? 0
+    if (qty > cajasDisponibles) {
+      return NextResponse.json({
+        error: `stock insuficiente (disponible: ${cajasDisponibles} cajas)`,
+      }, { status: 400 })
+    }
   }
 
   const { data, error } = await sb
     .from('carrito_item')
-    .update({ cantidad_cajas: body.cantidad_cajas, actualizado_en: new Date().toISOString() })
+    .update({ cantidad_cajas: qty, actualizado_en: new Date().toISOString() })
     .eq('id_usuario', session.id_usuario)
     .eq('det_id', detId)
     .select()

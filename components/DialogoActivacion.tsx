@@ -21,12 +21,11 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
   const [clientes,  setClientes]  = useState<Cliente[]>([])
   const [selCliente, setSelCliente] = useState<Cliente | null>(null)
 
-  // Paso B — Plazo + Lista + Descuentos
+  // Paso B — Plazo + Lista
   const [plazos,    setPlazos]    = useState<Plazo[]>([])
   const [cargPlazos, setCargPlazos] = useState(false)
   const [selPlazo,  setSelPlazo]  = useState<Plazo | null>(null)
   const [listaId,   setListaId]   = useState<ListaId>(1)
-  const [descs, setDescs] = useState<[string, string, string, string]>(['', '', '', ''])
 
   // Error visible si /api/auth/me no devuelve un id_usuario válido.
   const [errorVendedor, setErrorVendedor] = useState<string | null>(null)
@@ -60,7 +59,7 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
 
   async function confirmar() {
     if (!selCliente || !selPlazo) return
-    const descuentos = descs.map(d => parseFloat(d)).filter(d => !isNaN(d) && d > 0)
+    const descuentos: number[] = []
 
     setErrorVendedor(null)
     setConfirmando(true)
@@ -116,10 +115,6 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
     setConfirmando(false)
     onClose()
   }
-
-  const descNums = descs.map(d => parseFloat(d)).filter(d => !isNaN(d) && d > 0)
-  let preview = 100000
-  for (const d of descNums) preview = preview * (1 - d / 100)
 
   return (
     <div style={{
@@ -209,7 +204,7 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
           </div>
         )}
 
-        {/* ── PASO B — Plazo + Lista + Descuentos ── */}
+        {/* ── PASO B — Plazo + Lista ── */}
         {paso === 'B' && (
           <div>
             <div style={{ padding: '10px 14px', backgroundColor: '#F8FAFC', borderRadius: 10,
@@ -249,42 +244,6 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
                   }}>{l.nombre}</button>
               ))}
             </div>
-
-            <p style={{ fontWeight: 700, fontSize: 15, color: '#1E293B', marginBottom: 8 }}>
-              Descuentos <span style={{ fontWeight: 400, color: '#94A3B8', fontSize: 13 }}>(opcional)</span>
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
-              {descs.map((d, i) => (
-                <div key={i} style={{ textAlign: 'center' }}>
-                  <p style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>D{i + 1}</p>
-                  <input
-                    value={d}
-                    onChange={e => {
-                      const next = [...descs] as typeof descs
-                      next[i] = e.target.value
-                      setDescs(next)
-                    }}
-                    placeholder="0%" type="number" min={0} max={100}
-                    style={{
-                      width: '100%', padding: '10px 6px', borderRadius: 8, textAlign: 'center',
-                      border: `2px solid ${d ? AZUL : '#E2E8F0'}`,
-                      fontSize: 15, fontWeight: d ? 700 : 400, color: d ? AZUL : '#94A3B8',
-                      outline: 'none', boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {descNums.length > 0 && (
-              <div style={{ backgroundColor: '#EFF6FF', borderRadius: 10, padding: '9px 14px',
-                            marginBottom: 18, display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, color: '#64748B' }}>Neto (ej. 100.000 →)</span>
-                <span style={{ fontWeight: 900, fontSize: 15, color: AZUL }}>
-                  {Math.round(preview).toLocaleString('es-PY')}
-                </span>
-              </div>
-            )}
 
             {errorVendedor && (
               <div

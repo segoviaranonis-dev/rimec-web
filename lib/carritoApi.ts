@@ -171,19 +171,21 @@ export async function carritoPatchItem(det_id: number, cantidad_cajas: number): 
     body: JSON.stringify({ cantidad_cajas }),
   })
 
-  // Si es error de validación de stock, lanzar error específico
-  if (res.status === 400) {
+  if (!res.ok) {
+    let err = `HTTP ${res.status}`
     try {
-      const data = await res.json()
-      if (data.error?.includes('stock insuficiente')) {
-        throw new StockInsuficienteError(data.error)
+      const data = (await res.json()) as { error?: string }
+      err = data?.error ?? err
+      if (res.status === 400 && err.includes('stock insuficiente')) {
+        throw new StockInsuficienteError(err)
       }
-    } catch (err) {
-      if (err instanceof StockInsuficienteError) throw err
+    } catch (parseErr) {
+      if (parseErr instanceof StockInsuficienteError) throw parseErr
     }
+    throw new Error(err)
   }
 
-  await asJson<{ ok?: boolean; item?: CarritoItemBD }>(res)
+  await res.json().catch(() => null)
 }
 
 export async function carritoDeleteItem(det_id: number): Promise<void> {

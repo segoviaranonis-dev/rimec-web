@@ -5,9 +5,11 @@ import { createPortal } from 'react-dom'
 import { useSesion, getPrecioActivo, LISTAS, esSesionDeOtroDia, type ListaId } from '@/store/sesionVenta'
 import { useRouter } from 'next/navigation'
 import { DialogoActivacion } from '@/components/DialogoActivacion'
+import { ProductImage } from '@/components/ProductImage'
 import { formatearQuincena } from '@/lib/fecha'
 import { estiloBadgeMarca } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
+import { isProntaEntregaDetId, syntheticPpIdForPe, unidadDisponibleLabel } from '@/lib/prontaEntregaVenta'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 
 export type { RimecVariante, TarjetaCatalogo }
@@ -73,18 +75,9 @@ function resolverHex(v: { color_hex?: string | null; descp_color?: string | null
   return '#CBD5E1'
 }
 
-function Imagen({ src, alt, fallbackText, className, style }: {
-  src: string; alt: string; fallbackText: string; className?: string; style?: React.CSSProperties
-}) {
-  const [err, setErr] = useState(false)
-  if (err) return (
-    <div className={`w-full h-full flex flex-col items-center justify-center gap-1 ${className ?? ''}`}
-         style={{ background: `linear-gradient(135deg, ${AZUL} 0%, #2d5a8e 100%)` }}>
-      <span className="text-white/80 text-sm font-extrabold tracking-wide">{fallbackText}</span>
-      <span className="text-white/30 text-[9px] font-bold uppercase tracking-widest">RIMEC</span>
-    </div>
-  )
-  return <img src={src} alt={alt} onError={() => setErr(true)} className={className} style={style} />
+function etiquetaOrigenChip(origen: TarjetaCatalogo['origen_tipo'], quincenaDesc: string | null | undefined): string {
+  if (quincenaDesc) return quincenaDesc
+  return origen === 'PRONTA_ENTREGA' ? 'Pronta entrega' : 'Compra previa'
 }
 
 function HeaderSesion() {
@@ -293,13 +286,23 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
            style={{ maxHeight: '92vh', boxShadow: '0 25px 80px rgba(0,0,0,0.45)' }}
            onClick={e => e.stopPropagation()}>
 
-        <div className="relative flex-1 min-h-0"
-             style={{ background: 'linear-gradient(135deg,#f8fafc,#eff6ff)', minHeight: 320 }}>
-          <Imagen src={v.imagen_url}
-                  alt={`${p.linea_codigo}-${p.referencia_codigo}`}
-                  fallbackText={`${p.linea_codigo}·${p.referencia_codigo}`}
-                  className="w-full h-full object-contain"
-                  style={{ maxHeight: 420 } as React.CSSProperties} />
+        <div className="relative w-full shrink-0 bg-white px-4 pt-4 pb-2">
+          <div className="relative mx-auto aspect-square w-full max-h-[min(42vh,440px)] max-w-[440px] bg-white px-1">
+            <ProductImage
+              key={`${p.cardKey}-${v.det_id}`}
+              variant="hero"
+              className="h-full w-full"
+              src={v.imagen_url_hero ?? v.imagen_url_thumb}
+              fallbackSrc={v.imagen_url_flat}
+              linea={p.linea_codigo}
+              referencia={p.referencia_codigo}
+              material={v.material_code}
+              color={v.color_code}
+              imagenNombre={v.imagen_nombre}
+              alt={`${p.linea_codigo}-${p.referencia_codigo}`}
+              allowFlatFallback={true}
+            />
+          </div>
 
           <button onClick={onClose}
                   className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
@@ -474,6 +477,9 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   const handleAgregar = () => {
     if (!activa) { onNeedSession(); return }
     if (!tienePrecio || cajas >= maxCajas) return
+    const ppIdPe = p.origen_tipo === 'PRONTA_ENTREGA'
+      ? syntheticPpIdForPe({ deposito_id: v.deposito_id, proforma: v.proforma, pp_nro: v.pp_nro })
+      : (v.pp_id ?? 0)
     void agregarCaja({
       det_id:            v.det_id,
       linea_codigo:      p.linea_codigo,
@@ -481,7 +487,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       material_code:     v.material_code,
       color_code:        v.color_code,
       color_nombre:      v.descp_color,
-      pp_id:             v.pp_id,
+      pp_id:             ppIdPe,
       pp_nro:            v.pp_nro,
       proforma:          v.proforma,
       quincena_desc:     v.quincena_desc,
@@ -514,22 +520,26 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
              transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
            }}>
 
-        <div className="relative aspect-square overflow-hidden cursor-zoom-in bg-[#F8FAFC]"
-             onClick={() => setLightbox(true)}>
-          <Imagen src={v.imagen_url}
-                  alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
-                  fallbackText={`${p.linea_codigo}·${p.referencia_codigo}`}
-                  className="w-full h-full object-contain p-3 transition-transform duration-700 ease-out group-hover:scale-105" />
-
-          <div className="absolute top-2.5 left-2.5 flex items-center gap-2">
-            <span className="text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
-                  style={{ backgroundColor: shell.badgeBackground, color: shell.badgeColor }}>
-              {origenBadgeText(p.origen_tipo)}
-            </span>
-          </div>
+        <div
+          className="relative aspect-square w-full cursor-zoom-in bg-white px-1"
+          onClick={() => setLightbox(true)}
+        >
+          <ProductImage
+            key={`${p.cardKey}-${v.det_id}-${varIdx}`}
+            src={v.imagen_url_thumb}
+            fallbackSrc={v.imagen_url_flat}
+            linea={p.linea_codigo}
+            referencia={p.referencia_codigo}
+            material={v.material_code}
+            color={v.color_code}
+            imagenNombre={v.imagen_nombre}
+            alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
+            allowFlatFallback={true}
+            priority={varIdx === 0}
+          />
 
           {variantesConStock.length > 1 && (
-            <span className="absolute top-2.5 right-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            <span className="absolute top-2.5 right-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full z-10"
                   style={{ backgroundColor: 'rgba(255,255,255,0.92)', color: '#475569',
                            boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
               {variantesConStock.length} col.
@@ -537,7 +547,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
           )}
         </div>
 
-        <div className="flex flex-col flex-1 p-3">
+        <div className="flex flex-col flex-1 min-w-0 p-3">
           {/* Fila 3: Marca y Códigos */}
           <div className="flex items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -555,21 +565,25 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
             {/* Dato duro visible abajo - chip solo indica cantidad de colores */}
           </div>
 
-          {/* Dato duro con mismo estilo que chip ETA */}
+          {/* Origen / ETA — una sola línea, sin duplicar badge sobre imagen */}
           <span
-            className="inline-flex items-center gap-1 text-[13px] sm:text-sm font-extrabold leading-none px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg shadow-sm mb-1"
+            className="inline-flex items-center gap-1 text-[13px] sm:text-sm font-extrabold leading-tight px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg shadow-sm mb-1 max-w-full min-w-0"
             style={{
-              color: v.quincena_desc ? shell.accentColor : '#94A3B8',
-              backgroundColor: v.quincena_desc ? shell.shellBackground : '#F1F5F9',
-              border: v.quincena_desc ? shell.shellBorder : '1px solid #E2E8F0',
+              color: shell.accentColor,
+              backgroundColor: shell.shellBackground,
+              border: shell.shellBorder,
               boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
             }}
+            title={etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
           >
-            {v.quincena_desc ? `📦 ${v.quincena_desc}` : 'NULL'}
+            <span className="truncate">
+              {p.origen_tipo === 'PRONTA_ENTREGA' ? '📦 ' : '🚢 '}
+              {etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
+            </span>
           </span>
 
           {/* Material y Color */}
-          <p className="text-[10px] text-slate-400 truncate mb-1">
+          <p className="text-[10px] text-slate-400 line-clamp-2 mb-1 min-w-0 break-words" title={`${p.descp_material} · ${v.descp_color}`}>
             {p.descp_material} · {v.descp_color}
           </p>
 
@@ -608,7 +622,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
             )}
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
                   style={{ backgroundColor: shell.shellBackground, color: shell.accentColor, border: shell.shellBorder }}>
-              disp: {v.cajas_disponibles} cjs
+              disp: {unidadDisponibleLabel(p.origen_tipo, v.cajas_disponibles)}
             </span>
           </div>
 
@@ -755,7 +769,34 @@ function Pill({ active, onClick, children }: { active: boolean, onClick: () => v
   )
 }
 
-export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[], pps: any[] }) {
+export function CatalogoGrid({
+  productos,
+  pps,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+}: {
+  productos: TarjetaCatalogo[]
+  pps: any[]
+  hasMore?: boolean
+  loadingMore?: boolean
+  onLoadMore?: () => void
+}) {
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null)
+
+  React.useEffect(() => {
+    if (!hasMore || !onLoadMore) return
+    const el = sentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting) onLoadMore()
+      },
+      { rootMargin: '400px 0px' },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [hasMore, onLoadMore, productos.length])
   const { activa, carrito, cliente, vendedor, listaPrecioId } = useSesion()
   const [lineaFiltro, setLineaFiltro] = useState('')
   const [colorFiltro, setColorFiltro] = useState('')
@@ -1028,6 +1069,16 @@ export function CatalogoGrid({ productos, pps }: { productos: TarjetaCatalogo[],
           {filtered.map(p => (
             <TarjetaProducto key={p.cardKey} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
           ))}
+        </div>
+      )}
+
+      {hasMore && (
+        <div ref={sentinelRef} className="flex justify-center py-10">
+          {loadingMore ? (
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+          ) : (
+            <p className="text-sm text-slate-500">Deslizá para cargar más modelos…</p>
+          )}
         </div>
       )}
     </>

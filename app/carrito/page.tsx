@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSesion, fragmentarCarrito, LISTAS } from '@/store/sesionVenta'
 import { supabase } from '@/lib/supabase'
 import { carritoValidar, type ValidarItemResult } from '@/lib/carritoApi'
+import { ProductImage } from '@/components/ProductImage'
 
 const AZUL = '#1E40AF'
 const VERDE = '#10B981'
@@ -164,6 +165,7 @@ export default function CarritoPage() {
           pp_nro: String(lote.pp_nro || ''),
           proforma: String(lote.proforma || ''),
           quincena: String(lote.quincena || ''),
+          origen_pe: lote.pp_id < 0,
           total_pares: Number(lote.total_pares) || 0,
           total_monto: Number(lote.total_monto) || 0,
           facturas: lote.marcas.flatMap((m) =>
@@ -417,13 +419,15 @@ export default function CarritoPage() {
       {lotes.map((lote) => {
         const descLote = descuentosPorLote[lote.pp_id] ?? []
         return (
-          <div key={lote.pp_id} style={{ border: '1px solid #E2E8F0', borderRadius: 16, marginBottom: 20, overflow: 'hidden' }}>
+          <div key={`${lote.pp_id}-${lote.pp_nro}`} style={{ border: '1px solid #E2E8F0', borderRadius: 16, marginBottom: 20, overflow: 'hidden', ...(lote.pp_id < 0 ? { borderColor: '#10B981', borderWidth: 2 } : {}) }}>
             <div style={{
               backgroundColor: '#F8FAFC', padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
             }}>
               <div>
-                <p style={{ fontWeight: 900, fontSize: 17, color: '#1E293B' }}>📦 {lote.quincena}</p>
+                <p style={{ fontWeight: 900, fontSize: 17, color: '#1E293B' }}>
+                  {lote.pp_id < 0 ? '🟢 Pronta entrega · ' : '📦 '}{lote.quincena}
+                </p>
                 <p style={{ fontSize: 13, color: '#64748B' }}>
                   {lote.pp_nro} ({lote.proforma}) · {lote.total_pares.toLocaleString('es-PY')} pares
                   &nbsp;·&nbsp;Gs. {lote.total_monto.toLocaleString('es-PY')}
@@ -557,24 +561,19 @@ export default function CarritoPage() {
                         display: 'flex', alignItems: 'center', gap: 12,
                         padding: '8px 0', borderTop: '1px solid #F8FAFC', fontSize: 14,
                       }}>
-                        {item.imagen_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.imagen_url}
+                        <div
+                          style={{ width: 42, height: 42, flexShrink: 0, position: 'relative' }}
+                          className="overflow-hidden rounded-lg border border-[#E2E8F0]"
+                        >
+                          <ProductImage
+                            linea={item.linea_codigo}
+                            referencia={item.ref_codigo}
+                            material={item.material_code ?? ''}
+                            color={item.color_code ?? ''}
+                            imagenNombre={item.imagen_url}
                             alt={`${item.linea_codigo}-${item.ref_codigo}`}
-                            style={{
-                              width: 42, height: 42, borderRadius: 8, objectFit: 'contain',
-                              backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', flexShrink: 0,
-                            }}
-                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                           />
-                        ) : (
-                          <div style={{
-                            width: 42, height: 42, borderRadius: 8, backgroundColor: '#F1F5F9',
-                            flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: '#CBD5E1', fontSize: 18,
-                          }}>👟</div>
-                        )}
+                        </div>
 
                         <span style={{ color: '#374151', flex: 2 }}>
                           L{item.linea_codigo}·R{item.ref_codigo}

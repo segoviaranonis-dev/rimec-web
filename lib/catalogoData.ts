@@ -6,6 +6,19 @@ const MAX_CATALOGO_ROWS = 15000
 /** Catálogo mayorista: solo compra previa — excluir PE en la query (no post-fetch). */
 export const CATALOGO_SOLO_COMPRA_PREVIA = true
 
+/** Columnas mínimas catálogo — evita SELECT * sobre vista pesada. */
+export const CATALOGO_STOCK_SELECT = `
+  det_id, pp_id, pp_nro, proforma,
+  quincena_arribo_id, quincena_desc,
+  marca_id, descp_marca, caso_id, descp_caso,
+  linea_id, linea_codigo, referencia_id, referencia_codigo, nombre,
+  material_code, descp_material, color_code, descp_color, color_hex,
+  grades_json, cantidad_cajas, cantidad_pares, pares_vendidos, saldo_pares,
+  cajas_disponibles, pares_por_caja, lpn, lpc02, lpc03, lpc04,
+  grupo_estilo_id, descp_grupo_estilo, tipo_1_id, descp_tipo_1,
+  imagen_url, origen_tipo, deposito_id, deposito_nombre, pp_estado
+`.replace(/\s+/g, ' ').trim()
+
 /** Hotfix: catálogo mayorista solo compra previa — excluir PE de v_stock_rimec (MIG-134). */
 function esFilaProntaEntrega(row: Record<string, unknown>): boolean {
   const t = String(row.origen_tipo ?? '').trim().toUpperCase()
@@ -17,22 +30,22 @@ function sinProntaEntrega<T extends Record<string, unknown>>(rows: T[]): T[] {
   return rows.filter(r => !esFilaProntaEntrega(r))
 }
 
-/** Filtros PostgREST — evita timeout por UNION PE en v_stock_rimec. */
+/** Filtros PostgREST — solo rama TRÁNSITO_PP (evita escanear UNION PE). */
 function applyFiltroCompraPrevia(query: any): any {
   if (!CATALOGO_SOLO_COMPRA_PREVIA) return query
-  return query
-    .or('origen_tipo.is.null,origen_tipo.neq.PRONTA_ENTREGA,origen_tipo.neq.PRONTA ENTREGA')
-    .or('quincena_desc.is.null,quincena_desc.not.ilike.pronta entrega%')
+  return query.eq('origen_tipo', 'TRÁNSITO_PP')
 }
 
 async function fetchAllPages<T>(
   supabase: SupabaseClient,
   selectSql: string,
   orderBy?: (query: any) => any,
+  maxPages = 2,
 ): Promise<{ data: T[]; error: any | null }> {
   const all: T[] = []
 
-  for (let from = 0; from < MAX_CATALOGO_ROWS; from += PAGE_SIZE) {
+  for (let page = 0; page < maxPages; page++) {
+    const from = page * PAGE_SIZE
     const to = from + PAGE_SIZE - 1
     let query = supabase
       .from('v_stock_rimec')
@@ -40,15 +53,15 @@ async function fetchAllPages<T>(
       .gt('cajas_disponibles', 0)
 
     query = applyFiltroCompraPrevia(query)
-    query = orderBy ? orderBy(query) : query
+    query = orderBy ? orderBy(query) : query.order('det_id')
     query = query.range(from, to)
 
     const { data, error } = await query
     if (error) return { data: all, error }
 
-    const page = (data ?? []) as T[]
-    all.push(...page)
-    if (page.length < PAGE_SIZE) break
+    const batch = (data ?? []) as T[]
+    all.push(...batch)
+    if (batch.length < PAGE_SIZE) break
   }
 
   const filtered = CATALOGO_SOLO_COMPRA_PREVIA
@@ -66,7 +79,7 @@ export function fetchCatalogoRows<T>(supabase: SupabaseClient) {
   )
 }
 
-/** Lee metadata completa para construir filtros desde el mismo universo vendible. */
+/** Meta sidebar/header — máx. 2 páginas CP-only (evita timeout). */
 export function fetchCatalogoMetaRows<T>(supabase: SupabaseClient) {
   return fetchAllPages<T>(
     supabase,
@@ -75,8 +88,11 @@ export function fetchCatalogoMetaRows<T>(supabase: SupabaseClient) {
       linea_id, linea_codigo, referencia_id, referencia_codigo,
       grupo_estilo_id, descp_grupo_estilo,
       tipo_1_id, descp_tipo_1,
-      origen_tipo, quincena_desc,
+      descp_color,
+      origen_tipo, quincena_desc, quincena_arribo_id,
       cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
     `,
+    undefined,
+    2,
   )
 }

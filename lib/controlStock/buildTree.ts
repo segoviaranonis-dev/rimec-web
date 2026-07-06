@@ -114,26 +114,8 @@ export function construirArbolControl(filas: DetalleStockRow[]): NodoControl[] {
 
         const hijosEstilo: NodoControl[] = []
         for (const [estilo, rowsEst] of byEstilo) {
-          const hojas: NodoControl[] = rowsEst.map(r => {
-            const label = [
-              r.linea,
-              r.referencia,
-              r.descp_material || r.material_code,
-              r.descp_color || r.color_code,
-              r.grada,
-            ]
-              .filter(Boolean)
-              .join(' · ')
-            return nodo(
-              `leaf:${ppId}|${genero}|${marca}|${estilo}|${r.linea}|${r.referencia}|${r.material_code}|${r.color_code}|${r.grada}`,
-              5,
-              label,
-              [r],
-            )
-          })
-          hojas.sort((a, b) => b.saldo - a.saldo)
           hijosEstilo.push(
-            nodo(`est:${ppId}|${genero}|${marca}|${estilo}`, 4, estilo, rowsEst, hojas),
+            nodo(`est:${ppId}|${genero}|${marca}|${estilo}`, 4, estilo, rowsEst),
           )
         }
         hijosEstilo.sort((a, b) => b.saldo - a.saldo)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
+import { isProntaEntregaDetId, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,9 +21,17 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'no-session' }, { status: 401 })
 
   const body = (await req.json()) as ItemBody
-  if (!body?.det_id || !body?.pp_id || !body?.cantidad_cajas || body.cantidad_cajas <= 0) {
+  const isPe = isProntaEntregaDetId(Number(body?.det_id))
+  if (!body?.det_id || !body?.cantidad_cajas || body.cantidad_cajas <= 0) {
     return NextResponse.json({ error: 'payload inválido' }, { status: 400 })
   }
+  if (!isPe && !body?.pp_id) {
+    return NextResponse.json({ error: 'payload inválido — falta pp_id' }, { status: 400 })
+  }
+
+  const ppId = isPe
+    ? (body.pp_id < 0 ? body.pp_id : syntheticPpIdForPe({ pp_nro: 'PE-import' }))
+    : body.pp_id
 
   const sb = getSupabaseAdmin()
 
@@ -59,7 +68,7 @@ export async function POST(req: NextRequest) {
       {
         id_usuario: session.id_usuario,
         det_id: body.det_id,
-        pp_id: body.pp_id,
+        pp_id: ppId,
         cantidad_cajas: body.cantidad_cajas,
         precio_snapshot: body.precio_snapshot,
         caso_snapshot: body.caso_snapshot,

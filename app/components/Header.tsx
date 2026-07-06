@@ -197,7 +197,8 @@ function SearchBar() {
 // ── Header principal ────────────────────────────────────────────────────────
 type MegaKey = 'mujeres' | 'ninas' | 'ninos' | 'hombres' | null
 
-export default function Header({ data }: { data: HeaderData }) {
+export default function Header({ data: initialData }: { data: HeaderData }) {
+  const [data, setData] = useState(initialData)
   const [open, setOpen]   = useState<MegaKey>(null)
   const closeTimer        = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [user, setUser]   = useState<{ name: string; categoria: string } | null>(null)
@@ -208,6 +209,19 @@ export default function Header({ data }: { data: HeaderData }) {
       .then(r => r.json())
       .then(d => { setUser(d.user || null) })
       .catch(() => setUser(null))
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetch('/api/catalogo/header-filtros', { credentials: 'same-origin' })
+        .then(r => {
+          if (!r.ok) throw new Error(String(r.status))
+          return r.json()
+        })
+        .then(d => { if (d?.header) setData(d.header) })
+        .catch(() => {})
+    }, 800)
+    return () => clearTimeout(timer)
   }, [])
 
   const enter = (key: MegaKey) => {

@@ -486,19 +486,24 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     const actual = s.carrito[key]
     if (!actual) return
     const cajas = actual.cajas - 1
-    if (cajas <= 0) {
-      await carritoPatchItem(det_id, 0)
-      const next = { ...s.carrito }
-      delete next[key]
-      set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
-      return
+    try {
+      if (cajas <= 0) {
+        await carritoDeleteItem(det_id)
+        const next = { ...s.carrito }
+        delete next[key]
+        set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
+        return
+      }
+      await carritoPatchItem(det_id, cajas)
+      const pares = actual.cant_caja * cajas
+      set((st) => ({
+        carrito: { ...st.carrito, [key]: { ...actual, cajas, pares, subtotal: actual.precio_base * pares } },
+        validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+      }))
+    } catch (err) {
+      console.error('[sesionVenta.quitarCaja]', err)
+      throw err
     }
-    await carritoPatchItem(det_id, cajas)
-    const pares = actual.cant_caja * cajas
-    set((st) => ({
-      carrito: { ...st.carrito, [key]: { ...actual, cajas, pares, subtotal: actual.precio_base * pares } },
-      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
-    }))
   },
 
   setCajas: async (det_id, cajas) => {
@@ -509,7 +514,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     const safe = Math.max(0, Math.floor(Number.isFinite(cajas) ? cajas : 0))
     if (safe === 0) {
       try {
-        await carritoPatchItem(det_id, 0)
+        await carritoDeleteItem(det_id)
         const next = { ...s.carrito }
         delete next[key]
         set({ carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } })
@@ -560,6 +565,8 @@ export interface ItemFragmentado {
   det_id:       number
   linea_codigo:  string
   ref_codigo:    string
+  material_code: string
+  color_code:    string
   color_nombre:  string
   gradas_fmt:    string
   imagen_url:    string
@@ -657,6 +664,8 @@ export function fragmentarCarrito(
             det_id: item.det_id,
             linea_codigo: item.linea_codigo,
             ref_codigo: item.referencia_codigo,
+            material_code: item.material_code,
+            color_code: item.color_code,
             color_nombre: item.color_nombre,
             gradas_fmt: item.gradas_fmt,
             imagen_url: item.imagen_url,

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
+    "dev:clean": "node -e \"const fs=require('fs');for(const p of ['.next','node_modules/.cache']){try{fs.rmSync(p,{recursive:true,force:true})}catch(e){}}\" && next dev -p 3001",
     "build": "next build",
     "start": "next start"
   },

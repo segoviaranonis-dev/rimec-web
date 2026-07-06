@@ -1,9 +1,8 @@
+import { cache } from 'react'
 import { supabase } from './supabase'
 import {
-  cargarAtributosDesdePilar,
   cargarMetaLineasDesdePilar,
   enriquecerMetaConLinea,
-  enriquecerMetaConPilar,
 } from './atributosLinea'
 import { fetchCatalogoMetaRows } from './catalogoData'
 import { cajasDisponiblesDeFila } from './disponibilidad'
@@ -28,7 +27,7 @@ export interface HeaderData {
   hombres: SectionData
 }
 
-export async function getFiltros() {
+export const getFiltros = cache(async function getFiltros() {
   const fallback = {
     header: {
       mujeres: { label: 'Damas', lineas: [], marcas: [], estilos: [], tipos: [] },
@@ -65,21 +64,8 @@ export async function getFiltros() {
       return fallback
     }
 
-    const paresCodigo = [
-      ...new Map(
-        stockMeta
-          .map(m => {
-            const lc = String(m.linea_codigo ?? '').trim()
-            const rc = String(m.referencia_codigo ?? '').trim()
-            return [`${lc}:${rc}`, { linea_codigo: lc, referencia_codigo: rc }] as const
-          })
-          .filter(([k]) => k !== ':'),
-      ).values(),
-    ]
-    const pilar = await cargarAtributosDesdePilar({ paresCodigo })
-    const metaPilar = enriquecerMetaConPilar(stockMeta, pilar)
-    const lineaMeta = await cargarMetaLineasDesdePilar(metaPilar.map(m => Number(m.linea_id)))
-    const meta = enriquecerMetaConLinea(metaPilar, lineaMeta)
+    const lineaMeta = await cargarMetaLineasDesdePilar(stockMeta.map(m => Number(m.linea_id)))
+    const meta = enriquecerMetaConLinea(stockMeta, lineaMeta)
 
     // 2. Estructuras de agrupación por Género (desde pilar línea)
     const init = () => ({ 
@@ -163,13 +149,7 @@ export async function getFiltros() {
       }
     }
 
-    // Valores del pilar (por código línea/ref, no por IDs erróneos de la vista)
-    for (const attr of pilar.porCodigo.values()) {
-      if (attr.grupo_estilo_id) addEstilo(attr.grupo_estilo_id, attr.descp_grupo_estilo)
-      if (attr.tipo_1_id) addTipo(attr.tipo_1_id, attr.descp_tipo_1)
-    }
-
-    const toItems = (m: Map<number, string>): FilterItem[] => 
+    const toItems = (m: Map<number, string>): FilterItem[] =>
       Array.from(m.entries())
         .map(([id, label]) => ({ id, label: String(label || '').trim() || `ID ${id}` }))
         .sort((a, b) => a.label.localeCompare(b.label))
@@ -198,6 +178,6 @@ export async function getFiltros() {
     console.error('[filtros] Critical error in getFiltros:', err)
     return fallback
   }
-}
+})
 
 

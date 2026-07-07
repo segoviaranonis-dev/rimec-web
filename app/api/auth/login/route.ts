@@ -38,10 +38,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: 'Acceso denegado',
-          message:
-            user.rol_id === 2 && normalizarCategoria(user.categoria) === 'VENDEDOR'
-              ? 'Los vendedores de tienda Bazzar no tienen acceso al catálogo web.'
-              : `Tu categoría (${user.categoria}) no tiene acceso al catálogo mayorista.`,
+          message: `Tu categoría (${user.categoria}) no tiene acceso al catálogo mayorista.`,
         },
         { status: 403 }
       )

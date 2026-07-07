@@ -31,10 +31,8 @@ export function esCategoriaPermitida(categoria: string): boolean {
   return CATEGORIAS_PERMITIDAS.includes(catNorm as any)
 }
 
-/** Matriz holding: BAZZAR (rol 2) + VENDEDOR → sin RIMEC Web */
-export function puedeAccederRimecWeb(rolId: number, categoria: string): boolean {
-  const catNorm = normalizarCategoria(categoria)
-  if (rolId === 2 && catNorm === 'VENDEDOR') return false
+/** VENDEDOR y ADMIN (RIMEC + Bazzar tienda compradora) → catálogo mayorista. IVO = ADMIN Bazzar gerencial. */
+export function puedeAccederRimecWeb(_rolId: number, categoria: string): boolean {
   return esCategoriaPermitida(categoria)
 }
 

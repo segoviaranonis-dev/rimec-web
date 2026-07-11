@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
+import { resolveCarritoStockRow, stockCantidadLabel } from '@/lib/carritoStockResolve'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,20 +49,15 @@ export async function PATCH(
 
   // Solo validar stock al subir cantidad — bajar/quitar no consume stock nuevo
   if (qty > currentQty) {
-    const { data: stockData } = await sb
-      .from('v_stock_rimec')
-      .select('det_id, cajas_disponibles')
-      .eq('det_id', detId)
-      .single()
-
-    if (!stockData) {
+    const stockHit = await resolveCarritoStockRow(sb, detId)
+    if (!stockHit) {
       return NextResponse.json({ error: 'producto no encontrado' }, { status: 404 })
     }
 
-    const cajasDisponibles = stockData.cajas_disponibles ?? 0
+    const cajasDisponibles = stockHit.row.cajas_disponibles ?? 0
     if (qty > cajasDisponibles) {
       return NextResponse.json({
-        error: `stock insuficiente (disponible: ${cajasDisponibles} cajas)`,
+        error: `stock insuficiente (disponible: ${stockCantidadLabel(detId, cajasDisponibles, stockHit.row.origen_tipo)})`,
       }, { status: 400 })
     }
   }

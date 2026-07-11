@@ -20,6 +20,7 @@ export interface StockRow {
   color_code: string
   descp_color: string
   color_hex: string | null
+  color_tono_canon?: unknown | null
   grades_json: Record<string, number> | null
   cantidad_cajas: number
   cantidad_pares: number

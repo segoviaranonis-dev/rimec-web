@@ -4,20 +4,18 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { isImageDecoded, preloadImageDecoded } from '@/lib/image-decode-cache'
 import {
   HERO_VIEWPORT,
-  isFlatOnlyImagenNombre,
-  intrinsicDimsFromImageUrl,
-  preferSmTierUrl,
+  productImageCandidatesForUi,
   productImageFallbackStyle,
-  resolveCanonicalImageUrl,
-  resolveFlatImageUrl,
-  toMdStorageUrl,
   type ImageVariant,
 } from '@/lib/productImage'
 import { useHeroProgressiveSrc } from '@/lib/use-hero-progressive-src'
 
 type Props = {
+  /** URL primaria resuelta en servidor (sm/ o flat). */
   src?: string | null
   fallbackSrc?: string | null
+  /** Cadena sm→md→flat precomputada en servidor — paridad Tablet/Report. */
+  candidates?: string[]
   linea: string
   referencia: string
   material?: string
@@ -27,18 +25,20 @@ type Props = {
   variant?: ImageVariant
   priority?: boolean
   className?: string
-  /** Grilla catálogo: solo sm/md — flat recorta punta/tacón (4.90.03.002). */
-  allowFlatFallback?: boolean
 }
 
 function markLoadedIfCached(img: HTMLImageElement | null): boolean {
   return Boolean(img?.complete && img.naturalWidth > 0)
 }
 
-/** Copia literal Tablet Bazzar depósito — cadena-thumb-frame / hero. */
+/**
+ * Imagen catálogo RIMEC Web — canon NIIF · paridad Tablet `TarjetaCajaDeposito`.
+ * Cadena retry: candidatos servidor → fallback flat → sin inventar CSS.
+ */
 export function ProductImage({
   src: srcProp,
   fallbackSrc: fallbackProp,
+  candidates: candidatesProp,
   linea,
   referencia,
   material = '',
@@ -48,84 +48,44 @@ export function ProductImage({
   variant = 'thumb',
   priority = false,
   className = '',
-  allowFlatFallback = false,
 }: Props) {
   const imgRef = useRef<HTMLImageElement>(null)
   const [loaded, setLoaded] = useState(false)
   const [activeSrc, setActiveSrc] = useState<string | null>(null)
-  const usedMd = useRef(false)
-  const usedFlat = useRef(false)
+  const [candidateIdx, setCandidateIdx] = useState(0)
 
   const isHero = variant === 'hero'
 
-  const canonicalSrc = useMemo(() => {
-    if (isHero) return null
-    const raw =
-      srcProp ??
-      resolveCanonicalImageUrl({
-        linea,
-        referencia,
-        material,
-        color,
-        imagenNombre,
-        variant,
-      })
-    return preferSmTierUrl(raw)
-  }, [isHero, srcProp, linea, referencia, material, color, imagenNombre, variant])
-
-  const flatFallback = useMemo(() => {
-    if (isHero) return null
-    if (fallbackProp) return fallbackProp
-    return resolveFlatImageUrl({
+  const chain = useMemo(() => {
+    if (candidatesProp?.length) return candidatesProp
+    return productImageCandidatesForUi(
       linea,
       referencia,
       material,
       color,
       imagenNombre,
-    })
-  }, [isHero, fallbackProp, linea, referencia, material, color, imagenNombre])
+      isHero ? 'modal' : 'thumb',
+    )
+  }, [candidatesProp, linea, referencia, material, color, imagenNombre, isHero])
+
+  const primarySrc = useMemo(() => {
+    if (isHero) return null
+    if (chain.length) return chain[0] ?? null
+    if (srcProp) return srcProp
+    return fallbackProp ?? null
+  }, [isHero, srcProp, chain, fallbackProp])
+
+  const flatFallback = fallbackProp ?? null
 
   const heroSkuKey = `${linea}|${referencia}|${material}|${color}`
 
-  const heroFlatFallback = useMemo(
-    () =>
-      resolveFlatImageUrl({
-        linea,
-        referencia,
-        material,
-        color,
-        imagenNombre,
-      }),
-    [linea, referencia, material, color, imagenNombre],
-  )
-
-  const flatOnlyHero = isFlatOnlyImagenNombre(imagenNombre)
-
   const heroUrls = useMemo(
     () => ({
-      imagen_url_thumb: flatOnlyHero
-        ? heroFlatFallback
-        : resolveCanonicalImageUrl({
-            linea,
-            referencia,
-            material,
-            color,
-            imagenNombre,
-            variant: 'thumb',
-          }),
-      imagen_url_hero: flatOnlyHero
-        ? heroFlatFallback
-        : resolveCanonicalImageUrl({
-            linea,
-            referencia,
-            material,
-            color,
-            imagenNombre,
-            variant: 'hero',
-          }),
-      imagen_url_flat: heroFlatFallback,
+      imagen_url_thumb: chain.find(u => u.includes('/sm/')) ?? chain[0] ?? null,
+      imagen_url_hero: chain.find(u => u.includes('/lg/')) ?? chain[0] ?? null,
+      imagen_url_flat: flatFallback ?? chain.find(u => !/\/productos\/(sm|md|lg|thumbs)\//i.test(u)) ?? null,
     }),
-    [linea, referencia, material, color, imagenNombre, flatOnlyHero, heroFlatFallback],
+    [chain, flatFallback],
   )
 
   const emptyHeroUrls = useMemo(
@@ -145,16 +105,15 @@ export function ProductImage({
   useLayoutEffect(() => {
     if (isHero) return
 
-    usedMd.current = false
-    usedFlat.current = false
-    setActiveSrc(canonicalSrc)
+    setCandidateIdx(0)
+    setActiveSrc(primarySrc)
 
-    if (!canonicalSrc) {
+    if (!primarySrc) {
       setLoaded(false)
       return
     }
 
-    if (isImageDecoded(canonicalSrc)) {
+    if (isImageDecoded(primarySrc)) {
       setLoaded(true)
       return
     }
@@ -163,7 +122,7 @@ export function ProductImage({
     setLoaded(false)
 
     void (async () => {
-      if (await preloadImageDecoded(canonicalSrc)) {
+      if (await preloadImageDecoded(primarySrc)) {
         if (!cancelled) setLoaded(true)
         return
       }
@@ -176,70 +135,64 @@ export function ProductImage({
     return () => {
       cancelled = true
     }
-  }, [canonicalSrc, isHero])
+  }, [primarySrc, isHero])
 
   const eager = isHero || priority
+
+  const tryNextSrc = (next: string | null) => {
+    if (!next) return
+    void (async () => {
+      if (await preloadImageDecoded(next)) {
+        setActiveSrc(next)
+        setLoaded(true)
+        return
+      }
+      setActiveSrc(next)
+      setLoaded(false)
+    })()
+  }
 
   const handleError = () => {
     if (isHero) return
 
-    if (!usedMd.current && activeSrc) {
-      const md = toMdStorageUrl(activeSrc)
-      if (md && md !== activeSrc) {
-        usedMd.current = true
-        void (async () => {
-          if (await preloadImageDecoded(md)) {
-            setActiveSrc(md)
-            setLoaded(true)
-            return
-          }
-          setActiveSrc(md)
-          setLoaded(false)
-        })()
-        return
-      }
+    let nextIdx = candidateIdx + 1
+    while (nextIdx < chain.length && /\/productos\/(sm|thumbs)\//i.test(chain[nextIdx] ?? '')) {
+      nextIdx += 1
     }
-
-    if (
-      allowFlatFallback &&
-      !usedFlat.current &&
-      flatFallback &&
-      activeSrc !== flatFallback &&
-      flatFallback !== canonicalSrc
-    ) {
-      usedFlat.current = true
-      void (async () => {
-        if (await preloadImageDecoded(flatFallback)) {
-          setActiveSrc(flatFallback)
-          setLoaded(true)
-          return
-        }
-        setActiveSrc(flatFallback)
-        setLoaded(false)
-      })()
+    if (nextIdx < chain.length) {
+      setCandidateIdx(nextIdx)
+      tryNextSrc(chain[nextIdx] ?? null)
       return
     }
+
+    if (flatFallback && activeSrc !== flatFallback && !chain.includes(flatFallback)) {
+      tryNextSrc(flatFallback)
+      return
+    }
+
+    setActiveSrc(null)
     setLoaded(false)
   }
 
   const handleLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = e.currentTarget
+    if (naturalWidth < 1 || naturalHeight < 1) {
+      handleError()
+      return
+    }
     setLoaded(true)
     void e.currentTarget.decode?.().catch(() => undefined)
   }
 
   if (isHero) {
-    const dims = intrinsicDimsFromImageUrl(heroDisplaySrc)
     return (
-      <div className={`relative h-full w-full min-h-0 min-w-0 ${className}`.trim()}>
+      <div className={`cadena-hero-frame ${className}`.trim()} data-hero-frame="rimec-web">
         {heroDisplaySrc ? (
           <img
             key={heroDisplaySrc}
             ref={imgRef}
             src={heroDisplaySrc}
             alt={alt}
-            width={dims.width}
-            height={dims.height}
-            className="absolute inset-0 h-full w-full object-contain object-center"
             loading="eager"
             decoding="async"
             fetchPriority="high"
@@ -258,7 +211,7 @@ export function ProductImage({
   const ready =
     loaded || priority || (activeSrc ? isImageDecoded(activeSrc) : false)
   const imgOpacity = ready ? 'opacity-100' : 'opacity-0'
-  const thumbKey = `${linea}|${referencia}|${material}|${color}`
+  const thumbKey = `${linea}|${referencia}|${material}|${color}|${candidateIdx}`
 
   return (
     <div
@@ -267,7 +220,7 @@ export function ProductImage({
     >
       {!ready && (
         <span
-          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-0.5 text-center bg-[#F8FAFC]"
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-0.5 text-center bg-white"
           aria-hidden
         >
           <span className="text-[10px] font-extrabold tracking-wide text-slate-400">
@@ -277,11 +230,11 @@ export function ProductImage({
       )}
       {activeSrc ? (
         <img
-          key={activeSrc ?? thumbKey}
+          key={thumbKey}
           ref={imgRef}
           src={activeSrc}
           alt={alt}
-          className={imgOpacity}
+          className={`block max-h-full max-w-full h-auto w-auto object-contain object-center bg-white/95 ${imgOpacity}`}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
           fetchPriority={eager ? 'high' : 'low'}

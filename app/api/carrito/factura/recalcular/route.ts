@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { jwtVerify } from 'jose'
 import { createClient } from '@supabase/supabase-js'
+import { getPrecioActivo } from '@/lib/precioLista'
+import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
 
 const SECRET = new TextEncoder().encode(
   process.env.SESSION_SECRET || 'rimec-web-default-secret-change-in-production'
@@ -71,21 +73,30 @@ export async function POST(req: NextRequest) {
     }
 
     const det_ids = items.map((i) => i.det_id)
+    const stockMap = await fetchCarritoStockByDetIds(supabase, det_ids)
 
-    // Consultar v_stock_rimec para precios
-    const columna_precio = lista_precio_id === 1 ? 'lpn' : `lpc0${lista_precio_id}`
-
-    const { data: precios } = await supabase
-      .from('v_stock_rimec')
-      .select(`det_id, ${columna_precio}`)
-      .in('det_id', det_ids)
-
-    if (!precios) {
-      return NextResponse.json({ error: 'Error consultando precios' }, { status: 500 })
+    const preciosMap = new Map<number, number | null>()
+    for (const detId of det_ids) {
+      const p = stockMap.get(detId)
+      if (!p) {
+        preciosMap.set(detId, null)
+        continue
+      }
+      preciosMap.set(
+        detId,
+        getPrecioActivo(
+          {
+            lpn: Number(p.lpn) || null,
+            lpc02: Number(p.lpc02) || null,
+            lpc03: Number(p.lpc03) || null,
+            lpc04: Number(p.lpc04) || null,
+            descp_caso: String(p.descp_caso ?? ''),
+          },
+          lista_precio_id,
+          String(p.descp_caso ?? ''),
+        ),
+      )
     }
-
-    // Mapa det_id -> precio_base
-    const preciosMap = new Map(precios.map((p: any) => [p.det_id, p[columna_precio]]))
 
     // Aplicar descuentos
     const aplicarDescuentos = (base: number, desc: number[]) => {

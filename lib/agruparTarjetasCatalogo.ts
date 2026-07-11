@@ -24,10 +24,13 @@ export interface RimecVariante {
   quincena_desc: string | null          // Dato duro - mostrar en tarjeta
   quincena_arribo_id?: number | null
   deposito_id?: number | null
+  deposito_nombre?: string | null
   material_code: string
   color_code: string
   descp_color: string
   color_hex: string | null
+  /** JSON administrador tonos — `color.tono_canon` vía vista (MIG-140). */
+  tono_canon?: unknown | null
   gradas_fmt: string
   /** Nombre crudo BD / Excel — input para resolver tiers. */
   imagen_nombre: string | null
@@ -36,6 +39,8 @@ export interface RimecVariante {
   imagen_url_thumb: string | null
   imagen_url_hero: string | null
   imagen_url_flat: string | null
+  imagen_candidates_thumb: string[]
+  imagen_candidates_hero: string[]
   cantidad_cajas: number
   pares_por_caja: number
   cajas_disponibles: number
@@ -156,16 +161,20 @@ export function agruparTarjetasCatalogo(
       quincena_desc: item.quincena_desc,  // Dato duro
       quincena_arribo_id: item.quincena_arribo_id,
       deposito_id: item.deposito_id ?? null,
+      deposito_nombre: item.deposito_nombre ?? null,
       material_code: item.material_code,
       color_code: item.color_code,
       descp_color: item.descp_color,
       color_hex: item.color_hex,
+      tono_canon: item.color_tono_canon ?? null,
       gradas_fmt: gradasFmtFromJson(item.grades_json),
       imagen_nombre: item.imagen_url,
       imagen_url: imgs.imagen_url_thumb ?? imgs.imagen_url_flat ?? '',
       imagen_url_thumb: imgs.imagen_url_thumb,
       imagen_url_hero: imgs.imagen_url_hero,
       imagen_url_flat: imgs.imagen_url_flat,
+      imagen_candidates_thumb: imgs.imagen_candidates_thumb,
+      imagen_candidates_hero: imgs.imagen_candidates_hero,
       cantidad_cajas: item.cantidad_cajas,
       pares_por_caja: item.pares_por_caja,
       cajas_disponibles: cajasDisp,

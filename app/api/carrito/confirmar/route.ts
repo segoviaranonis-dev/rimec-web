@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getSession } from '@/lib/auth/session'
+import { sanitizeConfirmarPayload } from '@/lib/sanitizeConfirmarPayload'
 
 /**
  * POST /api/carrito/confirmar
@@ -37,6 +38,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 })
     }
 
+    const payload = sanitizeConfirmarPayload(p_payload)
+
     // Ejecutar RPC desde servidor
     const { data, error: rpcErr } = await supabase.rpc('confirmar_pedido_web', {
       p_cliente_id,
@@ -49,7 +52,7 @@ export async function POST(req: NextRequest) {
       p_descuento_4: Number(p_descuento_4) || 0,
       p_total_pares,
       p_total_monto,
-      p_payload,
+      p_payload: payload,
       p_validacion_token,
     })
 

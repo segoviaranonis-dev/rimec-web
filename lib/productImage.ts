@@ -19,6 +19,9 @@ export type ImagenUrls = {
   imagen_url_thumb: string | null
   imagen_url_hero: string | null
   imagen_url_flat: string | null
+  /** Resuelto en servidor — el cliente no reconstruye URLs por tarjeta. */
+  imagen_candidates_thumb: string[]
+  imagen_candidates_hero: string[]
 }
 
 const STAGING_SENTINEL_CODIGO_ABS = 999001
@@ -131,7 +134,7 @@ export function productImageFallbackStyle(
   void linea
   void referencia
   return {
-    background: 'linear-gradient(135deg, #0F172A 0%, #2d5a8e 100%)',
+    background: '#ffffff',
   }
 }
 
@@ -168,14 +171,48 @@ export function enrichImagenUrls(input: {
 }): ImagenUrls {
   const base = { ...input, imagenNombre: input.imagenNombre ?? null }
   const flat = resolveFlatImageUrl(base)
-  const flatOnly = isFlatOnlyImagenNombre(input.imagenNombre)
-  const thumb = resolveCanonicalImageUrl({ ...base, variant: 'thumb' })
-  const hero = resolveCanonicalImageUrl({ ...base, variant: 'hero' })
+  const thumbCandidates = productImageCandidatesForUi(
+    input.linea,
+    input.referencia,
+    input.material,
+    input.color,
+    input.imagenNombre ?? null,
+    'thumb',
+  )
+  const heroCandidates = productImageCandidatesForUi(
+    input.linea,
+    input.referencia,
+    input.material,
+    input.color,
+    input.imagenNombre ?? null,
+    'modal',
+  )
+  const thumbChain = dedupeUrls(thumbCandidates)
+  const heroChain = dedupeUrls(heroCandidates)
+  const flatFirstThumb =
+    flat && (isFlatOnlyImagenNombre(input.imagenNombre) || thumbChain.includes(flat))
+      ? [flat, ...thumbChain.filter((u) => u !== flat)]
+      : thumbChain.length
+        ? thumbChain
+        : flat
+          ? [flat]
+          : []
+
   return {
-    imagen_url_thumb: flatOnly ? flat : preferSmTierUrl(thumb),
-    imagen_url_hero: flatOnly ? flat : hero,
+    imagen_url_thumb: flatFirstThumb[0] ?? flat,
+    imagen_url_hero: heroChain[0] ?? flat,
     imagen_url_flat: flat,
+    imagen_candidates_thumb: flatFirstThumb,
+    imagen_candidates_hero: heroChain.length ? heroChain : flat ? [flat] : [],
   }
+}
+
+function dedupeUrls(urls: string[]): string[] {
+  const out: string[] = []
+  for (const u of urls) {
+    if (u && !out.includes(u)) out.push(u)
+  }
+  return out
 }
 
 /** Dimensiones intrínsecas Protocolo Imágenes Nexus (evita escalar sm a hero). */
@@ -236,11 +273,18 @@ export function stripProductImageTier(path: string): string {
     .replace(/^\/+/, '')
 }
 
-/** URL pública Supabase ya armada — v_stock_rimec.imagen_url suele venir así. */
+/** URL pública Supabase — si trae tier sm/md/lg, normalizar a flat raíz (no confundir recorte con flat). */
 function publicProductosUrlFromInput(raw: string): string | null {
   const s = String(raw ?? '').trim()
   if (!s.includes('/storage/v1/object/public/productos/')) return null
-  return s.split('?')[0]?.split('#')[0] ?? null
+  const url = s.split('?')[0]?.split('#')[0] ?? null
+  if (!url) return null
+  if (/\/productos\/(sm|md|lg|thumbs)\//i.test(url)) {
+    const file = stripProductImageTier(url)
+    if (!file) return null
+    return publicStorageObjectUrl('productos', file)
+  }
+  return url
 }
 
 function normalizeImageFileName(raw: string): string | null {
@@ -368,6 +412,38 @@ export function productImageCandidatesForRow(
   return out
 }
 
+/** Solo tiers NIIF — nunca flat legacy (recorte punta/tacón · 4.90.03). */
+export function productImageTierCandidatesForRow(
+  lineaCodigo: string,
+  referenciaCodigo: string,
+  materialCode: string | number,
+  colorCode: string | number,
+  imagenNombre?: string | null,
+  variant: ImageVariant = 'thumb',
+): string[] {
+  return productImageCandidatesForRow(
+    lineaCodigo,
+    referenciaCodigo,
+    materialCode,
+    colorCode,
+    imagenNombre,
+    variant,
+  ).filter(u => /\/productos\/(sm|md|lg|thumbs)\//i.test(u))
+}
+
+const loggedTierViolations = new Set<string>()
+
+/** Dev/runtime — pecado integridad visual: grilla sin tier sm/md/lg. */
+export function logImageTierViolation(skuKey: string, tried: string[]) {
+  if (process.env.NODE_ENV === 'production') return
+  if (loggedTierViolations.has(skuKey)) return
+  loggedTierViolations.add(skuKey)
+  console.error(
+    '[IMG-FAIL-TIER-GAP] Sin sm/md/lg en Storage — prohibido flat en grilla PE/depósito',
+    { skuKey, tried: tried.slice(0, 6) },
+  )
+}
+
 export function productImagePrimaryFileName(
   lineaCodigo: string,
   referenciaCodigo: string,
@@ -404,17 +480,35 @@ export function productImageCandidatesForUi(
   )
 
   const file = productImagePrimaryFileName(lineaCodigo, referenciaCodigo, materialCode, colorCode)
+
+  if (ui === 'thumb' || ui === 'card') {
+    const flat = resolveFlatImageUrl({
+      linea: lineaCodigo,
+      referencia: referenciaCodigo,
+      material: materialCode,
+      color: colorCode,
+      imagenNombre,
+    })
+    const ordered: string[] = []
+    if (flat) pushUnique(ordered, flat)
+    if (file) {
+      pushUnique(ordered, getProductImageUrl(file, 'md'))
+      pushUnique(ordered, getProductImageUrl(file, 'lg'))
+    }
+    for (const u of base) {
+      if (!/\/productos\/(sm|thumbs)\//i.test(u)) pushUnique(ordered, u)
+    }
+    return ordered.length ? ordered : base.filter(u => !/\/productos\/(sm|thumbs)\//i.test(u))
+  }
+
   if (!file) return base
 
-  const prefer: ImageSize[] =
-    ui === 'modal' ? ['lg', 'md', 'sm'] : ['sm', 'md']
-
+  const prefer: ImageSize[] = ['lg', 'md', 'sm']
   const ordered: string[] = []
   for (const tier of prefer) {
     const u = getProductImageUrl(file, tier)
     if (u) pushUnique(ordered, u)
   }
-  // Cadena completa Report: sm→md→flat→thumbs (4.90.03.003) — contain en marco evita overflow.
   for (const u of base) pushUnique(ordered, u)
   return ordered
 }

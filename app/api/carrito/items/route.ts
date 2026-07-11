@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
-import { isProntaEntregaDetId, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
+import { resolveCarritoStockRow, stockCantidadLabel } from '@/lib/carritoStockResolve'
+import { isProntaEntregaStockRow, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,7 @@ interface ItemBody {
   caso_id_snapshot?: number | null
   marca_snapshot: string
   marca_id_snapshot?: number | null
+  origen_tipo?: string | null
 }
 
 export async function POST(req: NextRequest) {
@@ -21,7 +23,11 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'no-session' }, { status: 401 })
 
   const body = (await req.json()) as ItemBody
-  const isPe = isProntaEntregaDetId(Number(body?.det_id))
+  const isPe = isProntaEntregaStockRow({
+    det_id: Number(body?.det_id),
+    origen_tipo: body.origen_tipo,
+    pp_id: body.pp_id,
+  })
   if (!body?.det_id || !body?.cantidad_cajas || body.cantidad_cajas <= 0) {
     return NextResponse.json({ error: 'payload inválido' }, { status: 400 })
   }
@@ -44,21 +50,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'sesión de venta no activa' }, { status: 409 })
   }
 
-  // Validar stock disponible
-  const { data: stockData } = await sb
-    .from('v_stock_rimec')
-    .select('det_id, cajas_disponibles')
-    .eq('det_id', body.det_id)
-    .single()
-
-  if (!stockData) {
+  const stockHit = await resolveCarritoStockRow(sb, body.det_id, body.origen_tipo)
+  if (!stockHit) {
     return NextResponse.json({ error: 'producto no encontrado' }, { status: 404 })
   }
 
-  const cajasDisponibles = stockData.cajas_disponibles ?? 0
+  const detIdStore = isPe ? stockHit.canonicalDetId : body.det_id
+
+  const cajasDisponibles = stockHit.row.cajas_disponibles ?? 0
   if (body.cantidad_cajas > cajasDisponibles) {
     return NextResponse.json({
-      error: `stock insuficiente (disponible: ${cajasDisponibles} cajas)`
+      error: `stock insuficiente (disponible: ${stockCantidadLabel(body.det_id, cajasDisponibles, stockHit.row.origen_tipo ?? body.origen_tipo)})`,
     }, { status: 400 })
   }
 
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest) {
     .upsert(
       {
         id_usuario: session.id_usuario,
-        det_id: body.det_id,
+        det_id: detIdStore,
         pp_id: ppId,
         cantidad_cajas: body.cantidad_cajas,
         precio_snapshot: body.precio_snapshot,

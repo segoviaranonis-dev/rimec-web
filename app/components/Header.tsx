@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import NotificationBell from '@/components/NotificationBell'
 
 export interface FilterItem {
@@ -46,7 +46,7 @@ function MegaMujeres({ data }: { data: HeaderData['mujeres'] }) {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400 mb-4">Estilos</p>
           <ul className="space-y-2.5">
-            {data.estilos.slice(0, 9).map(e => (
+            {data.estilos.map(e => (
               <li key={e.id}>
                 <Link href={`/?grupo_estilo_id=${e.id}`} className="text-sm text-gray-800 hover:text-[#0EA5E9] transition-colors">{e.label}</Link>
               </li>
@@ -79,7 +79,7 @@ function MegaNinas({ data }: { data: HeaderData['ninas'] }) {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400 mb-4">Estilos</p>
           <ul className="space-y-2.5">
-            {data.estilos.slice(0, 9).map(e => (
+            {data.estilos.map(e => (
               <li key={e.id}>
                 <Link href={`/?grupo_estilo_id=${e.id}`} className="text-sm text-gray-800 hover:text-[#0EA5E9] transition-colors">{e.label}</Link>
               </li>
@@ -103,7 +103,7 @@ function MegaNinos({ data }: { data: HeaderData['ninos'] }) {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400 mb-4">Marcas</p>
           <ul className="space-y-2.5">
-            {data.marcas.slice(0, 9).map(m => (
+            {data.marcas.map(m => (
               <li key={m.id}>
                 <Link href={`/?marca_id=${m.id}`} className="text-sm text-gray-800 hover:text-[#0EA5E9] transition-colors">{cap(m.label)}</Link>
               </li>
@@ -113,7 +113,7 @@ function MegaNinos({ data }: { data: HeaderData['ninos'] }) {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400 mb-4">Estilos</p>
           <ul className="space-y-2.5">
-            {data.estilos.slice(0, 9).map(e => (
+            {data.estilos.map(e => (
               <li key={e.id}>
                 <Link href={`/?grupo_estilo_id=${e.id}`} className="text-sm text-gray-800 hover:text-[#0EA5E9] transition-colors">{e.label}</Link>
               </li>
@@ -147,7 +147,7 @@ function MegaHombres({ data }: { data: HeaderData['hombres'] }) {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400 mb-4">Estilos</p>
           <ul className="space-y-2.5">
-            {data.estilos.slice(0, 9).map(e => (
+            {data.estilos.map(e => (
               <li key={e.id}>
                 <Link href={`/?grupo_estilo_id=${e.id}`} className="text-sm text-gray-800 hover:text-[#0EA5E9] transition-colors">{e.label}</Link>
               </li>
@@ -198,6 +198,20 @@ function SearchBar() {
 type MegaKey = 'mujeres' | 'ninas' | 'ninos' | 'hombres' | null
 
 export default function Header({ data: initialData }: { data: HeaderData }) {
+  return (
+    <Suspense fallback={<HeaderShell data={initialData} esPe={false} />}>
+      <HeaderInner data={initialData} />
+    </Suspense>
+  )
+}
+
+function HeaderInner({ data: initialData }: { data: HeaderData }) {
+  const searchParams = useSearchParams()
+  const esPe = (searchParams.get('origen_tipo') ?? '').toUpperCase().includes('PRONTA')
+  return <HeaderShell data={initialData} esPe={esPe} />
+}
+
+function HeaderShell({ data: initialData, esPe }: { data: HeaderData; esPe: boolean }) {
   const [data, setData] = useState(initialData)
   const [open, setOpen]   = useState<MegaKey>(null)
   const closeTimer        = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -212,6 +226,7 @@ export default function Header({ data: initialData }: { data: HeaderData }) {
   }, [])
 
   useEffect(() => {
+    if (esPe) return
     const timer = setTimeout(() => {
       fetch('/api/catalogo/header-filtros', { credentials: 'same-origin' })
         .then(r => {
@@ -222,7 +237,7 @@ export default function Header({ data: initialData }: { data: HeaderData }) {
         .catch(() => {})
     }, 800)
     return () => clearTimeout(timer)
-  }, [])
+  }, [esPe])
 
   const enter = (key: MegaKey) => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
@@ -264,7 +279,9 @@ export default function Header({ data: initialData }: { data: HeaderData }) {
       {/* Announcement bar */}
       <div className="text-white text-center text-[10px] tracking-[0.2em] uppercase py-2.5 px-4 font-medium"
            style={{ backgroundColor: RIMEC_BLUE }}>
-        Stock en tránsito y depósito &nbsp;·&nbsp; Catálogo mayorista
+        {esPe
+          ? 'Pronta entrega · stock en depósito local'
+          : 'Stock en tránsito y depósito · Catálogo mayorista'}
       </div>
 
       <div className="max-w-[1440px] mx-auto px-6 lg:px-12">
@@ -282,13 +299,17 @@ export default function Header({ data: initialData }: { data: HeaderData }) {
             </span>
           </div>
 
-          {/* Nav — mega menus */}
+          {/* Nav — mega menus (CP) · solo catálogo en PE */}
           <nav className="hidden md:flex items-center gap-8">
-            {navItem('mujeres', data.mujeres.label)}
-            {navItem('ninas',   data.ninas.label)}
-            {navItem('ninos',   data.ninos.label)}
-            {navItem('hombres', data.hombres.label)}
-            <Link href="/"
+            {!esPe && (
+              <>
+                {navItem('mujeres', data.mujeres.label)}
+                {navItem('ninas',   data.ninas.label)}
+                {navItem('ninos',   data.ninos.label)}
+                {navItem('hombres', data.hombres.label)}
+              </>
+            )}
+            <Link href={esPe ? '/?origen_tipo=PRONTA_ENTREGA' : '/'}
               className="text-sm tracking-wide text-gray-800 hover:text-[#0EA5E9] transition-colors py-5 border-b-2 border-transparent">
               Catálogo
             </Link>

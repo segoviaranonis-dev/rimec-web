@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSesion, fragmentarCarrito, LISTAS } from '@/store/sesionVenta'
 import { supabase } from '@/lib/supabase'
 import { carritoValidar, type ValidarItemResult } from '@/lib/carritoApi'
 import { ProductImage } from '@/components/ProductImage'
+import { getImageCandidatesForUi } from '@/lib/imagen'
+import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
 
 const AZUL = '#1E40AF'
 const VERDE = '#10B981'
@@ -33,9 +35,11 @@ export default function CarritoPage() {
   const validacion          = useSesion(s => s.validacion)
   const setValidacion       = useSesion(s => s.setValidacion)
   const limpiarValidacion   = useSesion(s => s.limpiarValidacion)
+  const cargarDesdeBD       = useSesion(s => s.cargarDesdeBD)
 
   const router = useRouter()
   const [enviando, setEnviando] = useState(false)
+  const confirmLock = useRef(false)
   const [validando, setValidando] = useState(false)
   const [exito, setExito] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -131,6 +135,9 @@ export default function CarritoPage() {
           precio_actual: i.precio_actual,
         })),
       })
+      if (data.estado === 'OK') {
+        await cargarDesdeBD()
+      }
     } catch (e) {
       setValidacion({ estado: 'ERROR', token: null, expiraEn: null, items: [] })
       setError(e instanceof Error ? e.message : 'Error al validar')
@@ -140,6 +147,8 @@ export default function CarritoPage() {
   }
 
   async function confirmarPedido() {
+    if (confirmLock.current || enviando) return
+    confirmLock.current = true
     setEnviando(true)
     setError(null)
     try {
@@ -258,6 +267,7 @@ export default function CarritoPage() {
       console.error('Error al confirmar pedido:', e)
       setError(e instanceof Error ? e.message : 'Error al confirmar')
     } finally {
+      confirmLock.current = false
       setEnviando(false)
     }
   }
@@ -556,7 +566,14 @@ export default function CarritoPage() {
                       )}
                     </div>
 
-                    {fact.items.map((item) => (
+                    {fact.items.map((item) => {
+                      const esPeItem = isProntaEntregaStockRow({
+                        det_id: item.det_id,
+                        pp_id: lote.pp_id,
+                      })
+                      const unidadCorta = esPeItem ? 'ud' : 'caj'
+                      const unidadAria = esPeItem ? 'unidades' : 'cajas'
+                      return (
                       <div key={item.det_id} style={{
                         display: 'flex', alignItems: 'center', gap: 12,
                         padding: '8px 0', borderTop: '1px solid #F8FAFC', fontSize: 14,
@@ -571,6 +588,14 @@ export default function CarritoPage() {
                             material={item.material_code ?? ''}
                             color={item.color_code ?? ''}
                             imagenNombre={item.imagen_url}
+                            candidates={getImageCandidatesForUi(
+                              item.linea_codigo,
+                              item.ref_codigo,
+                              item.material_code ?? '',
+                              item.color_code ?? '',
+                              item.imagen_url,
+                              'thumb',
+                            )}
                             alt={`${item.linea_codigo}-${item.ref_codigo}`}
                           />
                         </div>
@@ -584,7 +609,7 @@ export default function CarritoPage() {
                         </span>
 
                         <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, color: '#64748B' }}>
-                          <button type="button" aria-label="Restar caja"
+                          <button type="button" aria-label={`Restar ${unidadAria}`}
                             onClick={() => void setCajas(item.det_id, item.cajas - 1)}
                             style={{
                               width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1',
@@ -597,14 +622,14 @@ export default function CarritoPage() {
                               const v = parseInt(e.target.value, 10)
                               void setCajas(item.det_id, Number.isFinite(v) ? v : 0)
                             }}
-                            aria-label="Cantidad de cajas"
+                            aria-label={`Cantidad de ${unidadAria}`}
                             style={{
                               width: 48, height: 26, textAlign: 'center', borderRadius: 6,
                               border: '1px solid #CBD5E1', fontSize: 14, color: '#1E293B',
                               fontWeight: 600, padding: 0,
                             }}
                           />
-                          <button type="button" aria-label="Sumar caja"
+                          <button type="button" aria-label={`Sumar ${unidadAria}`}
                             disabled={item.cajas >= item.cajas_disponibles}
                             onClick={() => void setCajas(item.det_id, item.cajas + 1)}
                             style={{
@@ -616,7 +641,9 @@ export default function CarritoPage() {
                               fontSize: 16, lineHeight: 1, padding: 0,
                               opacity: item.cajas >= item.cajas_disponibles ? 0.5 : 1,
                             }}>+</button>
-                          <span style={{ marginLeft: 4, fontSize: 12 }}>caj · {item.pares} p</span>
+                          <span style={{ marginLeft: 4, fontSize: 12 }}>
+                            {unidadCorta}{esPeItem ? '' : ` · ${item.pares} p`}
+                          </span>
                         </span>
 
                         <span style={{ color: '#64748B', flex: 1 }}>Base: {item.precio_base.toLocaleString('es-PY')}</span>
@@ -636,9 +663,10 @@ export default function CarritoPage() {
                             background: 'transparent', border: '1px solid #FCA5A5',
                             cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '6px 10px',
                             borderRadius: 8, color: '#DC2626', marginLeft: 8,
-                          }}>🗑️ Quitar</button>
+                          }}>🗑️ Quitar                        </button>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                   )
                 })}

@@ -6,9 +6,13 @@ import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
 import {
   applyMemoryFilters,
+  applyNonOrigenSqlFilters,
+  applyPeDepositoQuery,
   applySqlFiltersToQuery,
+  catalogoStockView,
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
+import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
 
 export const CATALOGO_CARD_PAGE = 30
 const ROW_BATCH = 80
@@ -22,14 +26,18 @@ async function fetchStockBatch(
   rowFrom: number,
   rowTo: number,
 ) {
+  const view = catalogoStockView(filters)
   let lastError: Error | null = null
   for (let attempt = 0; attempt <= QUERY_RETRIES; attempt++) {
     let query = supabase
-      .from('v_stock_rimec')
+      .from(view)
       .select(CATALOGO_STOCK_SELECT)
       .gt('cajas_disponibles', 0)
 
-    query = applySqlFiltersToQuery(query, filters)
+    query =
+      view === 'v_stock_pe_rimec'
+        ? applyPeDepositoQuery(applyNonOrigenSqlFilters(query, filters), filters)
+        : applySqlFiltersToQuery(query, filters)
     query = query.order('det_id').range(rowFrom, rowTo)
 
     const { data, error } = await query
@@ -73,7 +81,8 @@ export async function fetchTarjetasPage(opts: {
     rowFrom += batch.length
 
     const active = batch.filter(r => cajasDisponiblesDeFila(r) > 0)
-    const filtered = applyMemoryFilters(active, opts.filters)
+    const enriched = await enrichCatalogoRows(active)
+    const filtered = applyMemoryFilters(enriched, opts.filters)
     const cards = agruparTarjetasCatalogo(filtered, BUCKET, cajasDisponiblesDeFila)
 
     for (const card of cards) {

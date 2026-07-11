@@ -2,14 +2,24 @@
 
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useSesion, getPrecioActivo, LISTAS, esSesionDeOtroDia, type ListaId } from '@/store/sesionVenta'
+import { useSesion, getPrecioActivo, getPrecioActivoPe, LISTAS, esSesionDeOtroDia, type ListaId } from '@/store/sesionVenta'
 import { useRouter } from 'next/navigation'
 import { DialogoActivacion } from '@/components/DialogoActivacion'
+import { CatalogCarruselColores } from '@/components/catalog/CatalogCarruselColores'
+import { CatalogGrillaDeposito } from '@/components/catalog/CatalogGrillaDeposito'
+import { CatalogTarjetaDeposito } from '@/components/catalog/CatalogTarjetaDeposito'
+import { CatalogTonosFila } from '@/components/catalog/CatalogTonosFila'
+import { PromoCasoBadge } from '@/components/catalog/PromoCasoBadge'
 import { ProductImage } from '@/components/ProductImage'
+import {
+  origenBadgePillStyle,
+  origenChipStyle,
+} from '@/lib/catalogCardChrome'
 import { formatearQuincena } from '@/lib/fecha'
 import { estiloBadgeMarca } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
-import { isProntaEntregaDetId, syntheticPpIdForPe, unidadDisponibleLabel } from '@/lib/prontaEntregaVenta'
+import { syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
+import { esCasoPromocional } from '@/lib/precioLista'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 
 export type { RimecVariante, TarjetaCatalogo }
@@ -78,6 +88,18 @@ function resolverHex(v: { color_hex?: string | null; descp_color?: string | null
 function etiquetaOrigenChip(origen: TarjetaCatalogo['origen_tipo'], quincenaDesc: string | null | undefined): string {
   if (quincenaDesc) return quincenaDesc
   return origen === 'PRONTA_ENTREGA' ? 'Pronta entrega' : 'Compra previa'
+}
+
+/** Precio catálogo — PE: LPN si el tier de lista está vacío (LPC02-04 null en vista). */
+function precioCatalogo(
+  v: { lpn?: number | null; lpc02?: number | null; lpc03?: number | null; lpc04?: number | null; precio_web?: number | null },
+  listaId: number,
+  descpCaso: string | null | undefined,
+  origenTipo: TarjetaCatalogo['origen_tipo'] | string | null | undefined,
+): number | null {
+  const ot = String(origenTipo ?? '').toUpperCase().replace(/\s+/g, '_')
+  if (ot.includes('PRONTA')) return getPrecioActivoPe(v, listaId, descpCaso)
+  return getPrecioActivo(v, listaId, descpCaso)
 }
 
 function HeaderSesion() {
@@ -243,12 +265,7 @@ function ChipEta({
         'shadow-sm',
         className,
       ].join(' ')}
-      style={{
-        color: shell.accentColor,
-        backgroundColor: shell.shellBackground,
-        border: shell.shellBorder,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-      }}
+      style={origenChipStyle(shell)}
       title={`ETA ${label}`}
     >
       {label}
@@ -264,7 +281,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
   const shell = p.shell
 
   const listaPrecioId = useSesion(s => s.listaPrecioId)
-  const precioVal = getPrecioActivo(v, listaPrecioId)
+  const precioVal = precioCatalogo(v, listaPrecioId, p.descp_caso, p.origen_tipo)
   const precio = precioVal ? new Intl.NumberFormat('es-PY').format(precioVal) : null
 
   React.useEffect(() => {
@@ -286,26 +303,33 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
            style={{ maxHeight: '92vh', boxShadow: '0 25px 80px rgba(0,0,0,0.45)' }}
            onClick={e => e.stopPropagation()}>
 
-        <div className="relative w-full shrink-0 bg-white px-4 pt-4 pb-2">
-          <div className="relative mx-auto aspect-square w-full max-h-[min(42vh,440px)] max-w-[440px] bg-white px-1">
+        <div className="relative w-full shrink-0 bg-white">
+          <div className="cadena-hero-host mx-auto max-w-[440px]">
             <ProductImage
-              key={`${p.cardKey}-${v.det_id}`}
               variant="hero"
-              className="h-full w-full"
-              src={v.imagen_url_hero ?? v.imagen_url_thumb}
-              fallbackSrc={v.imagen_url_flat}
+              className="cadena-hero-frame absolute inset-0"
               linea={p.linea_codigo}
               referencia={p.referencia_codigo}
               material={v.material_code}
               color={v.color_code}
               imagenNombre={v.imagen_nombre}
+              src={v.imagen_url_hero ?? v.imagen_url_thumb}
+              fallbackSrc={v.imagen_url_flat}
+              candidates={v.imagen_candidates_hero}
               alt={`${p.linea_codigo}-${p.referencia_codigo}`}
-              allowFlatFallback={true}
             />
           </div>
 
+          <CatalogCarruselColores
+            variantes={p.variantes}
+            activeIdx={idx}
+            onSelect={setIdx}
+            linea={p.linea_codigo}
+            referencia={p.referencia_codigo}
+          />
+
           <button onClick={onClose}
-                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
+                  className="absolute top-3 right-3 z-20 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
                   style={{ color: '#64748b' }}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -331,9 +355,9 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
             </>
           )}
 
-          <div className="absolute top-3 left-3 flex items-center gap-2">
+          <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
             <span className="text-[8px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm"
-                  style={{ backgroundColor: shell.badgeBackground, color: shell.badgeColor }}>
+                  style={origenBadgePillStyle(shell)}>
               {origenBadgeText(p.origen_tipo)}
             </span>
           </div>
@@ -346,25 +370,18 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
                     style={estiloBadgeMarca(p.descp_marca)}>
                 {p.descp_marca}
               </span>
+              {esCasoPromocional(p.descp_caso) ? <PromoCasoBadge size="md" /> : null}
               <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
                 <span style={{ color: AZUL }}>{p.linea_codigo}</span>
                 <span className="text-slate-300">·</span>
-                <span style={{ color: shell.accentColor }}>{p.referencia_codigo}</span>
+                <span className="text-slate-700">{p.referencia_codigo}</span>
               </div>
             </div>
-
-            {/* Dato duro visible abajo - chip solo indica cantidad de colores */}
           </div>
 
-          {/* Dato duro con mismo estilo que chip ETA */}
           <span
             className="inline-flex items-center gap-1 text-sm font-extrabold leading-none px-3 py-1.5 rounded-lg shadow-sm mb-1"
-            style={{
-              color: v.quincena_desc ? shell.accentColor : '#94A3B8',
-              backgroundColor: v.quincena_desc ? shell.shellBackground : '#F1F5F9',
-              border: v.quincena_desc ? shell.shellBorder : '1px solid #E2E8F0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-            }}
+            style={origenChipStyle(shell, Boolean(v.quincena_desc))}
           >
             {v.quincena_desc ? `📦 ${v.quincena_desc}` : 'NULL'}
           </span>
@@ -376,7 +393,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
             {v.gradas_fmt}
           </p>
 
-          <div className="flex items-end justify-between gap-2 mb-4">
+          <div className="flex items-end justify-between gap-2">
             {precio && (
               <div>
                 <p className="text-[9px] font-semibold uppercase text-slate-400 leading-none mb-0.5">Precio Gs.</p>
@@ -389,37 +406,6 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
               </span>
             </div>
           </div>
-          
-          {p.variantes.length > 1 && (
-            <div className="flex flex-wrap gap-2 mb-3 items-center">
-              {p.variantes.map((vv, i) => {
-                const hex = resolverHex(vv)
-                const isActive = i === idx
-                return (
-                  <button
-                    key={vv.det_id}
-                    onClick={() => setIdx(i)}
-                    title={vv.descp_color}
-                    aria-label={`Color ${vv.descp_color}`}
-                    aria-pressed={isActive}
-                    type="button"
-                    className="cursor-pointer focus:outline-none"
-                    style={{
-                      width: 26, height: 26, borderRadius: '50%',
-                      backgroundColor: hex,
-                      border: '1.5px solid #CBD5E1',
-                      boxShadow: isActive
-                        ? `0 0 0 2px white, 0 0 0 4px ${CELESTE}`
-                        : '0 1px 2px rgba(0,0,0,0.08)',
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                      transform: isActive ? 'scale(1.10)' : 'scale(1)',
-                    }}
-                  />
-                )
-              })}
-              <span className="text-xs text-slate-500 ml-1">{v.descp_color}</span>
-            </div>
-          )}
         </div>
       </div>
     </div>,
@@ -448,7 +434,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   // Usar solo variantes con stock
   const v = variantesConStock[varIdx] || p.variantes[0]
 
-  const precioVal = getPrecioActivo(v, listaPrecioId)
+  const precioVal = precioCatalogo(v, listaPrecioId, p.descp_caso, p.origen_tipo)
   const tienePrecio = precioVal !== null && precioVal > 0
   const precio = tienePrecio ? new Intl.NumberFormat('es-PY').format(precioVal as number) : null
   const shell = p.shell
@@ -473,6 +459,8 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       : cajas >= maxCajas
         ? '#94A3B8'
         : 'white'
+
+  const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
 
   const handleAgregar = () => {
     if (!activa) { onNeedSession(); return }
@@ -504,245 +492,136 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       precio_lpc02:       v.lpc02 ?? 0,
       precio_lpc03:       v.lpc03 ?? 0,
       precio_lpc04:       v.lpc04 ?? 0,
-      cant_caja:          v.pares_por_caja,
+      cant_caja:          esPe ? 1 : (v.pares_por_caja || 12),
       cajas_disponibles:  maxCajas,
+      origen_tipo:        p.origen_tipo,
     })
   }
 
-  return (
-    <>
-      <div className="group flex flex-col overflow-hidden h-full relative"
-           style={{
-             borderRadius: '16px',
-             backgroundColor: shell.shellBackground,
-             border: shell.shellBorder,
-             boxShadow: shell.boxShadow,
-             transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-           }}>
+  const paresStock = esPe
+    ? Math.max(0, Number(v.cajas_disponibles) || 0)
+    : Math.max(0, v.cajas_disponibles * (v.pares_por_caja || 12))
+  const precioTarjeta = activa && tienePrecio ? (precioVal as number) : null
+  const unidadLabel = esPe ? 'uds' : 'cajas'
 
-        <div
-          className="relative aspect-square w-full cursor-zoom-in bg-white px-1"
-          onClick={() => setLightbox(true)}
+  const bloqueCantidad = (
+    <div style={{ opacity: activa && !tienePrecio ? 0.55 : 1 }}>
+      {!activa ? (
+        <button
+          type="button"
+          onClick={onNeedSession}
+          className="w-full rounded-lg bg-slate-900 py-1.5 text-[10px] font-bold text-white"
         >
-          <ProductImage
-            key={`${p.cardKey}-${v.det_id}-${varIdx}`}
-            src={v.imagen_url_thumb}
-            fallbackSrc={v.imagen_url_flat}
-            linea={p.linea_codigo}
-            referencia={p.referencia_codigo}
-            material={v.material_code}
-            color={v.color_code}
-            imagenNombre={v.imagen_nombre}
-            alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
-            allowFlatFallback={true}
-            priority={varIdx === 0}
-          />
-
-          {variantesConStock.length > 1 && (
-            <span className="absolute top-2.5 right-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full z-10"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.92)', color: '#475569',
-                           boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
-              {variantesConStock.length} col.
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-col flex-1 min-w-0 p-3">
-          {/* Fila 3: Marca y Códigos */}
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0"
-                    style={estiloBadgeMarca(p.descp_marca)}>
-                {p.descp_marca}
-              </span>
-              <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
-                <span style={{ color: AZUL }}>{p.linea_codigo}</span>
-                <span className="text-slate-300">·</span>
-                <span style={{ color: shell.accentColor }}>{p.referencia_codigo}</span>
-              </div>
+          Activar venta
+        </button>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { if (!tienePrecio) return; void quitarCaja(v.det_id) }}
+              disabled={!tienePrecio || cajas === 0}
+              className="flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm font-bold disabled:opacity-40"
+              style={{ borderColor: cajas > 0 && tienePrecio ? AZUL : '#E2E8F0', color: cajas > 0 && tienePrecio ? AZUL : '#CBD5E1' }}
+            >−</button>
+            <div className="flex-1 text-center">
+              <p className="text-base font-black leading-none" style={{ color: tienePrecio ? AZUL : '#CBD5E1' }}>{cajas}</p>
+              <p className="text-[8px] text-slate-500">{unidadLabel}</p>
             </div>
-
-            {/* Dato duro visible abajo - chip solo indica cantidad de colores */}
+            <button
+              type="button"
+              onClick={handleAgregar}
+              disabled={!puedeAgregar}
+              className="flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm font-bold text-white disabled:opacity-40"
+              style={{ borderColor: botonPlusColor, backgroundColor: botonPlusColor, color: botonPlusTxt }}
+            >+</button>
           </div>
+          {!tienePrecio && (
+            <p className="mt-1 text-center text-[8px] font-semibold text-amber-800">
+              {esPe ? 'Precio pendiente PE' : 'Precio pendiente PP'}
+            </p>
+          )}
+          {cajas > 0 && tienePrecio && (
+            <a href="/carrito" className="mt-1 block rounded-lg bg-emerald-500 py-1 text-center text-[10px] font-bold text-white">
+              En pedido ✅
+            </a>
+          )}
+        </>
+      )}
+    </div>
+  )
 
-          {/* Origen / ETA — una sola línea, sin duplicar badge sobre imagen */}
-          <span
-            className="inline-flex items-center gap-1 text-[13px] sm:text-sm font-extrabold leading-tight px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg shadow-sm mb-1 max-w-full min-w-0"
-            style={{
-              color: shell.accentColor,
-              backgroundColor: shell.shellBackground,
-              border: shell.shellBorder,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-            }}
-            title={etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-          >
-            <span className="truncate">
-              {p.origen_tipo === 'PRONTA_ENTREGA' ? '📦 ' : '🚢 '}
-              {etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-            </span>
-          </span>
-
-          {/* Material y Color */}
-          <p className="text-[10px] text-slate-400 line-clamp-2 mb-1 min-w-0 break-words" title={`${p.descp_material} · ${v.descp_color}`}>
+  const ventaFooter = (
+    <>
+      <span
+        className="mb-1.5 inline-flex max-w-full items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
+        style={origenChipStyle(shell)}
+        title={esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
+      >
+        {esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
+      </span>
+      {!esPe ? (
+        <>
+          <p className="mb-1 line-clamp-2 text-[10px] leading-snug text-slate-600">
             {p.descp_material} · {v.descp_color}
           </p>
-
-          {/* Fila 6: Grada */}
-          <p className="text-[10px] font-mono font-bold text-slate-500 mb-2 bg-slate-50 px-2 py-0.5 rounded">
-            {v.gradas_fmt}
-          </p>
-
-          {/* Fila 7: Precio y Disponibilidad */}
-          <div className="flex items-end justify-between gap-1 mb-3">
-            {!activa ? (
-              <span className="text-[10px] font-semibold text-slate-400">🔒 Activar venta</span>
-            ) : tienePrecio ? (
-              <div>
-                <p className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-0.5">Precio Gs.</p>
-                <span className="text-sm font-extrabold" style={{ color: CELESTE }}>{precio}</span>
-              </div>
-            ) : (
-              <span
-                title={
-                  cartItem
-                    ? 'Este ítem perdió su precio porque el listado fue desvinculado en Nexus Core. ' +
-                      'Quitalo del carrito; cuando Alfredo lo vincule de nuevo, podés volver a agregarlo.'
-                    : 'Este SKU aún no tiene precio vinculado al PP. El Director debe vincular el listado en Nexus Core (Streamlit) antes de venderlo.'
-                }
-                className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md"
-                style={{
-                  backgroundColor: cartItem ? '#FEE2E2' : '#FEF3C7',
-                  color: cartItem ? '#991B1B' : '#92400E',
-                  border: cartItem ? '1px solid #FCA5A5' : '1px solid #FCD34D',
-                  cursor: 'help',
-                }}
-              >
-                {cartItem ? '⚠ Sin precio (en carrito)' : 'Precio pendiente de vinculación'}
-              </span>
-            )}
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                  style={{ backgroundColor: shell.shellBackground, color: shell.accentColor, border: shell.shellBorder }}>
-              disp: {unidadDisponibleLabel(p.origen_tipo, v.cajas_disponibles)}
-            </span>
-          </div>
-
-          {/* Variantes de color: chips clickeables que cambian la variante visible */}
-          {variantesConStock.length > 1 && (
-            <div className="flex flex-wrap gap-2 pb-3 items-center">
-              {variantesConStock.map((vv, i) => {
-                const hex = resolverHex(vv)
-                const isActive = i === varIdx
-                return (
-                  <button
-                    key={vv.det_id}
-                    onClick={(e) => { e.stopPropagation(); setVarIdx(i) }}
-                    title={`${vv.descp_color} (${vv.cajas_disponibles} cjs)`}
-                    aria-label={`Color ${vv.descp_color}`}
-                    aria-pressed={isActive}
-                    type="button"
-                    className="group/chip relative cursor-pointer focus:outline-none"
-                    style={{
-                      width: 22, height: 22, borderRadius: '50%',
-                      backgroundColor: hex,
-                      // Borde fijo gris para que el chip se vea siempre, aún sobre blanco
-                      border: '1.5px solid #CBD5E1',
-                      // Ring celeste prominente sólo cuando está activo
-                      boxShadow: isActive
-                        ? `0 0 0 2px white, 0 0 0 4px ${CELESTE}`
-                        : '0 1px 2px rgba(0,0,0,0.08)',
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                      transform: isActive ? 'scale(1.10)' : 'scale(1)',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.15)'
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
-                    }}
-                  />
-                )
-              })}
-              {/* Etiqueta del color activo */}
-              <span className="text-[10px] text-slate-400 ml-1 truncate max-w-[120px]">
-                {v.descp_color}
-              </span>
-            </div>
+          {v.gradas_fmt ? (
+            <p className="mb-2 font-mono text-[9px] font-bold text-slate-500">{v.gradas_fmt}</p>
+          ) : (
+            <div className="mb-2 min-h-[14px]" aria-hidden />
           )}
+        </>
+      ) : (
+        <p className="mb-2 line-clamp-2 text-[10px] leading-snug text-slate-600">
+          {p.descp_material} · {v.descp_color}
+        </p>
+      )}
 
-          {/* Controles de compra. Si el SKU no tiene precio, el bloque entero queda visualmente opaco
-              y los handlers son no-ops. Teclado/Enter no fuerzan inserción. */}
-          <div
-            className="mt-auto space-y-2"
-            style={{ opacity: activa && !tienePrecio ? 0.55 : 1 }}
-            aria-disabled={activa && !tienePrecio ? true : undefined}
-            onKeyDown={(e) => {
-              if (activa && !tienePrecio && (e.key === 'Enter' || e.key === ' ' || e.key === '+')) {
-                e.preventDefault()
-                e.stopPropagation()
-              }
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => { if (!activa) { onNeedSession(); return }; if (!tienePrecio) return; void quitarCaja(v.det_id) }}
-                disabled={!activa || !tienePrecio || cajas === 0}
-                aria-disabled={!activa || !tienePrecio || cajas === 0}
-                className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-lg font-bold transition-colors"
-                style={{
-                  borderColor: activa && tienePrecio && cajas > 0 ? AZUL : '#E2E8F0',
-                  color: activa && tienePrecio && cajas > 0 ? AZUL : '#CBD5E1',
-                  cursor: activa && tienePrecio && cajas > 0 ? 'pointer' : 'not-allowed',
-                }}>−</button>
+      <CatalogTonosFila
+        variantes={variantesConStock.map(vv => ({
+          det_id: vv.det_id,
+          color_hex: vv.color_hex,
+          tono_canon: vv.tono_canon,
+          descp_color: vv.descp_color,
+        }))}
+        activeIdx={varIdx}
+        onSelect={setVarIdx}
+      />
 
-              <div className="flex-1 text-center">
-                <p className="text-lg font-black leading-none" style={{ color: activa && tienePrecio ? AZUL : '#CBD5E1' }}>{cajas}</p>
-                <p className="text-[9px] text-slate-500 font-medium">
-                  {cajas === 0 ? 'cajas' : `= ${cajas * v.pares_por_caja} p`}
-                </p>
-              </div>
+      {bloqueCantidad}
+    </>
+  )
 
-              <button
-                type="button"
-                onClick={handleAgregar}
-                disabled={!puedeAgregar}
-                aria-disabled={!puedeAgregar}
-                title={
-                  !activa
-                    ? 'Activá la venta primero'
-                    : !tienePrecio
-                      ? 'Precio pendiente de vinculación — no se puede agregar al carrito hasta que Alfredo vincule el listado en Nexus Core.'
-                      : cajas >= maxCajas
-                        ? `Llegaste al máximo (${maxCajas} cajas)`
-                        : 'Agregar al carrito'
-                }
-                className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-lg font-bold transition-colors"
-                style={{
-                  borderColor: botonPlusColor,
-                  backgroundColor: botonPlusColor,
-                  color: botonPlusTxt,
-                  cursor: puedeAgregar ? 'pointer' : 'not-allowed',
-                }}>+</button>
-            </div>
+  const esPromo = esCasoPromocional(p.descp_caso)
 
-            <p className="text-[9px] text-center text-slate-400 font-medium">
-              {v.pares_por_caja} pares/caja · máx. {maxCajas} cjs
-            </p>
-
-            {activa && !tienePrecio && (
-              <p className="text-[9px] text-center font-semibold" style={{ color: '#92400E' }}>
-                Bloqueado hasta que el Director vincule el listado de precios.
-              </p>
-            )}
-
-            {cajas > 0 && tienePrecio && (
-              <a href="/carrito" className="block w-full py-1.5 rounded-lg bg-emerald-500 text-white text-center font-bold text-xs">
-                En pedido ✅
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
+  return (
+    <>
+      <CatalogTarjetaDeposito
+        marca={p.descp_marca}
+        esPromo={esPromo}
+        stockPares={paresStock}
+        linea={p.linea_codigo}
+        referencia={p.referencia_codigo}
+        material={v.material_code}
+        color={v.color_code}
+        imagenNombre={v.imagen_nombre}
+        thumbSrc={v.imagen_url_thumb}
+        flatSrc={v.imagen_url_flat}
+        thumbCandidates={v.imagen_candidates_thumb}
+        alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
+        precio={precioTarjeta}
+        priority={varIdx === 0}
+        compactGrid
+        onImageClick={() => setLightbox(true)}
+        imageOverlay={
+          variantesConStock.length > 1 ? (
+            <span className="pointer-events-none absolute top-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
+              {variantesConStock.length} col.
+            </span>
+          ) : null
+        }
+        ventaFooter={ventaFooter}
+      />
 
       {lightbox && (
         <Lightbox
@@ -798,41 +677,28 @@ export function CatalogoGrid({
     return () => obs.disconnect()
   }, [hasMore, onLoadMore, productos.length])
   const { activa, carrito, cliente, vendedor, listaPrecioId } = useSesion()
-  const [lineaFiltro, setLineaFiltro] = useState('')
-  const [colorFiltro, setColorFiltro] = useState('')
-  const [ofertasFiltro, setOfertasFiltro] = useState(false)
-  const [buscar, setBuscar] = useState('')
   const [mostrarDialogo, setMostrarDialogo] = useState(false)
   const [generandoPDF, setGenerandoPDF] = useState(false)
 
-  // Derived unique lists for filters
-  const lineasDisponibles = Array.from(new Set(productos.map(p => p.linea_codigo))).sort()
-  
-  // Group colors logically using el hex del pilar (color_hex) con fallback al regex
-  // Filtrar solo colores con stock disponible
-  const baseColorsPresent = new Set<string>()
-  productos.forEach(p => p.variantes.filter(v => v.cajas_disponibles > 0).forEach(v => {
-    baseColorsPresent.add(resolverHex(v))
-  }))
-  const coloresDisponibles = Array.from(baseColorsPresent)
-
-  const filtered = productos.filter(p => {
-    if (lineaFiltro && p.linea_codigo !== lineaFiltro) return false
-    if (colorFiltro && !p.variantes.some(v => resolverHex(v) === colorFiltro)) return false
-    // Note: ofertasFiltro kept purely visual per aesthetic constraint, filtering not applied if no real data field exists.
-    if (buscar) {
-      const q = buscar.toLowerCase()
-      if (![p.descp_marca, p.linea_codigo, p.referencia_codigo, p.nombre, p.descp_material]
-            .some(f => f?.toLowerCase().includes(q)) &&
-          !p.variantes.some(v => v.descp_color.toLowerCase().includes(q))) return false
-    }
-    return true
-  })
+  const filtered = productos
 
   const cartItems = Object.values(carrito)
   const totalCajas = cartItems.reduce((s, i) => s + i.cajas, 0)
-  const totalPares = cartItems.reduce((s, i) => s + i.pares, 0)
+  const totalParesCarrito = cartItems.reduce((s, i) => s + i.pares, 0)
   const cartCount = cartItems.length
+
+  const grillaPares = filtered.reduce((sum, p) => {
+    const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
+    return (
+      sum +
+      p.variantes
+        .filter(v => v.cajas_disponibles > 0)
+        .reduce((s, v) => {
+          if (esPe) return s + Math.max(0, Number(v.cajas_disponibles) || 0)
+          return s + Math.max(0, v.cajas_disponibles * (v.pares_por_caja || 12))
+        }, 0)
+    )
+  }, 0)
 
   const handleGenerarPDFCatalogo = async () => {
     if (!activa || !cliente) return
@@ -854,7 +720,7 @@ export function CatalogoGrid({
             imagen_url: v.imagen_url,
             gradas_fmt: v.gradas_fmt,
             cajas_disponibles: v.cajas_disponibles,
-            precio_base: getPrecioActivo(v, listaPrecioId) || 0,
+            precio_base: precioCatalogo(v, listaPrecioId, p.descp_caso, p.origen_tipo) || 0,
             lista_precio_id: listaPrecioId,
           })),
       }))
@@ -915,83 +781,6 @@ export function CatalogoGrid({
       <DialogoActivacion open={mostrarDialogo} onClose={() => setMostrarDialogo(false)} />
       <HeaderSesion />
 
-      <div className="flex flex-col md:flex-row md:items-center gap-6 mb-10 bg-white p-6 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-        {/* Search */}
-        <div className="flex-1">
-          <input value={buscar} onChange={e => setBuscar(e.target.value)}
-            placeholder="Buscar modelos..."
-            className="w-full bg-transparent border-b border-gray-200 px-0 py-2 text-sm placeholder-gray-400 focus:outline-none focus:border-[#0F172A] transition-colors" />
-        </div>
-
-        {/* Filters */}
-        <div className="flex items-center gap-8">
-          
-          {/* Color Circles */}
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Color</span>
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-[260px] no-scrollbar">
-              {/* "Todos" — multicolor */}
-              <button
-                onClick={() => setColorFiltro('')}
-                aria-label="Mostrar todos los colores"
-                aria-pressed={!colorFiltro}
-                title="Todos los colores"
-                type="button"
-                className={`shrink-0 w-7 h-7 rounded-full border flex items-center justify-center cursor-pointer transition-all
-                            ${!colorFiltro
-                              ? 'border-slate-900 ring-2 ring-offset-1 ring-slate-900'
-                              : 'border-gray-300 opacity-60 hover:opacity-100 hover:scale-110'}`}>
-                <span className="w-4 h-4 rounded-full bg-[conic-gradient(red,yellow,green,blue,magenta,red)] block" />
-              </button>
-              {/* Chips por hex de color */}
-              {coloresDisponibles.map(hex => {
-                const isActive = colorFiltro === hex
-                return (
-                  <button
-                    key={hex}
-                    onClick={() => setColorFiltro(isActive ? '' : hex)}
-                    aria-label={`Filtrar por color ${hex}`}
-                    aria-pressed={isActive}
-                    title={hex}
-                    type="button"
-                    className="shrink-0 cursor-pointer focus:outline-none"
-                    style={{
-                      width: 28, height: 28, borderRadius: '50%',
-                      backgroundColor: hex,
-                      border: '1.5px solid #CBD5E1',
-                      boxShadow: isActive
-                        ? `0 0 0 2px white, 0 0 0 4px #0F172A`
-                        : '0 1px 3px rgba(0,0,0,0.08)',
-                      transform: isActive ? 'scale(0.92)' : 'scale(1)',
-                      opacity: colorFiltro && !isActive ? 0.4 : 1,
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.12)'
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
-                    }}
-                  />
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Offers Toggle */}
-          <div className="flex items-center gap-3 border-l border-gray-200 pl-8">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Ofertas</span>
-            <button 
-              onClick={() => setOfertasFiltro(!ofertasFiltro)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none ${ofertasFiltro ? 'bg-[#0EA5E9]' : 'bg-gray-200'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-sm ${ofertasFiltro ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-          </div>
-
-        </div>
-      </div>
-
       <p style={{ fontSize: 14, color: '#64748B', marginBottom: 20 }}>
         Mostrando <strong style={{ color: AZUL }}>{filtered.length}</strong> modelos
         {!activa && (
@@ -1023,7 +812,7 @@ export function CatalogoGrid({
             fontWeight: 700, fontSize: 16, textDecoration: 'none',
             boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
           }}>
-            🛒 {cartCount} ref · {totalCajas} cajas · {totalPares.toLocaleString('es-PY')} pares
+            🛒 {cartCount} ref · {totalCajas} cajas · {totalParesCarrito.toLocaleString('es-PY')} pares
           </a>
         </div>
       )}
@@ -1065,11 +854,11 @@ export function CatalogoGrid({
           <p style={{ fontSize: 18, fontWeight: 700, color: '#94A3B8' }}>Sin resultados</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+        <CatalogGrillaDeposito totalModelos={filtered.length} totalPares={grillaPares} compactStats>
           {filtered.map(p => (
             <TarjetaProducto key={p.cardKey} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
           ))}
-        </div>
+        </CatalogGrillaDeposito>
       )}
 
       {hasMore && (

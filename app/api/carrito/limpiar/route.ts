@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
+import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,24 +29,13 @@ export async function POST() {
   }
 
   // 2. Obtener stock disponible para cada item
-  const detIds = items.map(i => i.det_id)
-  const { data: stockData } = await sb
-    .from('v_stock_rimec')
-    .select('det_id, cajas_disponibles')
-    .in('det_id', detIds)
+  const stockRows = await fetchCarritoStockByDetIds(sb, items.map(i => i.det_id))
 
-  if (!stockData) {
-    return NextResponse.json({ error: 'no se pudo obtener stock' }, { status: 500 })
-  }
-
-  const stockMap = new Map(stockData.map(s => [s.det_id, s.cajas_disponibles ?? 0]))
-
-  // 3. Ajustar o eliminar items según stock
   const ajustados: number[] = []
   const eliminados: number[] = []
 
   for (const item of items) {
-    const stockDisponible = stockMap.get(item.det_id) ?? 0
+    const stockDisponible = Number(stockRows.get(item.det_id)?.cajas_disponibles ?? 0)
 
     if (stockDisponible === 0) {
       // Sin stock: eliminar del carrito

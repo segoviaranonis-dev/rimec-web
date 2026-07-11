@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
+import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,22 +34,13 @@ export async function GET() {
 
   // Si hay items, traer precios Y metadata de v_stock_rimec (MIG-083 fix: multi-dispositivo)
   if (items.length > 0) {
-    const detIds = items.map(i => i.det_id)
-    const { data: stockData } = await sb
-      .from('v_stock_rimec')
-      .select('det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja')
-      .in('det_id', detIds)
-
-    // Enriquecer items con precios Y metadata
-    if (stockData) {
-      const stockMap = new Map(stockData.map(s => [s.det_id, s]))
-      items.forEach(item => {
-        const stock = stockMap.get(item.det_id)
-        if (stock) {
-          item.v_stock_rimec = [stock]
-        }
-      })
-    }
+    const stockMap = await fetchCarritoStockByDetIds(sb, items.map(i => i.det_id))
+    items.forEach(item => {
+      const stock = stockMap.get(item.det_id)
+      if (stock) {
+        item.v_stock_rimec = [stock]
+      }
+    })
   }
 
   return NextResponse.json({

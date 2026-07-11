@@ -16,6 +16,13 @@ import {
   type CarritoSesionBD,
   type FacturaConfig,
 } from '@/lib/carritoApi'
+import {
+  getPrecioActivo as getPrecioActivoLib,
+  getPrecioActivoPe as getPrecioActivoPeLib,
+} from '@/lib/precioLista'
+import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
+
+export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
 
 /* ── Tipos ── */
 export interface Cliente {
@@ -73,6 +80,7 @@ export interface ItemCarrito {
   pares:           number
   subtotal:        number
   cajas_disponibles: number  // Stock disponible para validación del botón +
+  origen_tipo?: string | null
 }
 
 export type ItemCarritoMeta = Omit<ItemCarrito, 'cajas' | 'pares' | 'subtotal'>
@@ -150,32 +158,16 @@ export function esSesionAntigua(activatedAt: string | null | undefined, horas = 
   return (Date.now() - t) > horas * 3600 * 1000
 }
 
-export function getPrecioActivo(
-  row: {
-    lpn: number | null;
-    lpc02: number | null;
-    lpc03: number | null;
-    lpc04: number | null;
-    precio_web?: number | null;
-  },
-  listaId: ListaId,
-): number | null {
-  switch (Number(listaId)) {
-    case 1: return row.precio_web ?? row.lpn ?? null
-    case 2: return row.lpc02 ?? null
-    case 3: return row.lpc03 ?? null
-    case 4: return row.lpc04 ?? null
-    default: return null
-  }
-}
-
-export function calcularPrecioNeto(precioBase: number, descuentos: number[]): number {
+function calcularPrecioNeto(precioBase: number, descuentos: number[]): number {
   let precio = precioBase
   for (const d of descuentos) precio = precio * (1 - d / 100)
   return Math.floor(precio / 100) * 100
 }
 
 function paresCalc(item: ItemCarritoMeta, cajas: number): number {
+  if (isProntaEntregaStockRow({ det_id: item.det_id, origen_tipo: item.origen_tipo, pp_id: item.pp_id })) {
+    return cajas
+  }
   return cajas * item.cant_caja
 }
 
@@ -207,8 +199,9 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
   }
 
   // SIN META_CACHE (otro dispositivo): usar datos de v_stock_rimec
-  const cant_caja = stockRow?.pares_por_caja ?? 0
-  const pares = row.cantidad_cajas * cant_caja
+  const isPe = isProntaEntregaStockRow({ det_id: row.det_id, pp_id: row.pp_id })
+  const cant_caja = isPe ? 1 : (stockRow?.pares_por_caja ?? 0)
+  const pares = isPe ? row.cantidad_cajas : row.cantidad_cajas * cant_caja
 
   return {
     det_id: row.det_id,
@@ -468,6 +461,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
         caso_id_snapshot: item.caso_id ?? null,
         marca_snapshot: item.marca,
         marca_id_snapshot: item.marca_id ?? null,
+        origen_tipo: item.origen_tipo ?? null,
       })
     } catch (err) {
       console.error('[sesionVenta.agregarCaja]', err)
@@ -649,13 +643,23 @@ export function fragmentarCarrito(
         const listaFactura = facturaConfig?.lista_precio_id ?? 1
 
         const detalle: ItemFragmentado[] = cItems.map((item) => {
-          // MIG-083 fix: precio base viene DIRECTO de v_stock_rimec según lista de factura
+          const precioRow = {
+            lpn: item.precio_lpn,
+            lpc02: item.precio_lpc02,
+            lpc03: item.precio_lpc03,
+            lpc04: item.precio_lpc04,
+          }
+          const esPeItem =
+            isProntaEntregaStockRow({
+              det_id: item.det_id,
+              origen_tipo: item.origen_tipo,
+            }) || item.pp_id < 0
           const precioBaseLista =
-            listaFactura === 1 ? item.precio_lpn :
-            listaFactura === 2 ? item.precio_lpc02 :
-            listaFactura === 3 ? item.precio_lpc03 :
-            listaFactura === 4 ? item.precio_lpc04 :
-            item.precio_lpn
+            (esPeItem
+              ? getPrecioActivoPeLib(precioRow, listaFactura as ListaId, item.caso)
+              : getPrecioActivoLib(precioRow, listaFactura as ListaId, item.caso)) ??
+            item.precio_lpn ??
+            item.precio_base
 
           const precioNeto = calcularPrecioNeto(precioBaseLista, descFactura)
           const subtotal = precioNeto * item.pares

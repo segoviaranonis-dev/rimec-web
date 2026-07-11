@@ -2,9 +2,17 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { RIMEC_PE_DEPOSITOS, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { FiltroTonoCabecera } from '@/components/catalog/FiltroTonoCabecera'
+import type { ColorEstandar } from '@/lib/pilares/colores-estandar'
 
 interface FilterItem {
   id: number
+  label: string
+}
+
+interface GeneroItem {
+  codigo: string
   label: string
 }
 
@@ -18,6 +26,8 @@ interface Props {
   marcas:  FilterItem[]
   lineas:  FilterItem[]
   tipos:   FilterItem[]
+  generos: GeneroItem[]
+  tonoCatalog: ColorEstandar[]
   colores: string[]
   quincenas: QuincenaItem[]
   totalModelos: number
@@ -33,12 +43,30 @@ export type CatalogoFilterState = {
   tipo_ids: number[]
   colores: string[]
   quincenas: number[]
+  origen_tipo?: string
+  ramo_tipo?: '' | PeRamoTipo
+  deposito_codigo?: '' | PeDepositoCodigo
+  genero_codigo?: string
+  tonos?: string[]
+  sin_tono?: boolean
+  buscar?: string
 }
 
-const RIMEC_BLUE   = '#1E40AF'
-const RIMEC_CELESTE = '#0EA5E9'
+const GENEROS_FALLBACK: GeneroItem[] = [
+  { codigo: 'DAMAS', label: 'Damas' },
+  { codigo: 'CABALLEROS', label: 'Caballeros' },
+  { codigo: 'NINAS', label: 'Niñas' },
+  { codigo: 'NINOS', label: 'Niños' },
+]
 
-export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quincenas, totalModelos, totalPares, value, onChange }: Props) {
+const RIMEC_BLUE    = '#1E40AF'
+const RIMEC_CELESTE = '#0EA5E9'
+const RIMEC_ORANGE  = '#EA580C'
+
+export function FiltrosCatalogo({
+  estilos, marcas, lineas, tipos, generos, tonoCatalog,
+  colores, quincenas, totalModelos, totalPares, value, onChange,
+}: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
 
@@ -49,8 +77,34 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
   const tiposSelIds  = value?.tipo_ids ?? (searchParams.get('tipo_ids') ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : [])
   const colorsSel    = value?.colores ?? (searchParams.get('colores') ? searchParams.get('colores')!.split(',').filter(Boolean) : [])
   const quincenasSel = value?.quincenas ?? (searchParams.get('quincenas') ? searchParams.get('quincenas')!.split(',').filter(Boolean).map(Number) : [])
+  const origenActual = value?.origen_tipo ?? searchParams.get('origen_tipo') ?? ''
+  const ramoActual = value?.ramo_tipo ?? (searchParams.get('ramo_tipo') as PeRamoTipo | '') ?? ''
+  const depositoActual = value?.deposito_codigo ?? (searchParams.get('deposito_codigo') as PeDepositoCodigo | '') ?? ''
+  const generoActual = value?.genero_codigo ?? searchParams.get('genero_codigo') ?? ''
+  const tonosSel = value?.tonos ?? (searchParams.get('tonos') ? searchParams.get('tonos')!.split(',').filter(Boolean) : [])
+  const sinTono = value?.sin_tono ?? searchParams.get('sin_tono') === '1'
+  const buscarActual = value?.buscar ?? searchParams.get('buscar') ?? ''
+  const [buscarLocal, setBuscarLocal] = useState(buscarActual)
+  const esProntaEntrega = origenActual.toUpperCase().includes('PRONTA')
+  const generosLista = generos.length ? generos : GENEROS_FALLBACK
 
-  const aplicar = useCallback((opts: { grupo_estilo_id?: string; marca_id?: string; linea_ids?: number[]; tipo_ids?: number[]; cols?: string[]; quincenas?: number[] }) => {
+  useEffect(() => { setBuscarLocal(buscarActual) }, [buscarActual])
+
+  const aplicar = useCallback((opts: {
+    grupo_estilo_id?: string
+    marca_id?: string
+    linea_ids?: number[]
+    tipo_ids?: number[]
+    cols?: string[]
+    quincenas?: number[]
+    origen_tipo?: string
+    ramo_tipo?: '' | PeRamoTipo
+    deposito_codigo?: '' | PeDepositoCodigo
+    genero_codigo?: string
+    tonos?: string[]
+    sin_tono?: boolean
+    buscar?: string
+  }) => {
     const params = new URLSearchParams()
 
     const estId = opts.grupo_estilo_id !== undefined ? opts.grupo_estilo_id : estiloIdActual
@@ -59,6 +113,13 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
     const tps   = opts.tipo_ids        !== undefined ? opts.tipo_ids        : tiposSelIds
     const cls   = opts.cols            !== undefined ? opts.cols            : colorsSel
     const qncs  = opts.quincenas       !== undefined ? opts.quincenas       : quincenasSel
+    const origen = opts.origen_tipo    !== undefined ? opts.origen_tipo     : origenActual
+    const ramo   = opts.ramo_tipo       !== undefined ? opts.ramo_tipo       : ramoActual
+    const dep    = opts.deposito_codigo !== undefined ? opts.deposito_codigo : depositoActual
+    const gen    = opts.genero_codigo   !== undefined ? opts.genero_codigo   : generoActual
+    const ton    = opts.tonos           !== undefined ? opts.tonos           : tonosSel
+    const sinT   = opts.sin_tono        !== undefined ? opts.sin_tono        : sinTono
+    const busq   = opts.buscar          !== undefined ? opts.buscar          : buscarActual
 
     const next = {
       grupo_estilo_id: estId,
@@ -67,6 +128,13 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
       tipo_ids: tps,
       colores: cls,
       quincenas: qncs,
+      origen_tipo: origen,
+      ramo_tipo: ramo,
+      deposito_codigo: dep,
+      genero_codigo: gen,
+      tonos: sinT ? [] : ton,
+      sin_tono: sinT,
+      buscar: busq,
     }
 
     if (onChange) {
@@ -80,27 +148,47 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
     if (tps.length)  params.set('tipo_ids',        tps.join(','))
     if (cls.length)  params.set('colores',         cls.join(','))
     if (qncs.length) params.set('quincenas',       qncs.join(','))
+    if (origen)      params.set('origen_tipo',     origen)
+    if (ramo)        params.set('ramo_tipo',       ramo)
+    if (dep)         params.set('deposito_codigo', dep)
+    if (gen)         params.set('genero_codigo',   gen)
+    if (sinT)        params.set('sin_tono',        '1')
+    else if (ton.length) params.set('tonos',     ton.join(','))
+    if (busq.trim()) params.set('buscar',          busq.trim())
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, router, onChange])
+  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, router, onChange])
 
-  const hayFiltros = !!(estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length || colorsSel.length || quincenasSel.length)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (buscarLocal !== buscarActual) aplicar({ buscar: buscarLocal })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [buscarLocal, buscarActual, aplicar])
+
+  const hayFiltros = !!(
+    estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length ||
+    colorsSel.length || quincenasSel.length || generoActual || tonosSel.length || sinTono ||
+    buscarActual.trim() || esProntaEntrega || ramoActual || depositoActual
+  )
 
   const activeEstiloLabel = estilos.find(e => String(e.id) === estiloIdActual)?.label
   const activeMarcaLabel  = marcas.find(m => String(m.id) === marcaIdActual)?.label
 
   return (
-    <div className="mb-8">
+    <div className="mb-3">
       {/* ── Encabezado ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-2">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight" style={{ color: RIMEC_BLUE }}>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight" style={{ color: RIMEC_BLUE }}>
             {activeEstiloLabel
               ? `Estilo ${activeEstiloLabel}`
+              : esProntaEntrega
+                ? 'Pronta entrega'
               : activeMarcaLabel
                 ? activeMarcaLabel.charAt(0) + activeMarcaLabel.slice(1).toLowerCase()
                 : 'Catálogo'}
           </h1>
-          <div className="flex items-center gap-3 mt-1">
+          <div className="flex items-center gap-3 mt-0.5">
             <span className="text-sm font-semibold" style={{ color: RIMEC_CELESTE }}>
               {totalModelos.toLocaleString('es-PY')} modelos
             </span>
@@ -114,7 +202,11 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
         {hayFiltros && (
           <button
             onClick={() => {
-              const empty = { grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [] }
+              const empty: CatalogoFilterState = {
+                grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
+                origen_tipo: '', ramo_tipo: '', deposito_codigo: '',
+                genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
+              }
               if (onChange) onChange(empty)
               else router.push('/')
             }}
@@ -130,104 +222,233 @@ export function FiltrosCatalogo({ estilos, marcas, lineas, tipos, colores, quinc
         )}
       </div>
 
-      {/* ── Barra de filtros unificada ── */}
-      <div className="bg-white rounded-2xl p-4 space-y-4"
-           style={{ boxShadow: '0 2px 16px rgba(30,64,175,0.07)', border: '1px solid #f1f5f9' }}>
+      {/* ── CABECERA DE FILTROS (paridad Bazzar/Report) ── */}
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-3 shadow-md space-y-2.5">
 
-        {/* Marcas (Burbujas) */}
-        {marcas.length > 0 && (
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[10px] font-bold uppercase tracking-widest shrink-0"
-                  style={{ color: '#94a3b8', width: 50 }}>Marca</span>
-            <div className="flex flex-wrap gap-1.5">
-              <MarcaPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '' })}>
-                Todas
-              </MarcaPill>
-              {marcas.map(m => (
-                <MarcaPill key={m.id} active={marcaIdActual === String(m.id)}
-                  onClick={() => aplicar({ marca_id: marcaIdActual === String(m.id) ? '' : String(m.id) })}>
-                  {m.label.charAt(0) + m.label.slice(1).toLowerCase()}
-                </MarcaPill>
-              ))}
-            </div>
+        {/* Origen — compra previa vs pronta entrega */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <FilterLabel>Origen</FilterLabel>
+          <div className="flex flex-wrap gap-2">
+            <MarcaPill
+              active={!esProntaEntrega}
+              onClick={() => aplicar({ origen_tipo: '', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
+            >
+              🚢 Compra previa
+            </MarcaPill>
+            <MarcaPill
+              active={esProntaEntrega}
+              onClick={() => aplicar({ origen_tipo: 'PRONTA_ENTREGA', quincenas: [], ramo_tipo: 'CALZADO' })}
+            >
+              📦 Pronta entrega
+            </MarcaPill>
           </div>
-        )}
-
-        {/* Separador */}
-        <div className="h-px" style={{ backgroundColor: '#f1f5f9' }} />
-
-        {/* Estilos (Burbujas) */}
-        {estilos.length > 0 && (
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[10px] font-bold uppercase tracking-widest shrink-0"
-                  style={{ color: '#94a3b8', width: 50 }}>Estilo</span>
-            <div className="flex flex-wrap gap-1.5">
-              <LineaPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '' })}>
-                Todos
-              </LineaPill>
-              {estilos.slice(0, 15).map(e => (
-                <LineaPill key={e.id} active={estiloIdActual === String(e.id)}
-                  onClick={() => aplicar({ grupo_estilo_id: estiloIdActual === String(e.id) ? '' : String(e.id) })}>
-                  {e.label}
-                </LineaPill>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Separador */}
-        <div className="h-px" style={{ backgroundColor: '#f1f5f9' }} />
-
-        {/* Dropdowns Multiselect Row */}
-        <div className="flex flex-wrap items-center gap-3">
-          <DropdownFilterId
-            label="Línea"
-            options={lineas}
-            selectedIds={lineasSelIds}
-            onChange={lns => aplicar({ linea_ids: lns })}
-            placeholder="Buscar línea…"
-          />
-
-          <DropdownFilter
-            label="Color"
-            options={colores}
-            selected={colorsSel}
-            onChange={cls => aplicar({ cols: cls })}
-            placeholder="Buscar color…"
-            showSearch={true}
-          />
-
-          <DropdownFilterId
-            label="Tipo 1"
-            options={tipos}
-            selectedIds={tiposSelIds}
-            onChange={tps => aplicar({ tipo_ids: tps })}
-            placeholder="Buscar tipo 1…"
-            showSearch={true}
-          />
-
-          <DropdownFilterQuincena
-            label="Llegada"
-            options={quincenas}
-            selected={quincenasSel}
-            onChange={qncs => aplicar({ quincenas: qncs })}
-            placeholder="Buscar quincena de llegada…"
-            showSearch={false}
-          />
-
-          {/* Ofertas toggle */}
-          <button
-            disabled
-            className="flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl
-                       border-2 transition-all opacity-50 cursor-not-allowed ml-auto sm:ml-0"
-            style={{ borderColor: '#e2e8f0', color: '#94a3b8', backgroundColor: '#fafafa' }}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
-            </svg>
-            Ofertas
-          </button>
         </div>
+
+        {esProntaEntrega && (
+          <>
+            <div className="h-px bg-slate-200" />
+            {/* tipo_v2 — trascendental PE (paridad Report PE) */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+              <FilterLabel>Categoría</FilterLabel>
+              <div
+                className="inline-flex flex-wrap gap-1 rounded-2xl border-2 border-orange-300/50 bg-gradient-to-r from-orange-50 via-white to-orange-50 p-1 shadow-sm"
+                role="group"
+                aria-label="Calzado o Confecciones"
+              >
+                <CategoriaBtn
+                  active={ramoActual === 'CALZADO'}
+                  dimmed={!!ramoActual && ramoActual !== 'CALZADO'}
+                  onClick={() => aplicar({ ramo_tipo: ramoActual === 'CALZADO' ? '' : 'CALZADO' })}
+                >
+                  👟 Calzado
+                </CategoriaBtn>
+                <CategoriaBtn
+                  active={ramoActual === 'CONFECCIONES'}
+                  dimmed={!!ramoActual && ramoActual !== 'CONFECCIONES'}
+                  onClick={() => aplicar({ ramo_tipo: ramoActual === 'CONFECCIONES' ? '' : 'CONFECCIONES' })}
+                >
+                  👕 Confecciones
+                </CategoriaBtn>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <FilterLabel>Depósito</FilterLabel>
+              <div className="flex flex-wrap gap-2">
+                <DepositoPill
+                  active={!depositoActual}
+                  onClick={() => aplicar({ deposito_codigo: '' })}
+                >
+                  Todos
+                </DepositoPill>
+                {RIMEC_PE_DEPOSITOS.map(d => (
+                  <DepositoPill
+                    key={d.codigo}
+                    active={depositoActual === d.codigo}
+                    onClick={() => aplicar({ deposito_codigo: depositoActual === d.codigo ? '' : d.codigo })}
+                  >
+                    {d.codigo}
+                  </DepositoPill>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="h-px bg-slate-200" />
+
+        {/* Género */}
+        {!esProntaEntrega && (
+          <FilterRow label="Género">
+            <ScrollPillsRow>
+              <CabeceraPill active={!generoActual} onClick={() => aplicar({ genero_codigo: '' })}>
+                Todos
+              </CabeceraPill>
+              {generosLista.map(g => (
+                <CabeceraPill
+                  key={g.codigo}
+                  active={generoActual === g.codigo}
+                  onClick={() => aplicar({ genero_codigo: generoActual === g.codigo ? '' : g.codigo })}
+                >
+                  {g.label}
+                </CabeceraPill>
+              ))}
+            </ScrollPillsRow>
+          </FilterRow>
+        )}
+
+        {/* Marcas */}
+        {marcas.length > 0 && (
+          <FilterRow label="Marca">
+            <ScrollPillsRow>
+              <CabeceraPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '' })}>
+                Todas
+              </CabeceraPill>
+              {marcas.map(m => (
+                <CabeceraPill
+                  key={m.id}
+                  active={marcaIdActual === String(m.id)}
+                  onClick={() => aplicar({ marca_id: marcaIdActual === String(m.id) ? '' : String(m.id) })}
+                >
+                  {m.label.charAt(0) + m.label.slice(1).toLowerCase()}
+                </CabeceraPill>
+              ))}
+            </ScrollPillsRow>
+          </FilterRow>
+        )}
+
+        {estilos.length > 0 && (
+          <FilterRow label="Estilo">
+            <ScrollPillsRow>
+              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '' })}>
+                Todos
+              </CabeceraPill>
+              {estilos.map(e => (
+                <CabeceraPill
+                  key={e.id}
+                  active={estiloIdActual === String(e.id)}
+                  onClick={() => aplicar({ grupo_estilo_id: estiloIdActual === String(e.id) ? '' : String(e.id) })}
+                >
+                  {e.label}
+                </CabeceraPill>
+              ))}
+            </ScrollPillsRow>
+          </FilterRow>
+        )}
+
+        {!esProntaEntrega && tipos.length > 0 && (
+          <FilterRow label="Tipo 1">
+            <ScrollPillsRow>
+              <CabeceraPill active={!tiposSelIds.length} onClick={() => aplicar({ tipo_ids: [] })}>
+                Todos
+              </CabeceraPill>
+              {tipos.map(t => {
+                const sel = tiposSelIds.includes(t.id)
+                return (
+                  <CabeceraPill
+                    key={t.id}
+                    active={sel}
+                    onClick={() => {
+                      const next = sel ? tiposSelIds.filter(x => x !== t.id) : [...tiposSelIds, t.id]
+                      aplicar({ tipo_ids: next })
+                    }}
+                  >
+                    {t.label}
+                  </CabeceraPill>
+                )
+              })}
+            </ScrollPillsRow>
+          </FilterRow>
+        )}
+
+        {lineas.length > 0 && (
+          <FilterRow label="Línea">
+            <ScrollPillsRow>
+              <CabeceraPill active={!lineasSelIds.length} onClick={() => aplicar({ linea_ids: [] })}>
+                Todas
+              </CabeceraPill>
+              {lineas.map(l => {
+                const sel = lineasSelIds.includes(l.id)
+                return (
+                  <CabeceraPill
+                    key={l.id}
+                    active={sel}
+                    onClick={() => {
+                      const next = sel ? lineasSelIds.filter(x => x !== l.id) : [...lineasSelIds, l.id]
+                      aplicar({ linea_ids: next })
+                    }}
+                  >
+                    {l.label}
+                  </CabeceraPill>
+                )
+              })}
+            </ScrollPillsRow>
+          </FilterRow>
+        )}
+
+        <FilterRow label="Buscar">
+          <input
+            value={buscarLocal}
+            onChange={e => setBuscarLocal(e.target.value)}
+            placeholder="Línea, ref, marca, material, color…"
+            className="flex-1 min-w-0 rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-orange-400"
+          />
+        </FilterRow>
+
+        {tonoCatalog.length > 0 && (
+          <FilterRow label="Tono">
+            <FiltroTonoCabecera
+              catalogo={tonoCatalog}
+              tonosSel={tonosSel}
+              sinTono={sinTono}
+              onChange={(tonos, sin) => aplicar({ tonos, sin_tono: sin })}
+            />
+          </FilterRow>
+        )}
+
+        {!esProntaEntrega && quincenas.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <DropdownFilterQuincena
+              label="Llegada"
+              options={quincenas}
+              selected={quincenasSel}
+              onChange={qncs => aplicar({ quincenas: qncs })}
+              placeholder="Buscar quincena de llegada…"
+              showSearch={false}
+            />
+            <button
+              disabled
+              className="flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl
+                         border-2 transition-all opacity-50 cursor-not-allowed"
+              style={{ borderColor: '#e2e8f0', color: '#94a3b8', backgroundColor: '#fafafa' }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+              </svg>
+              Ofertas
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -260,13 +481,14 @@ function DropdownFilterId({ label, options, selectedIds, onChange, placeholder, 
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl border-2 transition-all"
-        style={{
-          borderColor: selectedIds.length ? RIMEC_CELESTE : '#e2e8f0',
-          color:       selectedIds.length ? RIMEC_CELESTE : '#64748b',
-          backgroundColor: selectedIds.length ? '#f0f9ff' : '#fafafa',
-        }}
+        className={[
+          'flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition',
+          selectedIds.length
+            ? 'border-sky-500 bg-sky-50 text-sky-800'
+            : 'border-slate-300 bg-white text-slate-800 hover:border-sky-300',
+        ].join(' ')}
       >
         {label}
         {selectedIds.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-md bg-white text-[10px] border border-sky-100">{selectedIds.length}</span>}
@@ -348,13 +570,14 @@ function DropdownFilter({ label, options, selected, onChange, placeholder, showS
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl border-2 transition-all"
-        style={{
-          borderColor: selected.length ? RIMEC_CELESTE : '#e2e8f0',
-          color:       selected.length ? RIMEC_CELESTE : '#64748b',
-          backgroundColor: selected.length ? '#f0f9ff' : '#fafafa',
-        }}
+        className={[
+          'flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition',
+          selected.length
+            ? 'border-sky-500 bg-sky-50 text-sky-800'
+            : 'border-slate-300 bg-white text-slate-800 hover:border-sky-300',
+        ].join(' ')}
       >
         {label}
         {selected.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-md bg-white text-[10px] border border-sky-100">{selected.length}</span>}
@@ -414,8 +637,8 @@ function DropdownFilter({ label, options, selected, onChange, placeholder, showS
   )
 }
 
-function DropdownFilterQuincena({ label, options, selected, onChange, placeholder, showSearch = false }: {
-  label: string; options: QuincenaItem[]; selected: number[]; onChange: (vals: number[]) => void; placeholder: string; showSearch?: boolean
+function DropdownFilterQuincena({ label, options, selected, onChange, placeholder, showSearch = false, disabled = false }: {
+  label: string; options: QuincenaItem[]; selected: number[]; onChange: (vals: number[]) => void; placeholder: string; showSearch?: boolean; disabled?: boolean
 }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
@@ -441,13 +664,15 @@ function DropdownFilterQuincena({ label, options, selected, onChange, placeholde
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl border-2 transition-all"
-        style={{
-          borderColor: selected.length ? RIMEC_CELESTE : '#e2e8f0',
-          color:       selected.length ? RIMEC_CELESTE : '#64748b',
-          backgroundColor: selected.length ? '#f0f9ff' : '#fafafa',
-        }}
+        type="button"
+        disabled={disabled}
+        onClick={() => { if (!disabled) setOpen(!open) }}
+        className={[
+          'flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50',
+          selected.length
+            ? 'border-sky-500 bg-sky-50 text-sky-800'
+            : 'border-slate-300 bg-white text-slate-800 hover:border-sky-300',
+        ].join(' ')}
       >
         {label}
         {selected.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-md bg-white text-[10px] border border-sky-100">{selected.length}</span>}
@@ -456,7 +681,7 @@ function DropdownFilterQuincena({ label, options, selected, onChange, placeholde
         </svg>
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div className="absolute left-0 top-full mt-2 z-30 bg-white rounded-2xl w-64 overflow-hidden"
              style={{ boxShadow: '0 16px 48px rgba(30,64,175,0.18)', border: '1px solid #f1f5f9' }}>
 
@@ -502,26 +727,124 @@ function DropdownFilterQuincena({ label, options, selected, onChange, placeholde
   )
 }
 
+function FilterLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="w-16 shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-500 pt-1.5">
+      {children}
+    </span>
+  )
+}
+
+function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <FilterLabel>{label}</FilterLabel>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  )
+}
+
+function ScrollPillsRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="overflow-x-auto pb-0.5 -mr-1">
+      <div className="flex flex-wrap gap-1.5 min-w-max">{children}</div>
+    </div>
+  )
+}
+
+function CabeceraPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'shrink-0 rounded-full border-2 px-3 py-1 text-[11px] font-bold transition',
+        active
+          ? 'border-orange-600 bg-orange-600 text-white shadow-sm'
+          : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  )
+}
+
+function CategoriaBtn({
+  active,
+  dimmed,
+  onClick,
+  children,
+}: {
+  active: boolean
+  dimmed?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'rounded-xl px-4 py-2.5 text-sm font-black uppercase tracking-wide transition sm:px-6 sm:py-3',
+        active
+          ? 'bg-orange-600 text-white shadow-md ring-2 ring-orange-400/40'
+          : dimmed
+            ? 'bg-white/80 text-slate-500 hover:bg-orange-50'
+            : 'bg-white text-orange-800 hover:bg-orange-50',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  )
+}
+
+function DepositoPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'rounded-full border-2 px-3 py-1.5 font-mono text-xs font-bold transition',
+        active
+          ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+          : 'border-slate-300 bg-white text-slate-800 hover:border-emerald-300',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  )
+}
+
 function LineaPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-150"
-      style={active
-        ? { backgroundColor: RIMEC_CELESTE, color: 'white', boxShadow: '0 2px 8px rgba(14,165,233,0.3)' }
-        : { backgroundColor: 'white', color: '#64748b', border: '1.5px solid #e2e8f0' }}
-    >{children}</button>
+      className={[
+        'rounded-full border-2 px-3 py-1.5 text-xs font-semibold transition',
+        active
+          ? 'border-sky-500 bg-sky-500 text-white shadow-sm'
+          : 'border-slate-300 bg-white text-slate-800 hover:border-sky-300',
+      ].join(' ')}
+    >
+      {children}
+    </button>
   )
 }
 
 function MarcaPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-150"
-      style={active
-        ? { backgroundColor: RIMEC_BLUE, color: 'white', boxShadow: '0 2px 8px rgba(30,64,175,0.25)' }
-        : { backgroundColor: '#f1f5f9', color: '#64748b' }}
-    >{children}</button>
+      className={[
+        'rounded-full border-2 px-4 py-1.5 text-xs font-bold transition',
+        active
+          ? 'border-[#1E40AF] bg-[#1E40AF] text-white shadow-sm'
+          : 'border-slate-300 bg-white text-slate-800 hover:border-blue-300',
+      ].join(' ')}
+    >
+      {children}
+    </button>
   )
 }

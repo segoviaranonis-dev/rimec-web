@@ -42,32 +42,7 @@ async function fetchAllPages<T>(
   orderBy?: (query: any) => any,
   maxPages = 2,
 ): Promise<{ data: T[]; error: any | null }> {
-  const all: T[] = []
-
-  for (let page = 0; page < maxPages; page++) {
-    const from = page * PAGE_SIZE
-    const to = from + PAGE_SIZE - 1
-    let query = supabase
-      .from('v_stock_rimec')
-      .select(selectSql)
-      .gt('cajas_disponibles', 0)
-
-    query = applyFiltroCompraPrevia(query)
-    query = orderBy ? orderBy(query) : query.order('det_id')
-    query = query.range(from, to)
-
-    const { data, error } = await query
-    if (error) return { data: all, error }
-
-    const batch = (data ?? []) as T[]
-    all.push(...batch)
-    if (batch.length < PAGE_SIZE) break
-  }
-
-  const filtered = CATALOGO_SOLO_COMPRA_PREVIA
-    ? sinProntaEntrega(all as Record<string, unknown>[]) as T[]
-    : all
-  return { data: filtered, error: null }
+  return fetchAllPagesFromView<T>(supabase, 'v_stock_rimec', selectSql, orderBy, maxPages)
 }
 
 /** Lee todas las filas vendibles del catálogo; Supabase limita a 1000 por request. */
@@ -79,20 +54,72 @@ export function fetchCatalogoRows<T>(supabase: SupabaseClient) {
   )
 }
 
-/** Meta sidebar/header — máx. 2 páginas CP-only (evita timeout). */
-export function fetchCatalogoMetaRows<T>(supabase: SupabaseClient) {
-  return fetchAllPages<T>(
+export type CatalogoMetaFetchOpts = {
+  maxPages?: number
+  applySql?: (query: any) => any
+}
+
+/** Meta sidebar — CP: 2 páginas · PE: escaneo completo (~12k filas post MIG-143). */
+export function fetchCatalogoMetaRows<T>(
+  supabase: SupabaseClient,
+  view: 'v_stock_rimec' | 'v_stock_pe_rimec' = 'v_stock_rimec',
+  opts?: CatalogoMetaFetchOpts,
+) {
+  const maxPages = opts?.maxPages ?? (view === 'v_stock_pe_rimec' ? 13 : 2)
+  return fetchAllPagesFromView<T>(
     supabase,
+    view,
     `
       marca_id, descp_marca,
       linea_id, linea_codigo, referencia_id, referencia_codigo,
       grupo_estilo_id, descp_grupo_estilo,
       tipo_1_id, descp_tipo_1,
-      descp_color,
+      descp_color, nombre, material_code,
       origen_tipo, quincena_desc, quincena_arribo_id,
+      deposito_nombre,
       cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
     `,
     undefined,
-    2,
+    maxPages,
+    opts?.applySql,
   )
+}
+
+async function fetchAllPagesFromView<T>(
+  supabase: SupabaseClient,
+  view: 'v_stock_rimec' | 'v_stock_pe_rimec',
+  selectSql: string,
+  orderBy?: (query: any) => any,
+  maxPages = 2,
+  applySql?: (query: any) => any,
+): Promise<{ data: T[]; error: any | null }> {
+  const all: T[] = []
+
+  for (let page = 0; page < maxPages; page++) {
+    const from = page * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+    let query = supabase
+      .from(view)
+      .select(selectSql)
+      .gt('cajas_disponibles', 0)
+
+    if (view === 'v_stock_rimec') {
+      query = applyFiltroCompraPrevia(query)
+    }
+    if (applySql) query = applySql(query)
+    query = orderBy ? orderBy(query) : query.order('det_id')
+    query = query.range(from, to)
+
+    const { data, error } = await query
+    if (error) return { data: all, error }
+
+    const batch = (data ?? []) as T[]
+    all.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+  }
+
+  const filtered = view === 'v_stock_rimec' && CATALOGO_SOLO_COMPRA_PREVIA
+    ? sinProntaEntrega(all as Record<string, unknown>[]) as T[]
+    : all
+  return { data: filtered, error: null }
 }

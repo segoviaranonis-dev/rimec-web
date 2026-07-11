@@ -7,6 +7,10 @@ export const dynamic = 'force-dynamic'
 
 function parseFilters(searchParams: URLSearchParams): CatalogoFilterStateExtended {
   const ramoRaw = String(searchParams.get('ramo_tipo') ?? '').trim().toUpperCase()
+  const depRaw = String(searchParams.get('deposito_codigo') ?? '').trim().toUpperCase()
+
+  const sinTono = searchParams.get('sin_tono') === '1'
+  const tonosRaw = (searchParams.get('tonos') ?? '').split(',').filter(Boolean)
 
   return {
     grupo_estilo_id: searchParams.get('grupo_estilo_id') ?? '',
@@ -18,6 +22,12 @@ function parseFilters(searchParams: URLSearchParams): CatalogoFilterStateExtende
     origen_tipo: normalizeOrigenCatalogo(searchParams.get('origen_tipo')),
     ramo_tipo:
       ramoRaw === 'CONFECCIONES' ? 'CONFECCIONES' : ramoRaw === 'CALZADO' ? 'CALZADO' : '',
+    deposito_codigo:
+      depRaw === 'D1' || depRaw === 'DEP2' || depRaw === 'D3' ? depRaw : '',
+    genero_codigo: searchParams.get('genero_codigo') ?? '',
+    tonos: sinTono ? [] : tonosRaw,
+    sin_tono: sinTono,
+    buscar: searchParams.get('buscar') ?? '',
   }
 }
 

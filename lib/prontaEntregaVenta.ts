@@ -9,6 +9,18 @@ export function isProntaEntregaDetId(detId: number): boolean {
   return Number.isFinite(detId) && detId >= PE_DET_ID_BASE
 }
 
+/** PE en BD local: det_id crudo en v_stock_pe_rimec · sintético ≥800M · pp_id negativo. */
+export function isProntaEntregaStockRow(input: {
+  det_id?: number
+  origen_tipo?: string | null
+  pp_id?: number | null
+}): boolean {
+  const ot = String(input.origen_tipo ?? '').trim().toUpperCase()
+  if (ot === 'PRONTA_ENTREGA' || ot === 'PRONTA ENTREGA') return true
+  if (input.pp_id != null && Number(input.pp_id) < 0) return true
+  return isProntaEntregaDetId(Number(input.det_id ?? 0))
+}
+
 export function peStockRowId(detId: number): number {
   return detId - PE_DET_ID_BASE
 }

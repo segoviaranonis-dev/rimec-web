@@ -152,6 +152,7 @@ export async function carritoUpsertItem(item: {
   caso_id_snapshot?: number | null
   marca_snapshot: string
   marca_id_snapshot?: number | null
+  origen_tipo?: string | null
 }): Promise<CarritoItemBD> {
   const res = await fetch('/api/carrito/items', {
     method: 'POST',

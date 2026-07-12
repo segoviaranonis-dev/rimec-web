@@ -97,9 +97,16 @@ function precioCatalogo(
   descpCaso: string | null | undefined,
   origenTipo: TarjetaCatalogo['origen_tipo'] | string | null | undefined,
 ): number | null {
+  const row = {
+    lpn: v.lpn ?? null,
+    lpc02: v.lpc02 ?? null,
+    lpc03: v.lpc03 ?? null,
+    lpc04: v.lpc04 ?? null,
+    precio_web: v.precio_web ?? null,
+  }
   const ot = String(origenTipo ?? '').toUpperCase().replace(/\s+/g, '_')
-  if (ot.includes('PRONTA')) return getPrecioActivoPe(v, listaId, descpCaso)
-  return getPrecioActivo(v, listaId, descpCaso)
+  if (ot.includes('PRONTA')) return getPrecioActivoPe(row, listaId, descpCaso)
+  return getPrecioActivo(row, listaId, descpCaso)
 }
 
 function HeaderSesion() {

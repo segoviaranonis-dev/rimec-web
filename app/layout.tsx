@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {isAuthShell ? (
             children
           ) : (
-            <main className="max-w-[1440px] mx-auto px-4 md:px-8 lg:px-12 py-8 md:py-12">
+            <main className="max-w-[1440px] mx-auto px-4 md:px-8 lg:px-12 py-3 md:py-5">
               {children}
             </main>
           )}

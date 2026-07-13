@@ -20,7 +20,7 @@ import {
   getPrecioActivo as getPrecioActivoLib,
   getPrecioActivoPe as getPrecioActivoPeLib,
 } from '@/lib/precioLista'
-import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
+import { isProntaEntregaStockRow, sumGradesJson } from '@/lib/prontaEntregaVenta'
 
 export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
 
@@ -165,9 +165,6 @@ function calcularPrecioNeto(precioBase: number, descuentos: number[]): number {
 }
 
 function paresCalc(item: ItemCarritoMeta, cajas: number): number {
-  if (isProntaEntregaStockRow({ det_id: item.det_id, origen_tipo: item.origen_tipo, pp_id: item.pp_id })) {
-    return cajas
-  }
   return cajas * item.cant_caja
 }
 
@@ -199,9 +196,11 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
   }
 
   // SIN META_CACHE (otro dispositivo): usar datos de v_stock_rimec
+  // RIMEC vende cajas cerradas: pares_por_caja real = suma de la curva de tallas (grada),
+  // no la columna cruda (para Pronta Entrega esa columna no trae dato de caja real).
   const isPe = isProntaEntregaStockRow({ det_id: row.det_id, pp_id: row.pp_id })
-  const cant_caja = isPe ? 1 : (stockRow?.pares_por_caja ?? 0)
-  const pares = isPe ? row.cantidad_cajas : row.cantidad_cajas * cant_caja
+  const cant_caja = isPe ? sumGradesJson(stockRow?.grades_json) : (stockRow?.pares_por_caja ?? 0)
+  const pares = row.cantidad_cajas * cant_caja
 
   return {
     det_id: row.det_id,

@@ -74,6 +74,7 @@ export interface CarritoItemBD {
     nombre: string
     imagen_url: string | null
     pares_por_caja: number
+    grades_json?: Record<string, unknown> | null
   }>
 }
 

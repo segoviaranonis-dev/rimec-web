@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { PE_DET_ID_BASE } from '@/lib/prontaEntregaVenta'
 
 export const CARRITO_STOCK_SELECT =
-  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo'
+  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo, grades_json'
 
 export type CarritoStockEnriched = Record<string, unknown> & { det_id: number }
 

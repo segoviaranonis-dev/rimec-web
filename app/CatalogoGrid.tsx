@@ -18,7 +18,7 @@ import {
 import { formatearQuincena } from '@/lib/fecha'
 import { estiloBadgeMarca } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
-import { syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
+import { syntheticPpIdForPe, paresPorCajaDesdeGradasFmt } from '@/lib/prontaEntregaVenta'
 import { esCasoPromocional } from '@/lib/precioLista'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 
@@ -447,7 +447,14 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   const shell = p.shell
   const cartItem = carrito[`det_${v.det_id}`]
   const cajas = cartItem ? cartItem.cajas : 0
-  const maxCajas = v.cajas_disponibles
+  const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
+  // RIMEC vende cajas cerradas, no pares sueltos — pares_por_caja real sale de la
+  // curva de tallas (grada), no de la columna cruda de la vista PE (ver Moria Chusar
+  // OT-NEXUS-FI-CAJAS-CERRADAS-RIMEC-001).
+  const paresPorCajaPe = paresPorCajaDesdeGradasFmt(v.gradas_fmt)
+  const maxCajas = esPe
+    ? Math.floor((Number(v.cajas_disponibles) || 0) / paresPorCajaPe)
+    : v.cajas_disponibles
 
   const puedeAgregar = !!activa && tienePrecio && cajas < maxCajas
 
@@ -466,8 +473,6 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       : cajas >= maxCajas
         ? '#94A3B8'
         : 'white'
-
-  const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
 
   const handleAgregar = () => {
     if (!activa) { onNeedSession(); return }
@@ -499,7 +504,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       precio_lpc02:       v.lpc02 ?? 0,
       precio_lpc03:       v.lpc03 ?? 0,
       precio_lpc04:       v.lpc04 ?? 0,
-      cant_caja:          esPe ? 1 : (v.pares_por_caja || 12),
+      cant_caja:          esPe ? paresPorCajaPe : (v.pares_por_caja || 12),
       cajas_disponibles:  maxCajas,
       origen_tipo:        p.origen_tipo,
     })
@@ -509,7 +514,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
     ? Math.max(0, Number(v.cajas_disponibles) || 0)
     : Math.max(0, v.cajas_disponibles * (v.pares_por_caja || 12))
   const precioTarjeta = activa && tienePrecio ? (precioVal as number) : null
-  const unidadLabel = esPe ? 'uds' : 'cajas'
+  const unidadLabel = 'cajas'
 
   const bloqueCantidad = (
     <div style={{ opacity: activa && !tienePrecio ? 0.55 : 1 }}>
@@ -690,7 +695,14 @@ export function CatalogoGrid({
   const filtered = productos
 
   const cartItems = Object.values(carrito)
-  const totalCajas = cartItems.reduce((s, i) => s + i.cajas, 0)
+  // Pronta Entrega se vende por par suelto (cant_caja=1) — "cajas" ahí no es una caja real,
+  // así que se cuenta aparte para no mostrar "3 cajas" cuando en realidad son 3 pares sueltos.
+  const totalCajas = cartItems
+    .filter(i => i.origen_tipo !== 'PRONTA_ENTREGA')
+    .reduce((s, i) => s + i.cajas, 0)
+  const totalUdsPe = cartItems
+    .filter(i => i.origen_tipo === 'PRONTA_ENTREGA')
+    .reduce((s, i) => s + i.cajas, 0)
   const totalParesCarrito = cartItems.reduce((s, i) => s + i.pares, 0)
   const cartCount = cartItems.length
 
@@ -819,7 +831,10 @@ export function CatalogoGrid({
             fontWeight: 700, fontSize: 16, textDecoration: 'none',
             boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
           }}>
-            🛒 {cartCount} ref · {totalCajas} cajas · {totalParesCarrito.toLocaleString('es-PY')} pares
+            🛒 {cartCount} ref
+            {totalCajas > 0 && ` · ${totalCajas} cajas`}
+            {totalUdsPe > 0 && ` · ${totalUdsPe} uds PE`}
+            {' · '}{totalParesCarrito.toLocaleString('es-PY')} pares
           </a>
         </div>
       )}

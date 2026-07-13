@@ -46,8 +46,25 @@ export function isSyntheticPePpId(ppId: number): boolean {
 }
 
 export function unidadDisponibleLabel(origenTipo: string | undefined, cajas: number): string {
-  if (origenTipo === 'PRONTA_ENTREGA') {
-    return cajas === 1 ? '1 ud' : `${cajas} uds`
-  }
   return cajas === 1 ? '1 cj' : `${cajas} cjs`
+}
+
+/**
+ * RIMEC vende cajas cerradas, no pares sueltos (Director, OT-NEXUS-FI-CAJAS-CERRADAS-RIMEC-001).
+ * pares_por_caja real = suma de la curva de tallas de la grada, no la columna cruda de la vista
+ * (para Pronta Entrega esa columna no trae dato de caja real — ver CHUSAR_STOCK_PRONTA_ENTREGA_RIMEC).
+ */
+export function sumGradesJson(gradesJson: Record<string, unknown> | null | undefined, fallback = 12): number {
+  if (!gradesJson || typeof gradesJson !== 'object') return fallback
+  const suma = Object.values(gradesJson).reduce((s: number, v) => s + (Number(v) || 0), 0)
+  return suma > 0 ? suma : fallback
+}
+
+/** Mismo cálculo que sumGradesJson pero a partir del string ya formateado ("34(1-2-3-3-2-1)39"). */
+export function paresPorCajaDesdeGradasFmt(gradasFmt: string | null | undefined, fallback = 12): number {
+  if (!gradasFmt) return fallback
+  const m = gradasFmt.match(/\(([^)]+)\)/)
+  if (!m) return fallback
+  const suma = m[1].split(/[-,\s]+/).reduce((s, part) => s + (Number(part) || 0), 0)
+  return suma > 0 ? suma : fallback
 }

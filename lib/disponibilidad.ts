@@ -8,13 +8,18 @@ export interface StockRowMin {
   pares_por_caja: number
   cantidad_cajas: number
   grades_json?: Record<string, number> | null
+  grada?: string | null
   origen_tipo?: string | null
   det_id?: number | null
   pp_id?: number | null
 }
 
 function saldoParesDeFila(item: StockRowMin): number {
-  const base = item.saldo_pares ?? item.cantidad_pares
+  // v_stock_* ya entrega saldo_pares = cantidad − vendidos. No restar de nuevo.
+  if (item.saldo_pares != null && Number.isFinite(Number(item.saldo_pares))) {
+    return Math.max(0, Number(item.saldo_pares))
+  }
+  const base = item.cantidad_pares
   if (base != null && Number.isFinite(Number(base))) {
     return Math.max(0, Number(base) - Number(item.pares_vendidos ?? 0))
   }
@@ -28,6 +33,7 @@ function paresPorCajaDeFila(item: StockRowMin, saldoPares: number): number {
     cantidad_pares: item.cantidad_pares,
     saldo_pares: saldoPares,
     grades_json: item.grades_json,
+    grada: item.grada,
     origen_tipo: item.origen_tipo,
     det_id: item.det_id,
     pp_id: item.pp_id,

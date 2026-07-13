@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
 import { getSession } from '@/lib/auth/session'
 import { sanitizeConfirmarPayload } from '@/lib/sanitizeConfirmarPayload'
+import { repairConfirmarPayloadPrecios } from '@/lib/repairConfirmarPayloadPrecios'
 
 /**
  * POST /api/carrito/confirmar
@@ -10,13 +11,11 @@ import { sanitizeConfirmarPayload } from '@/lib/sanitizeConfirmarPayload'
  */
 export async function POST(req: NextRequest) {
   try {
-    // Verificar sesión
     const session = await getSession()
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Obtener parámetros del cliente
     const body = await req.json()
     const {
       p_cliente_id,
@@ -33,15 +32,19 @@ export async function POST(req: NextRequest) {
       p_validacion_token,
     } = body
 
-    // Validar parámetros requeridos
     if (!p_cliente_id || !p_plazo_id || !p_lista_precio_id || !p_payload || !p_validacion_token) {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 })
     }
 
-    const payload = sanitizeConfirmarPayload(p_payload)
+    const sb = getSupabaseAdmin()
+    const sanitized = sanitizeConfirmarPayload(p_payload)
+    const payload = await repairConfirmarPayloadPrecios(sb, session.id_usuario, sanitized)
+    const totalMonto =
+      payload && typeof payload === 'object' && 'total_neto' in payload
+        ? Number((payload as { total_neto?: number }).total_neto) || Number(p_total_monto) || 0
+        : Number(p_total_monto) || 0
 
-    // Ejecutar RPC desde servidor
-    const { data, error: rpcErr } = await supabase.rpc('confirmar_pedido_web', {
+    const { data, error: rpcErr } = await sb.rpc('confirmar_pedido_web', {
       p_cliente_id,
       p_vendedor_id: p_vendedor_id ?? null,
       p_plazo_id,
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
       p_descuento_3: Number(p_descuento_3) || 0,
       p_descuento_4: Number(p_descuento_4) || 0,
       p_total_pares,
-      p_total_monto,
+      p_total_monto: totalMonto,
       p_payload: payload,
       p_validacion_token,
     })
@@ -60,17 +63,13 @@ export async function POST(req: NextRequest) {
       console.error('[confirmar] RPC error:', rpcErr)
       return NextResponse.json(
         { error: rpcErr.message, details: rpcErr.details },
-        { status: 500 }
+        { status: 500 },
       )
     }
 
-    // Retornar resultado del RPC
     return NextResponse.json(data)
   } catch (error) {
     console.error('[confirmar] Error:', error)
-    return NextResponse.json(
-      { error: 'Error interno del servidor' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
   }
 }

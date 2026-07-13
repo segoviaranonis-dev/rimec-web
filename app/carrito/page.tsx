@@ -183,6 +183,12 @@ export default function CarritoPage() {
 
   async function confirmarPedido() {
     if (confirmLock.current || enviando) return
+    if (totalGenPares > 0 && totalGenMonto <= 0) {
+      setError(
+        'Montos en 0 con pares en carrito — revalidá o recargá la página. No se puede confirmar a Gs. 0.',
+      )
+      return
+    }
     confirmLock.current = true
     setEnviando(true)
     setError(null)

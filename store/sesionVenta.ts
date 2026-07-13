@@ -21,6 +21,7 @@ import {
   getPrecioActivoPe as getPrecioActivoPeLib,
 } from '@/lib/precioLista'
 import { isProntaEntregaStockRow, paresDesdeCajasCerradas, resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import { gradasFmtFromRow } from '@/lib/gradasFmt'
 
 export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
 
@@ -177,10 +178,11 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
   const base = meta.get(row.det_id)
   // Extraer datos del JOIN con v_stock_rimec (MIG-083 fix: multi-dispositivo)
   const stockRow = row.v_stock_rimec?.[0]
-  const precio_lpn = stockRow?.lpn ?? 0
-  const precio_lpc02 = stockRow?.lpc02 ?? 0
-  const precio_lpc03 = stockRow?.lpc03 ?? 0
-  const precio_lpc04 = stockRow?.lpc04 ?? 0
+  // No coerzar null→0: getPrecioActivo/fragmentar deben caer al snapshot del carrito.
+  const precio_lpn = Number(stockRow?.lpn) > 0 ? Number(stockRow?.lpn) : Number(row.precio_snapshot) > 0 ? Number(row.precio_snapshot) : 0
+  const precio_lpc02 = Number(stockRow?.lpc02) > 0 ? Number(stockRow?.lpc02) : 0
+  const precio_lpc03 = Number(stockRow?.lpc03) > 0 ? Number(stockRow?.lpc03) : 0
+  const precio_lpc04 = Number(stockRow?.lpc04) > 0 ? Number(stockRow?.lpc04) : 0
 
   // Si tenemos META_CACHE (localStorage), usarlo
   if (base) {
@@ -228,7 +230,10 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     caso: row.caso_snapshot,
     caso_id: row.caso_id_snapshot,
     nombre: stockRow?.nombre ?? '',
-    gradas_fmt: '',  // TODO: calcular desde grades_json si es necesario
+    gradas_fmt: gradasFmtFromRow({
+      grades_json: stockRow?.grades_json as Record<string, number> | null | undefined,
+      grada: (stockRow as { grada?: string | null } | undefined)?.grada,
+    }),
     imagen_url: stockRow?.imagen_url ?? '',
     lista_precio_id: listaId,
     precio_base: row.precio_snapshot,
@@ -668,12 +673,16 @@ export function fragmentarCarrito(
               det_id: item.det_id,
               origen_tipo: item.origen_tipo,
             }) || item.pp_id < 0
+          const fromLista = esPeItem
+            ? getPrecioActivoPeLib(precioRow, listaFactura as ListaId, item.caso)
+            : getPrecioActivoLib(precioRow, listaFactura as ListaId, item.caso)
+          // Nunca mandar 0 al confirmar: si la vista viene vacía, usar snapshot del carrito.
           const precioBaseLista =
-            (esPeItem
-              ? getPrecioActivoPeLib(precioRow, listaFactura as ListaId, item.caso)
-              : getPrecioActivoLib(precioRow, listaFactura as ListaId, item.caso)) ??
-            item.precio_lpn ??
-            item.precio_base
+            (fromLista != null && fromLista > 0
+              ? fromLista
+              : null) ??
+            (item.precio_lpn > 0 ? item.precio_lpn : null) ??
+            (item.precio_base > 0 ? item.precio_base : 0)
 
           const precioNeto = calcularPrecioNeto(precioBaseLista, descFactura)
           const subtotal = precioNeto * item.pares

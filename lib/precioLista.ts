@@ -16,6 +16,12 @@ export type PrecioListaRow = {
 
 export type ListaPrecioId = 1 | 2 | 3 | 4
 
+/** 0 / NaN / null no son precio — evita `0 ?? snapshot` que pisa el carrito. */
+function precioPositivo(v: number | null | undefined): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 /** Precio activo según política cliente (LPN/LPC02/LPC03/LPC04). */
 export function getPrecioActivo(
   row: PrecioListaRow,
@@ -27,16 +33,17 @@ export function getPrecioActivo(
 
   switch (tier) {
     case 1:
-      return row.precio_web ?? row.lpn ?? null
+      return precioPositivo(row.precio_web) ?? precioPositivo(row.lpn)
     case 2:
-      return row.lpc02 ?? null
+      return precioPositivo(row.lpc02)
     case 3: {
-      if (row.lpc03 != null && row.lpc03 > 0) return row.lpc03
-      if (promocional && row.lpn != null && row.lpn > 0) return row.lpn
+      const lpc03 = precioPositivo(row.lpc03)
+      if (lpc03 != null) return lpc03
+      if (promocional) return precioPositivo(row.lpn)
       return null
     }
     case 4:
-      return row.lpc04 ?? null
+      return precioPositivo(row.lpc04)
     default:
       return null
   }

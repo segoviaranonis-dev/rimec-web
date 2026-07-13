@@ -186,36 +186,61 @@ export async function prefetchCatalogPage(
 
   const withFiltros = opts?.withFiltros ?? false
   const qs = filtersQueryString(filters)
-  const tarjetasParams = new URLSearchParams(qs)
-  tarjetasParams.set('row_from', '0')
-  tarjetasParams.set('limit', String(CARD_PAGE_LIMIT))
 
-  const [tarjetasRes, filtrosRes] = await Promise.all([
-    fetch(`/api/catalogo/tarjetas?${tarjetasParams}`, { credentials: 'same-origin' }),
-    withFiltros
-      ? fetch(`/api/catalogo/filtros?${qs}`, { credentials: 'same-origin' })
-      : Promise.resolve(null),
-  ])
+  let rowFrom = 0
+  let exclude: string[] = []
+  let tarjetas: TarjetaCatalogo[] = []
+  let hasMore = true
+  let attempts = 0
+  const MAX_WARM_ATTEMPTS = 8
 
-  if (!tarjetasRes.ok) return
-  const tarjetasJson = await tarjetasRes.json()
+  while (tarjetas.length < MIN_WARM_CARDS && hasMore && attempts < MAX_WARM_ATTEMPTS) {
+    attempts++
+    const chunk = await fetchTarjetasPageClient(filters, rowFrom, exclude)
+    if (!chunk?.tarjetas.length) break
+
+    for (const card of chunk.tarjetas) {
+      if (tarjetas.length >= MIN_WARM_CARDS) break
+      tarjetas.push(card)
+    }
+
+    rowFrom = chunk.nextRowFrom
+    exclude = chunk.excludeCardKeys
+    hasMore = chunk.hasMore
+  }
+
+  if (!tarjetas.length) return
 
   const payload: PageWarmPayload = {
-    tarjetas: tarjetasJson.tarjetas ?? [],
-    nextRowFrom: tarjetasJson.nextRowFrom ?? 0,
-    hasMore: Boolean(tarjetasJson.hasMore),
-    excludeCardKeys: tarjetasJson.excludeCardKeys ?? [],
+    tarjetas,
+    nextRowFrom: rowFrom,
+    hasMore,
+    excludeCardKeys: exclude,
     fetchedAt: Date.now(),
   }
 
-  if (filtrosRes?.ok) {
-    const filtrosJson = await filtrosRes.json()
-    payload.filtrosMeta = filtrosJson.filtros
-    payload.colores = filtrosJson.colores ?? []
-    payload.quincenas = filtrosJson.quincenas ?? []
+  if (withFiltros) {
+    const filtrosRes = await fetch(`/api/catalogo/filtros?${qs}`, { credentials: 'same-origin' })
+    if (filtrosRes.ok) {
+      const filtrosJson = await filtrosRes.json()
+      payload.filtrosMeta = filtrosJson.filtros
+      payload.colores = filtrosJson.colores ?? []
+      payload.quincenas = filtrosJson.quincenas ?? []
+    }
   }
 
   storePageWarmCache(key, payload)
+}
+
+/** PE calzado ≥30 tarjetas — prioridad máxima en toda la sesión. */
+export function ensurePeCatalogWarm(): void {
+  if (typeof window === 'undefined') return
+  const peFilters = effectivePeWarmFilters()
+  const peKey = catalogWarmCacheKey(peFilters)
+  if (isCatalogWarmEnough(getPageWarmCache(peKey)) || peInflight) return
+  peInflight = prefetchCatalogPage(peFilters, { withFiltros: true })
+    .catch(() => undefined)
+    .finally(() => { peInflight = null })
 }
 
 /** CP default + filtros compartidos sessionStorage (marca, línea, etc.). */
@@ -235,21 +260,16 @@ export function effectivePeWarmFilters(): CatalogoFilterState {
 export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): void {
   if (typeof window === 'undefined') return
 
+  // PE primero — canon 30 tarjetas calzado (Director · día operativo)
+  ensurePeCatalogWarm()
+
   const cpFilters = effectiveCpWarmFilters()
-  const peFilters = effectivePeWarmFilters()
   const cpKey = catalogWarmCacheKey(cpFilters)
-  const peKey = catalogWarmCacheKey(peFilters)
 
   if (!isCatalogWarmEnough(getPageWarmCache(cpKey)) && !cpInflight) {
     cpInflight = prefetchCatalogPage(cpFilters, { withFiltros: false })
       .catch(() => undefined)
       .finally(() => { cpInflight = null })
-  }
-
-  if (!isCatalogWarmEnough(getPageWarmCache(peKey)) && !peInflight) {
-    peInflight = prefetchCatalogPage(peFilters, { withFiltros: true })
-      .catch(() => undefined)
-      .finally(() => { peInflight = null })
   }
 }
 

@@ -9,6 +9,7 @@ import {
   catalogWarmCacheKey,
   CP_DEFAULT_FILTERS,
   ensureDualCatalogWarm,
+  ensurePeCatalogWarm,
   getPageWarmCache,
   getScrollWarmCache,
   isCatalogWarmEnough,
@@ -249,6 +250,8 @@ export function CatalogoClient({ initialFilters }: Props) {
       ensureDualCatalogWarm(filters)
       return () => { cancelled = true }
     }
+
+    if (esPe) ensurePeCatalogWarm()
 
     fetchPage({ fromRow: 0, exclude: [], currentFilters: filters })
       .then(json => {

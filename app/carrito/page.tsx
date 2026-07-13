@@ -16,6 +16,15 @@ const ROJO = '#DC2626'
 
 const VENTANA_VALIDACION_S = 60
 
+const RE_STOCK_INSUFICIENTE_RPC = /^Stock insuficiente L(\S+) R(\S+) \(PP: ([^)]+)\)\. Solicitado: (\d+), Disponible: (\d+)\.?$/
+
+function mensajeAmigableError(raw: string): string {
+  const m = raw.match(RE_STOCK_INSUFICIENTE_RPC)
+  if (!m) return raw
+  const [, linea, referencia, , solicitado, disponible] = m
+  return `El stock cambió mientras confirmabas: L${linea}·R${referencia} — pediste ${solicitado}, quedan ${disponible} disponibles. Presioná "Revalidar" para actualizar el carrito.`
+}
+
 export default function CarritoPage() {
   const cliente             = useSesion(s => s.cliente)
   const vendedor            = useSesion(s => s.vendedor)
@@ -265,7 +274,13 @@ export default function CarritoPage() {
       }, 2500)
     } catch (e) {
       console.error('Error al confirmar pedido:', e)
-      setError(e instanceof Error ? e.message : 'Error al confirmar')
+      const rawMsg = e instanceof Error ? e.message : 'Error al confirmar'
+      setError(mensajeAmigableError(rawMsg))
+      if (RE_STOCK_INSUFICIENTE_RPC.test(rawMsg)) {
+        // El token de validación ya quedó inválido en el servidor (el RPC lo rechazó);
+        // limpiarlo local fuerza al vendedor a Revalidar antes de reintentar Confirmar.
+        limpiarValidacion()
+      }
     } finally {
       confirmLock.current = false
       setEnviando(false)

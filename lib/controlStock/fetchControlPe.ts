@@ -55,6 +55,7 @@ function calcularKpisPe(filas: PeDetalleStockRow[]): ControlKpis {
       pp_id: 0,
       pp_nro: f.deposito,
       pp_proforma: '',
+      pp_eta: null,
       genero: '',
       marca: f.marca,
       estilo: f.estilo,

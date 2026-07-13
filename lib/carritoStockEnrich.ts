@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { PE_DET_ID_BASE } from '@/lib/prontaEntregaVenta'
+import { normalizarFilaStockVenta } from '@/lib/disponibilidad'
 
 export const CARRITO_STOCK_SELECT =
-  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo, grades_json'
+  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, saldo_pares, cantidad_cajas, cantidad_pares, grades_json, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo, pp_id'
 
 export type CarritoStockEnriched = Record<string, unknown> & { det_id: number }
 
@@ -35,12 +36,13 @@ export async function fetchCarritoStockByDetIds(
 
   function storeRow(row: CarritoStockEnriched) {
     const detId = Number(row.det_id)
-    map.set(detId, row)
+    const normalized = normalizarFilaStockVenta(row as unknown as Parameters<typeof normalizarFilaStockVenta>[0])
+    map.set(detId, normalized as unknown as CarritoStockEnriched)
     if (detId >= PE_DET_ID_BASE && aliasKeys.has(detId - PE_DET_ID_BASE)) {
-      map.set(detId - PE_DET_ID_BASE, { ...row, det_id: detId - PE_DET_ID_BASE })
+      map.set(detId - PE_DET_ID_BASE, { ...normalized, det_id: detId - PE_DET_ID_BASE } as unknown as CarritoStockEnriched)
     }
     if (detId > 0 && detId < PE_DET_ID_BASE && aliasKeys.has(detId + PE_DET_ID_BASE)) {
-      map.set(detId, row)
+      map.set(detId, normalized as unknown as CarritoStockEnriched)
     }
   }
 

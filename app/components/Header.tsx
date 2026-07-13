@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import NotificationBell from '@/components/NotificationBell'
 
 export interface FilterItem {
@@ -199,7 +199,7 @@ type MegaKey = 'mujeres' | 'ninas' | 'ninos' | 'hombres' | null
 
 export default function Header({ data: initialData }: { data: HeaderData }) {
   return (
-    <Suspense fallback={<HeaderShell data={initialData} esPe={false} />}>
+    <Suspense fallback={<HeaderShell data={initialData} esPe={false} esEstadisticas={false} />}>
       <HeaderInner data={initialData} />
     </Suspense>
   )
@@ -207,11 +207,21 @@ export default function Header({ data: initialData }: { data: HeaderData }) {
 
 function HeaderInner({ data: initialData }: { data: HeaderData }) {
   const searchParams = useSearchParams()
+  const pathname = usePathname()
   const esPe = (searchParams.get('origen_tipo') ?? '').toUpperCase().includes('PRONTA')
-  return <HeaderShell data={initialData} esPe={esPe} />
+  const esEstadisticas = pathname === '/estadisticas'
+  return <HeaderShell data={initialData} esPe={esPe} esEstadisticas={esEstadisticas} />
 }
 
-function HeaderShell({ data: initialData, esPe }: { data: HeaderData; esPe: boolean }) {
+function IconEstadisticas({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    </svg>
+  )
+}
+
+function HeaderShell({ data: initialData, esPe, esEstadisticas }: { data: HeaderData; esPe: boolean; esEstadisticas: boolean }) {
   const [data, setData] = useState(initialData)
   const [open, setOpen]   = useState<MegaKey>(null)
   const closeTimer        = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -332,9 +342,16 @@ function HeaderShell({ data: initialData, esPe }: { data: HeaderData; esPe: bool
             )}
             <Link
               href="/estadisticas"
-              className="hover:text-[#0EA5E9] transition-colors font-semibold text-[#0EA5E9]"
+              title="Estadísticas"
+              aria-label="Estadísticas"
+              aria-current={esEstadisticas ? 'page' : undefined}
+              className={`inline-flex items-center justify-center p-1.5 rounded-lg transition-colors ${
+                esEstadisticas
+                  ? 'text-[#0EA5E9] bg-sky-50 ring-1 ring-sky-200'
+                  : 'text-gray-600 hover:text-[#0EA5E9] hover:bg-slate-50'
+              }`}
             >
-              Estadísticas
+              <IconEstadisticas />
             </Link>
             {user && (
               <>

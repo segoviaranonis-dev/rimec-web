@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { RIMEC_PE_DEPOSITOS, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { clearSharedCatalogFilters, persistSharedCatalogFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { FiltroTonoCabecera } from '@/components/catalog/FiltroTonoCabecera'
 import type { ColorEstandar } from '@/lib/pilares/colores-estandar'
 
@@ -138,9 +139,12 @@ export function FiltrosCatalogo({
     }
 
     if (onChange) {
+      persistSharedCatalogFilters(next)
       onChange(next)
       return
     }
+
+    persistSharedCatalogFilters(next)
 
     if (estId)       params.set('grupo_estilo_id', estId)
     if (marId)       params.set('marca_id',        marId)
@@ -207,8 +211,13 @@ export function FiltrosCatalogo({
                 origen_tipo: '', ramo_tipo: '', deposito_codigo: '',
                 genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
               }
-              if (onChange) onChange(empty)
-              else router.push('/')
+              if (onChange) {
+                clearSharedCatalogFilters()
+                onChange(empty)
+              } else {
+                clearSharedCatalogFilters()
+                router.push('/')
+              }
             }}
             className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl
                        border transition-all hover:border-red-300 hover:text-red-500 hover:bg-red-50"

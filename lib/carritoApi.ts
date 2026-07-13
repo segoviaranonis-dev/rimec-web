@@ -90,7 +90,7 @@ export interface ValidarItemResult {
   precio_carrito: number
   precio_actual: number | null
   ok: boolean
-  motivo: 'SIN_PRECIO' | 'STOCK_INSUFICIENTE' | 'PRECIO_CAMBIO' | null
+  motivo: 'SIN_PRECIO' | 'STOCK_INSUFICIENTE' | 'ITEM_OBSOLETO' | 'PRECIO_CAMBIO' | null
 }
 
 export interface ValidarResponse {

@@ -20,7 +20,7 @@ import {
   getPrecioActivo as getPrecioActivoLib,
   getPrecioActivoPe as getPrecioActivoPeLib,
 } from '@/lib/precioLista'
-import { isProntaEntregaStockRow, sumGradesJson } from '@/lib/prontaEntregaVenta'
+import { isProntaEntregaStockRow, paresDesdeCajasCerradas, resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
 
 export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
 
@@ -165,7 +165,12 @@ function calcularPrecioNeto(precioBase: number, descuentos: number[]): number {
 }
 
 function paresCalc(item: ItemCarritoMeta, cajas: number): number {
-  return cajas * item.cant_caja
+  return paresDesdeCajasCerradas(cajas, {
+    pares_por_caja: item.cant_caja,
+    origen_tipo: item.origen_tipo,
+    det_id: item.det_id,
+    pp_id: item.pp_id,
+  })
 }
 
 function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, listaId: ListaId): ItemCarrito | null {
@@ -195,11 +200,16 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     }
   }
 
-  // SIN META_CACHE (otro dispositivo): usar datos de v_stock_rimec
-  // RIMEC vende cajas cerradas: pares_por_caja real = suma de la curva de tallas (grada),
-  // no la columna cruda (para Pronta Entrega esa columna no trae dato de caja real).
-  const isPe = isProntaEntregaStockRow({ det_id: row.det_id, pp_id: row.pp_id })
-  const cant_caja = isPe ? sumGradesJson(stockRow?.grades_json) : (stockRow?.pares_por_caja ?? 0)
+  // SIN META_CACHE (otro dispositivo): usar datos de vista stock
+  const origenTipo = (stockRow as { origen_tipo?: string } | undefined)?.origen_tipo
+  const cant_caja = resolveParesPorCaja({
+    pares_por_caja: stockRow?.pares_por_caja,
+    cantidad_cajas: undefined,
+    saldo_pares: (stockRow as { saldo_pares?: number } | undefined)?.saldo_pares,
+    origen_tipo: origenTipo,
+    det_id: row.det_id,
+    pp_id: row.pp_id,
+  })
   const pares = row.cantidad_cajas * cant_caja
 
   return {
@@ -518,7 +528,12 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     }
     try {
       await carritoPatchItem(det_id, safe)
-      const pares = actual.cant_caja * safe
+      const pares = paresDesdeCajasCerradas(safe, {
+        pares_por_caja: actual.cant_caja,
+        origen_tipo: actual.origen_tipo,
+        det_id: actual.det_id,
+        pp_id: actual.pp_id,
+      })
       set((st) => ({
         carrito: { ...st.carrito, [key]: { ...actual, cajas: safe, pares, subtotal: actual.precio_base * pares } },
         validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },

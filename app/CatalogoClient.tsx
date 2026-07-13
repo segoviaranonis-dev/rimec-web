@@ -1,16 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { CatalogoGrid } from './CatalogoGrid'
 import { FiltrosCatalogo, type CatalogoFilterState } from './components/FiltrosCatalogo'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import {
+  CARD_PAGE_LIMIT,
   catalogWarmCacheKey,
   CP_DEFAULT_FILTERS,
+  ensureDualCatalogWarm,
   getPageWarmCache,
   getScrollWarmCache,
-  peWarmCacheKey,
-  prefetchPeCatalogWhenIdle,
+  isCatalogWarmEnough,
   prefetchScrollPageWhenIdle,
   runWhenIdle,
   storePageWarmCache,
@@ -18,6 +19,13 @@ import {
 } from '@/lib/catalogoPeWarmCache'
 import type { ColorEstandar } from '@/lib/pilares/colores-estandar'
 import { COLORES_ESTANDAR_DEFAULT } from '@/lib/pilares/colores-estandar'
+import {
+  applySharedSliceToFilters,
+  mergeSharedIntoFilters,
+  persistSharedCatalogFilters,
+  subscribeSharedCatalogFilters,
+} from '@/lib/catalogoFiltrosCompartidos'
+import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
 
 type FilterItem = { id: number; label: string }
 type GeneroItem = { codigo: string; label: string }
@@ -58,8 +66,11 @@ function isCpDefault(filters: CatalogoFilterState) {
 }
 
 export function CatalogoClient({ initialFilters }: Props) {
-  const [filters, setFilters] = useState<CatalogoFilterState>(initialFilters)
+  const [filters, setFilters] = useState<CatalogoFilterState>(() =>
+    mergeSharedIntoFilters(initialFilters),
+  )
   const [, startTransition] = useTransition()
+  const mergedUrlOnce = useRef(false)
 
   const [filtrosMeta, setFiltrosMeta] = useState<{
     todasLineas: FilterItem[]
@@ -80,8 +91,15 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Dual warm CP+PE al montar — PE detrás del telón mientras CP es home.
   useEffect(() => {
-    setFilters(initialFilters)
+    ensureDualCatalogWarm(initialFilters)
+  }, [])
+
+  useEffect(() => {
+    const merged = mergeSharedIntoFilters(initialFilters)
+    setFilters(merged)
+    persistSharedCatalogFilters(merged)
   }, [
     initialFilters.grupo_estilo_id,
     initialFilters.marca_id,
@@ -97,6 +115,26 @@ export function CatalogoClient({ initialFilters }: Props) {
     initialFilters.sin_tono ? '1' : '',
     initialFilters.buscar ?? '',
   ])
+
+  // Sincronizar URL si sessionStorage aportó filtros que la URL no trae (primera carga).
+  useEffect(() => {
+    if (mergedUrlOnce.current) return
+    mergedUrlOnce.current = true
+    const merged = mergeSharedIntoFilters(initialFilters)
+    const params = filterToSearchParams(merged)
+    const urlParams = filterToSearchParams(initialFilters)
+    if (params.toString() !== urlParams.toString()) {
+      const url = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`
+      window.history.replaceState(null, '', url)
+    }
+  }, [initialFilters])
+
+  // Cross-tab: otro tab cambió filtros compartidos → reflejar sin perder origen PE/CP.
+  useEffect(() => {
+    return subscribeSharedCatalogFilters((slice) => {
+      setFilters((prev) => applySharedSliceToFilters(prev, slice))
+    })
+  }, [])
 
   // Filtros sidebar — en CP default diferido (idle) para priorizar tarjetas <1s
   useEffect(() => {
@@ -181,8 +219,9 @@ export function CatalogoClient({ initialFilters }: Props) {
   useEffect(() => {
     let cancelled = false
     const esPe = (filters.origen_tipo ?? '').toUpperCase().includes('PRONTA')
-    const cacheKey = esPe ? peWarmCacheKey(filters) : catalogWarmCacheKey(filters)
+    const cacheKey = catalogWarmCacheKey(filters)
     const cached = getPageWarmCache(cacheKey)
+    const cacheReady = isCatalogWarmEnough(cached)
 
     if (cached) {
       setProductos(cached.tarjetas)
@@ -192,7 +231,7 @@ export function CatalogoClient({ initialFilters }: Props) {
       if (cached.filtrosMeta) setFiltrosMeta(cached.filtrosMeta)
       if (cached.colores) setColores(cached.colores)
       if (cached.quincenas) setQuincenas(cached.quincenas)
-      setLoading(false)
+      setLoading(!cacheReady)
       setError(null)
       warmCatalogImages(cached.tarjetas)
     } else {
@@ -223,13 +262,15 @@ export function CatalogoClient({ initialFilters }: Props) {
         }
       })
       .catch(err => {
-        if (!cancelled && !cached) {
+        if (!cancelled && !cacheReady) {
           setError(err instanceof Error ? err.message : 'Error cargando catálogo')
         }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+
+    ensureDualCatalogWarm(filters)
 
     return () => { cancelled = true }
   }, [
@@ -249,13 +290,10 @@ export function CatalogoClient({ initialFilters }: Props) {
     fetchPage,
   ])
 
-  // CP lista → PE page1 idle · scroll page2 ambos orígenes en idle
+  // Mantener dual warm + scroll page 2 en idle
   useEffect(() => {
     if (loading || productos.length === 0 || !hasMore) return
-
-    const esCp = !(filters.origen_tipo ?? '').toUpperCase().includes('PRONTA')
-    if (esCp) prefetchPeCatalogWhenIdle()
-
+    ensureDualCatalogWarm(filters)
     prefetchScrollPageWhenIdle(filters, rowFrom, excludeKeys)
   }, [loading, productos.length, hasMore, rowFrom, excludeKeys.join(','), filters.origen_tipo ?? ''])
 
@@ -294,6 +332,7 @@ export function CatalogoClient({ initialFilters }: Props) {
   }, [loadingMore, hasMore, rowFrom, excludeKeys, filters, fetchPage])
 
   const updateFilters = (next: CatalogoFilterState) => {
+    persistSharedCatalogFilters(next)
     startTransition(() => {
       setFilters(next)
       const params = filterToSearchParams(next)
@@ -319,10 +358,17 @@ export function CatalogoClient({ initialFilters }: Props) {
       productos.reduce(
         (s, p) =>
           s +
-          p.variantes.reduce(
-            (vs, v) => vs + v.cajas_disponibles * (v.pares_por_caja || 12),
-            0,
-          ),
+          p.variantes.reduce((vs, v) => {
+            const ppc = resolveParesPorCaja({
+              pares_por_caja: v.pares_por_caja,
+              cantidad_cajas: v.cantidad_cajas,
+              saldo_pares: v.saldo_pares,
+              origen_tipo: p.origen_tipo,
+              det_id: v.det_id,
+              pp_id: v.pp_id,
+            })
+            return vs + Math.max(0, v.cajas_disponibles * ppc)
+          }, 0),
         0,
       ),
     [productos],

@@ -18,7 +18,7 @@ import {
 import { formatearQuincena } from '@/lib/fecha'
 import { estiloBadgeMarca } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
-import { syntheticPpIdForPe, paresPorCajaDesdeGradasFmt } from '@/lib/prontaEntregaVenta'
+import { resolveParesPorCaja, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
 import { esCasoPromocional } from '@/lib/precioLista'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 
@@ -447,16 +447,19 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   const shell = p.shell
   const cartItem = carrito[`det_${v.det_id}`]
   const cajas = cartItem ? cartItem.cajas : 0
-  const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
-  // RIMEC vende cajas cerradas, no pares sueltos — pares_por_caja real sale de la
-  // curva de tallas (grada), no de la columna cruda de la vista PE (ver Moria Chusar
-  // OT-NEXUS-FI-CAJAS-CERRADAS-RIMEC-001).
-  const paresPorCajaPe = paresPorCajaDesdeGradasFmt(v.gradas_fmt)
-  const maxCajas = esPe
-    ? Math.floor((Number(v.cajas_disponibles) || 0) / paresPorCajaPe)
-    : v.cajas_disponibles
+  const maxCajas = v.cajas_disponibles
 
-  const puedeAgregar = !!activa && tienePrecio && cajas < maxCajas
+  const puedeAgregar = !!activa && tienePrecio && maxCajas > 0 && cajas < maxCajas
+
+  const motivoPlusDeshabilitado = !activa
+    ? 'Activá la venta (cliente + lista)'
+    : !tienePrecio
+      ? `Sin precio en lista ${LISTAS.find(l => l.id === listaPrecioId)?.nombre ?? 'activa'}`
+      : maxCajas <= 0
+        ? 'Sin stock vendible (caja cerrada)'
+        : cajas >= maxCajas
+          ? 'Stock máximo en carrito'
+          : 'Agregar 1 caja'
 
   const botonPlusColor = !activa
     ? '#CBD5E1'
@@ -504,17 +507,32 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       precio_lpc02:       v.lpc02 ?? 0,
       precio_lpc03:       v.lpc03 ?? 0,
       precio_lpc04:       v.lpc04 ?? 0,
-      cant_caja:          esPe ? paresPorCajaPe : (v.pares_por_caja || 12),
+      cant_caja:          resolveParesPorCaja({
+        pares_por_caja: v.pares_por_caja,
+        cantidad_cajas: v.cantidad_cajas,
+        saldo_pares: v.saldo_pares,
+        origen_tipo: p.origen_tipo,
+        det_id: v.det_id,
+        pp_id: v.pp_id,
+      }),
       cajas_disponibles:  maxCajas,
       origen_tipo:        p.origen_tipo,
     })
   }
 
-  const paresStock = esPe
-    ? Math.max(0, Number(v.cajas_disponibles) || 0)
-    : Math.max(0, v.cajas_disponibles * (v.pares_por_caja || 12))
+  const ppcVariante = resolveParesPorCaja({
+    pares_por_caja: v.pares_por_caja,
+    cantidad_cajas: v.cantidad_cajas,
+    cantidad_pares: v.saldo_pares,
+    saldo_pares: v.saldo_pares,
+    origen_tipo: p.origen_tipo,
+    det_id: v.det_id,
+    pp_id: v.pp_id,
+  })
+  const paresStock = Math.max(0, v.cajas_disponibles * ppcVariante)
   const precioTarjeta = activa && tienePrecio ? (precioVal as number) : null
   const unidadLabel = 'cajas'
+  const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
 
   const bloqueCantidad = (
     <div style={{ opacity: activa && !tienePrecio ? 0.55 : 1 }}>
@@ -544,6 +562,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
               type="button"
               onClick={handleAgregar}
               disabled={!puedeAgregar}
+              title={motivoPlusDeshabilitado}
               className="flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm font-bold text-white disabled:opacity-40"
               style={{ borderColor: botonPlusColor, backgroundColor: botonPlusColor, color: botonPlusTxt }}
             >+</button>
@@ -695,26 +714,25 @@ export function CatalogoGrid({
   const filtered = productos
 
   const cartItems = Object.values(carrito)
-  // Pronta Entrega se vende por par suelto (cant_caja=1) — "cajas" ahí no es una caja real,
-  // así que se cuenta aparte para no mostrar "3 cajas" cuando en realidad son 3 pares sueltos.
-  const totalCajas = cartItems
-    .filter(i => i.origen_tipo !== 'PRONTA_ENTREGA')
-    .reduce((s, i) => s + i.cajas, 0)
-  const totalUdsPe = cartItems
-    .filter(i => i.origen_tipo === 'PRONTA_ENTREGA')
-    .reduce((s, i) => s + i.cajas, 0)
+  const totalCajas = cartItems.reduce((s, i) => s + i.cajas, 0)
   const totalParesCarrito = cartItems.reduce((s, i) => s + i.pares, 0)
   const cartCount = cartItems.length
 
   const grillaPares = filtered.reduce((sum, p) => {
-    const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
     return (
       sum +
       p.variantes
         .filter(v => v.cajas_disponibles > 0)
         .reduce((s, v) => {
-          if (esPe) return s + Math.max(0, Number(v.cajas_disponibles) || 0)
-          return s + Math.max(0, v.cajas_disponibles * (v.pares_por_caja || 12))
+          const ppc = resolveParesPorCaja({
+            pares_por_caja: v.pares_por_caja,
+            cantidad_cajas: v.cantidad_cajas,
+            saldo_pares: v.saldo_pares,
+            origen_tipo: p.origen_tipo,
+            det_id: v.det_id,
+            pp_id: v.pp_id,
+          })
+          return s + Math.max(0, v.cajas_disponibles * ppc)
         }, 0)
     )
   }, 0)
@@ -831,10 +849,7 @@ export function CatalogoGrid({
             fontWeight: 700, fontSize: 16, textDecoration: 'none',
             boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
           }}>
-            🛒 {cartCount} ref
-            {totalCajas > 0 && ` · ${totalCajas} cajas`}
-            {totalUdsPe > 0 && ` · ${totalUdsPe} uds PE`}
-            {' · '}{totalParesCarrito.toLocaleString('es-PY')} pares
+            🛒 {cartCount} ref · {totalCajas} cajas · {totalParesCarrito.toLocaleString('es-PY')} pares
           </a>
         </div>
       )}

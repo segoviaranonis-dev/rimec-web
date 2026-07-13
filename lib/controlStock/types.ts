@@ -2,6 +2,8 @@ export interface DetalleStockRow {
   pp_id: number
   pp_nro: string
   pp_proforma: string
+  /** Dato duro arribo (YYYY-MM-DD) — orden Compra previa. */
+  pp_eta: string | null
   genero: string
   marca: string
   estilo: string
@@ -23,6 +25,8 @@ export interface PpOption {
   proforma: string
   estado: string
   eta: string | null
+  /** Chip filtro: proforma + ETA (PP secundario). */
+  label: string
 }
 
 export interface ControlKpis {
@@ -41,6 +45,10 @@ export interface NodoControl {
   id: string
   nivel: NivelControl
   nombre: string
+  /** Línea secundaria (ej. PP). */
+  meta?: string
+  /** Orden arribo (ISO date o vacío). */
+  sortEta?: string
   count: number
   inicial: number
   vendido: number
@@ -57,3 +65,29 @@ export interface ControlStockResponse {
   kpis: ControlKpis
   arbol: NodoControl[]
 }
+
+export interface PeDetalleStockRow {
+  deposito: string
+  marca: string
+  estilo: string
+  linea: string
+  referencia: string
+  material_code: string
+  color_code: string
+  inicial: number
+  vendido: number
+  saldo: number
+}
+
+export interface PeControlStockResponse {
+  depositos: string[]
+  marcas: string[]
+  estilos: string[]
+  filas: PeDetalleStockRow[]
+  kpis: ControlKpis
+  arbol: NodoControl[]
+}
+
+/** RIMEC Web · Compra previa — jamás PROGRAMADO (categoria_id = 3). */
+export const CATEGORIA_PROGRAMADO_ID = 3
+export const CATEGORIA_COMPRA_PREVIA_ID = 2

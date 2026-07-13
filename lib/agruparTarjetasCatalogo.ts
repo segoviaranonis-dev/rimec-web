@@ -15,6 +15,7 @@ import {
   type TarjetaShellStyle,
 } from '@/lib/catalogoOrigen'
 import { enrichImagenUrls } from '@/lib/productImage'
+import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
 
 export interface RimecVariante {
   det_id: number
@@ -43,6 +44,8 @@ export interface RimecVariante {
   imagen_candidates_hero: string[]
   cantidad_cajas: number
   pares_por_caja: number
+  /** Pares realmente disponibles (vista). */
+  saldo_pares?: number
   cajas_disponibles: number
   lpn: number | null
   lpc02: number | null
@@ -176,7 +179,18 @@ export function agruparTarjetasCatalogo(
       imagen_candidates_thumb: imgs.imagen_candidates_thumb,
       imagen_candidates_hero: imgs.imagen_candidates_hero,
       cantidad_cajas: item.cantidad_cajas,
-      pares_por_caja: item.pares_por_caja,
+      // PE y CP: grada real vía resolveParesPorCaja (ignora vista MIG-144 contaminada).
+      pares_por_caja: resolveParesPorCaja({
+        pares_por_caja: item.pares_por_caja,
+        cantidad_cajas: item.cantidad_cajas,
+        cantidad_pares: item.cantidad_pares,
+        saldo_pares: item.saldo_pares,
+        grades_json: item.grades_json,
+        origen_tipo: item.origen_tipo,
+        det_id: item.det_id,
+        pp_id: item.pp_id,
+      }),
+      saldo_pares: item.saldo_pares,
       cajas_disponibles: cajasDisp,
       lpn: item.lpn,
       lpc02: item.lpc02,

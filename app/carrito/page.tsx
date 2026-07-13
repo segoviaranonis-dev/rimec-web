@@ -117,6 +117,32 @@ export default function CarritoPage() {
     .filter((i) => i.motivo === 'SIN_PRECIO')
     .map((i) => i.det_id)
 
+  const detIdsSinStock = itemsConProblema
+    .filter((i) =>
+      i.motivo === 'ITEM_OBSOLETO' ||
+      (i.motivo === 'STOCK_INSUFICIENTE' && (i.cajas_actuales ?? 0) <= 0),
+    )
+    .map((i) => i.det_id)
+
+  function textoMotivoValidacion(item: ValidarItemResult): string {
+    if (item.motivo === 'ITEM_OBSOLETO') {
+      return 'Debés eliminar este artículo por falta de stock — ya no está disponible en depósito.'
+    }
+    if (item.motivo === 'STOCK_INSUFICIENTE' && (item.cajas_actuales ?? 0) <= 0) {
+      return 'Debés eliminar este artículo por falta de stock — saldo agotado tras la última carga.'
+    }
+    if (item.motivo === 'STOCK_INSUFICIENTE') {
+      return `Stock insuficiente: hay ${item.cajas_actuales} caja(s) y pediste ${item.cajas_solicitadas}. Reducí cantidad o eliminá el ítem.`
+    }
+    if (item.motivo === 'PRECIO_CAMBIO') {
+      return `Precio cambió: ${item.precio_carrito.toLocaleString('es-PY')} → ${item.precio_actual?.toLocaleString('es-PY') ?? '—'}`
+    }
+    if (item.motivo === 'SIN_PRECIO') {
+      return 'El SKU perdió el precio en Nexus Core — eliminá el ítem para continuar.'
+    }
+    return 'Diferencia detectada — revalidá o ajustá el carrito.'
+  }
+
   async function validar() {
     setValidando(true)
     setError(null)
@@ -367,7 +393,10 @@ export default function CarritoPage() {
           borderRadius: 12, padding: '14px 18px', marginBottom: 20, color: '#78350F',
         }}>
           <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>
-            ⚠ {itemsConProblema.length} ítem(s) con diferencias en BD
+            ⚠ {itemsConProblema.length} ítem(s) requieren acción antes de confirmar
+          </p>
+          <p style={{ fontSize: 12, marginBottom: 8 }}>
+            Tras importar stock real, usá <strong>VALIDAR</strong> para re-coordinar el carrito con la BD.
           </p>
           <ul style={{ fontSize: 12, paddingLeft: 18, marginBottom: 10 }}>
             {itemsConProblema.map((i) => {
@@ -375,14 +404,11 @@ export default function CarritoPage() {
               const desc = meta
                 ? `L${meta.linea_codigo}·R${meta.referencia_codigo}${meta.color_nombre ? ` · ${meta.color_nombre}` : ''}`
                 : `det ${i.det_id}`
-              const motivo = i.motivo === 'STOCK_INSUFICIENTE'
-                ? `Stock disponible: ${i.cajas_actuales} (pediste ${i.cajas_solicitadas})`
-                : i.motivo === 'PRECIO_CAMBIO'
-                  ? `Precio cambió: ${i.precio_carrito.toLocaleString('es-PY')} → ${i.precio_actual?.toLocaleString('es-PY') ?? '—'}`
-                  : i.motivo === 'SIN_PRECIO'
-                    ? 'El SKU perdió el precio en Nexus Core'
-                    : 'Diferencia'
-              return <li key={i.det_id}><strong>{desc}</strong> — {motivo}</li>
+              return (
+                <li key={i.det_id}>
+                  <strong>{desc}</strong> — {textoMotivoValidacion(i)}
+                </li>
+              )
             })}
           </ul>
           <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, backgroundColor: '#E0F2FE', padding: '8px 12px', borderRadius: 6, border: '1px solid #0EA5E9' }}>
@@ -397,6 +423,15 @@ export default function CarritoPage() {
               }}>
               Revalidar
             </button>
+            {detIdsSinStock.length > 0 && (
+              <button type="button" onClick={() => void eliminarItems(detIdsSinStock)}
+                style={{
+                  padding: '10px 16px', borderRadius: 10, backgroundColor: ROJO,
+                  color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                }}>
+                Quitar {detIdsSinStock.length} ítem(s) sin stock
+              </button>
+            )}
             {detIdsSinPrecio.length > 0 && (
               <button type="button" onClick={() => void eliminarItems(detIdsSinPrecio)}
                 style={{

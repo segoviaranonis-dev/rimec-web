@@ -5,6 +5,7 @@
 import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
+import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import { getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
 import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
 
@@ -122,7 +123,17 @@ async function validarItemsPeEnCarrito(
       listaId,
       caso,
     )
-    const cajasActuales = Number(stock.cajas_disponibles ?? 0)
+    const cajasActuales = cajasDisponiblesDeFila({
+      cajas_disponibles: stock.cajas_disponibles as number,
+      saldo_pares: stock.saldo_pares as number,
+      cantidad_pares: Number(stock.cantidad_pares ?? stock.saldo_pares ?? 0),
+      pares_vendidos: 0,
+      pares_por_caja: Number(stock.pares_por_caja ?? 0),
+      cantidad_cajas: Number(stock.cantidad_cajas ?? 0),
+      origen_tipo: stock.origen_tipo as string,
+      det_id: detId,
+      pp_id: item.pp_id,
+    })
     const cajasSolicitadas = Number(item.cantidad_cajas ?? 0)
     const precioCarrito = Number(item.precio_snapshot ?? 0)
 

@@ -1,6 +1,15 @@
 import { supabase } from '../supabase'
 import type { DetalleStockRow, PpOption, ControlStockResponse } from './types'
-import { calcularKpis, construirArbolControl, normalizarFilasMolecula } from './buildTree'
+import {
+  CATEGORIA_PROGRAMADO_ID,
+  CATEGORIA_COMPRA_PREVIA_ID,
+} from './types'
+import {
+  calcularKpis,
+  construirArbolControl,
+  fmtEtaCorta,
+  normalizarFilasMolecula,
+} from './buildTree'
 
 function normCodigo(v: unknown): string {
   if (v == null) return ''
@@ -25,7 +34,7 @@ type PpdTransitoRow = {
   id_marca: number | null
 }
 
-/** Supabase PostgREST cap = 1000 filas — paginar para no perder PPs nuevos (ej. PP-2026-0014). */
+/** Supabase PostgREST cap = 1000 filas — paginar para no perder PPs nuevos. */
 async function fetchPpdTransito(ppIds: number[]): Promise<PpdTransitoRow[]> {
   const pageSize = 1000
   const all: PpdTransitoRow[] = []
@@ -50,6 +59,15 @@ async function fetchPpdTransito(ppIds: number[]): Promise<PpdTransitoRow[]> {
   return all
 }
 
+function labelPpChip(proforma: string, _nro: string, eta: string | null): string {
+  const pf = proforma.trim() || 'Sin proforma'
+  return `${pf} · ${fmtEtaCorta(eta)}`
+}
+
+/**
+ * Compra previa para RIMEC Web.
+ * Blindaje: **nunca** categoria PROGRAMADO (3) — agua y aceite vs catálogo web.
+ */
 export async function fetchControlStock(opts: {
   ppIds?: number[]
   generos?: string[]
@@ -59,22 +77,43 @@ export async function fetchControlStock(opts: {
 }): Promise<ControlStockResponse> {
   const { data: ppsRaw, error: errPp } = await supabase
     .from('pedido_proveedor')
-    .select('id, numero_registro, numero_proforma, estado, estado_transito, fecha_arribo_estimada')
-    .eq('estado_transito', 'EN_TRANSITO')  // Solo Pre-Venta (en tránsito)
+    .select('id, numero_registro, numero_proforma, estado, estado_transito, fecha_arribo_estimada, categoria_id')
+    .eq('estado_transito', 'EN_TRANSITO')
     .order('id', { ascending: false })
 
   if (errPp) throw new Error(errPp.message)
 
-  const pps: PpOption[] = (ppsRaw ?? []).map(p => ({
-    id: p.id,
-    nro: String(p.numero_registro ?? p.id),
-    proforma: String(p.numero_proforma ?? ''),
-    estado: String(p.estado ?? ''),
-    eta: p.fecha_arribo_estimada ? String(p.fecha_arribo_estimada).slice(0, 10) : null,
-  }))
+  // Ley: RIMEC Web ↔ PROGRAMADO = error de concepto. Solo Compra previa (2) o sin categoría legacy.
+  const ppsFiltrados = (ppsRaw ?? []).filter(p => {
+    const cat = p.categoria_id == null ? null : Number(p.categoria_id)
+    if (cat === CATEGORIA_PROGRAMADO_ID) return false
+    if (cat != null && cat !== CATEGORIA_COMPRA_PREVIA_ID) return false
+    return true
+  })
+
+  const pps: PpOption[] = ppsFiltrados.map(p => {
+    const eta = p.fecha_arribo_estimada ? String(p.fecha_arribo_estimada).slice(0, 10) : null
+    const nro = String(p.numero_registro ?? p.id)
+    const proforma = String(p.numero_proforma ?? '')
+    return {
+      id: p.id,
+      nro,
+      proforma,
+      estado: String(p.estado ?? ''),
+      eta,
+      label: labelPpChip(proforma, nro, eta),
+    }
+  })
+
+  pps.sort((a, b) => {
+    const ea = a.eta || '9999-99-99'
+    const eb = b.eta || '9999-99-99'
+    if (ea !== eb) return ea.localeCompare(eb)
+    return a.proforma.localeCompare(b.proforma, 'es')
+  })
 
   const ppIds =
-    opts.ppIds?.length ? opts.ppIds : pps.map(p => p.id)
+    opts.ppIds?.length ? opts.ppIds.filter(id => pps.some(p => p.id === id)) : pps.map(p => p.id)
 
   if (!ppIds.length) {
     return {
@@ -89,11 +128,9 @@ export async function fetchControlStock(opts: {
   }
 
   const ppds = await fetchPpdTransito(ppIds)
-
-  const detalles = ppds
   const ppMap = new Map(pps.map(p => [p.id, p]))
 
-  const codigosLinea = [...new Set(detalles.map(d => normCodigo(d.linea)).filter(Boolean))]
+  const codigosLinea = [...new Set(ppds.map(d => normCodigo(d.linea)).filter(Boolean))]
   const lineaByCodigo = new Map<
     string,
     { id: number; genero: string; geLinea: number | null; marcaId: number | null }
@@ -195,7 +232,7 @@ export async function fetchControlStock(opts: {
 
   const filas: DetalleStockRow[] = []
 
-  for (const d of detalles) {
+  for (const d of ppds) {
     const pp = ppMap.get(d.pedido_proveedor_id)
     if (!pp) continue
 
@@ -220,6 +257,7 @@ export async function fetchControlStock(opts: {
       pp_id: pp.id,
       pp_nro: pp.nro,
       pp_proforma: pp.proforma,
+      pp_eta: pp.eta,
       genero,
       marca,
       estilo,

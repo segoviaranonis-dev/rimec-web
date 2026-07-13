@@ -1,12 +1,14 @@
 /**
- * Warm cache catálogo — CP inmediato · PE en idle · scroll page 2 imperceptible.
- * Protocolo: PROTOCOLO_IMAGENES_CARGA_INTEGRAL_RIMEC_WEB.md
+ * Warm cache catálogo — CP + PE siempre calientes (≥30 tarjetas).
+ * Característica producto: CHUSAR_DUAL_CACHE_CATALOGO_INSTANTANEO.md
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { preloadImageDecoded } from '@/lib/image-decode-cache'
 
 export const CARD_PAGE_LIMIT = 30
+/** Mínimo de tarjetas en cache para cambio CP↔PE instantáneo (Director · 2026-07-13). */
+export const MIN_WARM_CARDS = CARD_PAGE_LIMIT
 
 export type WarmFiltrosMeta = {
   todasLineas: { id: number; label: string }[]
@@ -52,18 +54,22 @@ export const PE_DEFAULT_FILTERS: CatalogoFilterState = {
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000
+/** Retraso mínimo antes del prefetch del origen “detrás del telón” (ms). */
+const SECONDARY_PREFETCH_DELAY_MS = 150
+
 const pageCache = new Map<string, PageWarmPayload>()
 const scrollCache = new Map<string, PageWarmPayload>()
+let cpInflight: Promise<void> | null = null
 let peInflight: Promise<void> | null = null
 const scrollInflight = new Set<string>()
 
-export function runWhenIdle(fn: () => void, timeoutMs = 2800): void {
+export function runWhenIdle(fn: () => void, timeoutMs = 800): void {
   if (typeof window === 'undefined') return
   const ric = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
   if (ric) {
     ric(() => fn(), { timeout: timeoutMs })
   } else {
-    setTimeout(fn, 150)
+    setTimeout(fn, 80)
   }
 }
 
@@ -96,6 +102,12 @@ function isFresh(hit: PageWarmPayload | undefined): hit is PageWarmPayload {
   if (!hit) return false
   if (Date.now() - hit.fetchedAt > CACHE_TTL_MS) return false
   return true
+}
+
+/** Cache lista para cambio de pestaña instantáneo. */
+export function isCatalogWarmEnough(hit: PageWarmPayload | null | undefined): boolean {
+  if (!hit || !isFresh(hit)) return false
+  return hit.tarjetas.length >= MIN_WARM_CARDS
 }
 
 export function getPageWarmCache(key: string): PageWarmPayload | null {
@@ -161,28 +173,6 @@ async function fetchTarjetasPageClient(
   }
 }
 
-async function fetchFiltrosMeta(filters: CatalogoFilterState): Promise<{
-  filtrosMeta: WarmFiltrosMeta
-  colores: string[]
-  quincenas: { id: number; label: string }[]
-} | null> {
-  const qs = filtersQueryString(filters)
-  const res = await fetch(`/api/catalogo/filtros?${qs}`, { credentials: 'same-origin' })
-  if (!res.ok) return null
-  const json = await res.json()
-  return {
-    filtrosMeta: json.filtros ?? {
-      todasLineas: [],
-      todasMarcas: [],
-      todosEstilos: [],
-      todosTipos: [],
-      todosGeneros: [],
-    },
-    colores: json.colores ?? [],
-    quincenas: json.quincenas ?? [],
-  }
-}
-
 export function storePageWarmCache(key: string, payload: PageWarmPayload) {
   pageCache.set(key, payload)
   warmCatalogImages(payload.tarjetas)
@@ -190,10 +180,10 @@ export function storePageWarmCache(key: string, payload: PageWarmPayload) {
 
 export async function prefetchCatalogPage(
   filters: CatalogoFilterState,
-  opts?: { withFiltros?: boolean },
+  opts?: { withFiltros?: boolean; force?: boolean },
 ): Promise<void> {
   const key = catalogWarmCacheKey(filters)
-  if (getPageWarmCache(key)) return
+  if (!opts?.force && isCatalogWarmEnough(getPageWarmCache(key))) return
 
   const withFiltros = opts?.withFiltros ?? false
   const qs = filtersQueryString(filters)
@@ -229,7 +219,51 @@ export async function prefetchCatalogPage(
   storePageWarmCache(key, payload)
 }
 
-/** Prefetch página scroll (page 2+) — baja prioridad, sin bloquear UI. */
+function startCpPrefetch(): void {
+  if (cpInflight) return
+  cpInflight = prefetchCatalogPage(CP_DEFAULT_FILTERS, { withFiltros: false })
+    .catch(() => undefined)
+    .finally(() => { cpInflight = null })
+}
+
+function startPePrefetch(): void {
+  if (peInflight) return
+  peInflight = prefetchCatalogPage(PE_DEFAULT_FILTERS, { withFiltros: true })
+    .catch(() => undefined)
+    .finally(() => { peInflight = null })
+}
+
+/**
+ * Mantiene CP y PE default con ≥30 tarjetas en cache.
+ * Origen activo = pantalla; el otro = detrás del telón (prefetch paralelo).
+ */
+export function ensureDualCatalogWarm(activeFilters?: CatalogoFilterState): void {
+  if (typeof window === 'undefined') return
+
+  const cpKey = catalogWarmCacheKey(CP_DEFAULT_FILTERS)
+  const peKey = catalogWarmCacheKey(PE_DEFAULT_FILTERS)
+  const onPe = String(activeFilters?.origen_tipo ?? '').toUpperCase().includes('PRONTA')
+
+  const cpWarm = isCatalogWarmEnough(getPageWarmCache(cpKey))
+  const peWarm = isCatalogWarmEnough(getPageWarmCache(peKey))
+
+  if (!cpWarm && !cpInflight) {
+    if (onPe) setTimeout(startCpPrefetch, SECONDARY_PREFETCH_DELAY_MS)
+    else startCpPrefetch()
+  }
+
+  if (!peWarm && !peInflight) {
+    if (onPe) startPePrefetch()
+    else setTimeout(startPePrefetch, SECONDARY_PREFETCH_DELAY_MS)
+  }
+}
+
+/** @deprecated usar ensureDualCatalogWarm */
+export function prefetchPeCatalogWhenIdle(): void {
+  ensureDualCatalogWarm(CP_DEFAULT_FILTERS)
+}
+
+/** Prefetch página scroll (page 2+) — baja prioridad. */
 export async function prefetchScrollPage(
   filters: CatalogoFilterState,
   rowFrom: number,
@@ -259,19 +293,6 @@ export function prefetchScrollPageWhenIdle(
   if (!rowFrom && !exclude.length) return
   runWhenIdle(() => {
     void prefetchScrollPage(filters, rowFrom, exclude)
-  })
-}
-
-/** Tras CP lista — PE calzado en idle (imperceptible). */
-export function prefetchPeCatalogWhenIdle(): void {
-  if (peInflight) return
-  runWhenIdle(() => {
-    if (peInflight) return
-    peInflight = prefetchCatalogPage(PE_DEFAULT_FILTERS, { withFiltros: true })
-      .catch(() => undefined)
-      .finally(() => {
-        peInflight = null
-      })
   })
 }
 

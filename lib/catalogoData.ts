@@ -6,8 +6,8 @@ const MAX_CATALOGO_ROWS = 15000
 /** Catálogo mayorista: solo compra previa — excluir PE en la query (no post-fetch). */
 export const CATALOGO_SOLO_COMPRA_PREVIA = true
 
-/** Columnas mínimas catálogo — evita SELECT * sobre vista pesada. */
-export const CATALOGO_STOCK_SELECT = `
+/** Columnas comunes CP + PE. */
+const CATALOGO_STOCK_SELECT_BASE = `
   det_id, pp_id, pp_nro, proforma,
   quincena_arribo_id, quincena_desc,
   marca_id, descp_marca, caso_id, descp_caso,
@@ -18,6 +18,21 @@ export const CATALOGO_STOCK_SELECT = `
   grupo_estilo_id, descp_grupo_estilo, tipo_1_id, descp_tipo_1,
   imagen_url, origen_tipo, deposito_id, deposito_nombre, pp_estado
 `.replace(/\s+/g, ' ').trim()
+
+/** Compra previa — v_stock_rimec (MIG-138). Sin imagen_color_excel (solo PE · MIG-149). */
+export const CATALOGO_STOCK_SELECT_CP = CATALOGO_STOCK_SELECT_BASE
+
+/** Pronta entrega — v_stock_pe_rimec · dual 654/638 · excel_color Kyly. */
+export const CATALOGO_STOCK_SELECT_PE = `${CATALOGO_STOCK_SELECT_BASE}, proveedor_importacion_id, tipo_v2_id, imagen_color_excel`
+
+/** @deprecated Usar catalogoStockSelect(view). */
+export const CATALOGO_STOCK_SELECT = CATALOGO_STOCK_SELECT_CP
+
+export function catalogoStockSelect(
+  view: 'v_stock_rimec' | 'v_stock_pe_rimec',
+): string {
+  return view === 'v_stock_pe_rimec' ? CATALOGO_STOCK_SELECT_PE : CATALOGO_STOCK_SELECT_CP
+}
 
 /** Hotfix: catálogo mayorista solo compra previa — excluir PE de v_stock_rimec (MIG-134). */
 function esFilaProntaEntrega(row: Record<string, unknown>): boolean {

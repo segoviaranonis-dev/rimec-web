@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { agruparTarjetasCatalogo, type TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
-import { CATALOGO_STOCK_SELECT } from '@/lib/catalogoData'
+import { catalogoStockSelect } from '@/lib/catalogoData'
 import type { StockRow } from '@/app/catalogo-types'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
@@ -31,7 +31,7 @@ async function fetchStockBatch(
   for (let attempt = 0; attempt <= QUERY_RETRIES; attempt++) {
     let query = supabase
       .from(view)
-      .select(CATALOGO_STOCK_SELECT)
+      .select(catalogoStockSelect(view))
       .gt('cajas_disponibles', 0)
 
     query =

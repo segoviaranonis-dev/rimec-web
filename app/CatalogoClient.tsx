@@ -223,7 +223,9 @@ export function CatalogoClient({ initialFilters }: Props) {
     const cached = getPageWarmCache(cacheKey)
     const cacheReady = isCatalogWarmEnough(cached)
 
-    if (cached) {
+    const hasCached = (cached?.tarjetas.length ?? 0) > 0
+
+    if (hasCached && cached) {
       setProductos(cached.tarjetas)
       setRowFrom(cached.nextRowFrom)
       setExcludeKeys(cached.excludeCardKeys)
@@ -231,16 +233,21 @@ export function CatalogoClient({ initialFilters }: Props) {
       if (cached.filtrosMeta) setFiltrosMeta(cached.filtrosMeta)
       if (cached.colores) setColores(cached.colores)
       if (cached.quincenas) setQuincenas(cached.quincenas)
-      setLoading(!cacheReady)
       setError(null)
       warmCatalogImages(cached.tarjetas)
-    } else {
-      setLoading(true)
-      setError(null)
+    } else if (!cached) {
       setProductos([])
       setRowFrom(0)
       setExcludeKeys([])
       setHasMore(true)
+    }
+
+    setLoading(!hasCached)
+    setError(null)
+
+    if (cacheReady) {
+      ensureDualCatalogWarm(filters)
+      return () => { cancelled = true }
     }
 
     fetchPage({ fromRow: 0, exclude: [], currentFilters: filters })
@@ -413,7 +420,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         onChange={updateFilters}
       />
 
-      {loading && (
+      {loading && productos.length === 0 && (
         <div className="mb-6 flex justify-center py-16">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
         </div>
@@ -475,7 +482,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         </div>
       )}
 
-      {!loading && productos.length > 0 && (
+      {productos.length > 0 && (
         <CatalogoGrid
           productos={productos}
           pps={pps}

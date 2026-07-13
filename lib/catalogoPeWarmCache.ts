@@ -4,6 +4,7 @@
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import { mergeSharedIntoFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { preloadImageDecoded } from '@/lib/image-decode-cache'
 
 export const CARD_PAGE_LIMIT = 30
@@ -54,8 +55,6 @@ export const PE_DEFAULT_FILTERS: CatalogoFilterState = {
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000
-/** Retraso mínimo antes del prefetch del origen “detrás del telón” (ms). */
-const SECONDARY_PREFETCH_DELAY_MS = 150
 
 const pageCache = new Map<string, PageWarmPayload>()
 const scrollCache = new Map<string, PageWarmPayload>()
@@ -219,42 +218,38 @@ export async function prefetchCatalogPage(
   storePageWarmCache(key, payload)
 }
 
-function startCpPrefetch(): void {
-  if (cpInflight) return
-  cpInflight = prefetchCatalogPage(CP_DEFAULT_FILTERS, { withFiltros: false })
-    .catch(() => undefined)
-    .finally(() => { cpInflight = null })
+/** CP default + filtros compartidos sessionStorage (marca, línea, etc.). */
+export function effectiveCpWarmFilters(): CatalogoFilterState {
+  return mergeSharedIntoFilters(CP_DEFAULT_FILTERS)
 }
 
-function startPePrefetch(): void {
-  if (peInflight) return
-  peInflight = prefetchCatalogPage(PE_DEFAULT_FILTERS, { withFiltros: true })
-    .catch(() => undefined)
-    .finally(() => { peInflight = null })
+/** PE calzado default + mismos filtros compartidos que CP. */
+export function effectivePeWarmFilters(): CatalogoFilterState {
+  return mergeSharedIntoFilters(PE_DEFAULT_FILTERS)
 }
 
 /**
- * Mantiene CP y PE default con ≥30 tarjetas en cache.
- * Origen activo = pantalla; el otro = detrás del telón (prefetch paralelo).
+ * Mantiene CP y PE con ≥30 tarjetas en cache — prefetch paralelo, sin espera.
+ * Corre en layout global (no solo catálogo) para cambio instantáneo tras estadísticas.
  */
-export function ensureDualCatalogWarm(activeFilters?: CatalogoFilterState): void {
+export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): void {
   if (typeof window === 'undefined') return
 
-  const cpKey = catalogWarmCacheKey(CP_DEFAULT_FILTERS)
-  const peKey = catalogWarmCacheKey(PE_DEFAULT_FILTERS)
-  const onPe = String(activeFilters?.origen_tipo ?? '').toUpperCase().includes('PRONTA')
+  const cpFilters = effectiveCpWarmFilters()
+  const peFilters = effectivePeWarmFilters()
+  const cpKey = catalogWarmCacheKey(cpFilters)
+  const peKey = catalogWarmCacheKey(peFilters)
 
-  const cpWarm = isCatalogWarmEnough(getPageWarmCache(cpKey))
-  const peWarm = isCatalogWarmEnough(getPageWarmCache(peKey))
-
-  if (!cpWarm && !cpInflight) {
-    if (onPe) setTimeout(startCpPrefetch, SECONDARY_PREFETCH_DELAY_MS)
-    else startCpPrefetch()
+  if (!isCatalogWarmEnough(getPageWarmCache(cpKey)) && !cpInflight) {
+    cpInflight = prefetchCatalogPage(cpFilters, { withFiltros: false })
+      .catch(() => undefined)
+      .finally(() => { cpInflight = null })
   }
 
-  if (!peWarm && !peInflight) {
-    if (onPe) startPePrefetch()
-    else setTimeout(startPePrefetch, SECONDARY_PREFETCH_DELAY_MS)
+  if (!isCatalogWarmEnough(getPageWarmCache(peKey)) && !peInflight) {
+    peInflight = prefetchCatalogPage(peFilters, { withFiltros: true })
+      .catch(() => undefined)
+      .finally(() => { peInflight = null })
   }
 }
 

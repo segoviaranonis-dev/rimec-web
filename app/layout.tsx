@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { Urbanist, Playfair_Display } from 'next/font/google'
 import './globals.css'
 import Header from './components/Header'
+import { CatalogWarmProvider } from './components/CatalogWarmProvider'
 import { SesionSyncProvider } from './components/SesionSyncProvider'
 
 const urbanist = Urbanist({
@@ -38,7 +39,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="font-sans antialiased" style={{ backgroundColor: '#FAFAFA', color: '#0F172A' }}>
         <SesionSyncProvider>
           {!isAuthShell && (
-            <Header data={EMPTY_HEADER} />
+            <>
+              <CatalogWarmProvider />
+              <Header data={EMPTY_HEADER} />
+            </>
           )}
           {isAuthShell ? (
             children

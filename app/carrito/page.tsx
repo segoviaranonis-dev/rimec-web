@@ -273,10 +273,18 @@ export default function CarritoPage() {
         router.push(nroPedido ? `/pedidos?destacar=${encodeURIComponent(nroPedido)}` : '/pedidos')
       }, 2500)
     } catch (e) {
-      console.error('Error al confirmar pedido:', e)
       const rawMsg = e instanceof Error ? e.message : 'Error al confirmar'
+      const esStockCambiado = RE_STOCK_INSUFICIENTE_RPC.test(rawMsg)
+      // Stock insuficiente al confirmar es un resultado de negocio esperado (el RPC
+      // revalida atómicamente y puede rechazar si el stock bajó desde la validación),
+      // no un bug — usar warn para no disparar el overlay rojo de Next dev en cada venta.
+      if (esStockCambiado) {
+        console.warn('Confirmar pedido: stock cambió desde la validación:', rawMsg)
+      } else {
+        console.error('Error al confirmar pedido:', e)
+      }
       setError(mensajeAmigableError(rawMsg))
-      if (RE_STOCK_INSUFICIENTE_RPC.test(rawMsg)) {
+      if (esStockCambiado) {
         // El token de validación ya quedó inválido en el servidor (el RPC lo rechazó);
         // limpiarlo local fuerza al vendedor a Revalidar antes de reintentar Confirmar.
         limpiarValidacion()

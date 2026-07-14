@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { RIMEC_PE_DEPOSITOS, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
 import { clearSharedCatalogFilters, persistSharedCatalogFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { FiltroTonoCabecera } from '@/components/catalog/FiltroTonoCabecera'
+import { CatalogExtenderDatosToggle } from '@/components/catalog/CatalogAcordeonContext'
 import type { ColorEstandar } from '@/lib/pilares/colores-estandar'
 
 interface FilterItem {
@@ -516,6 +517,11 @@ export function FiltrosCatalogo({
             </button>
           </div>
         )}
+        {totalModelos > 0 ? (
+          <div className="flex justify-end border-t border-slate-100 pt-2">
+            <CatalogExtenderDatosToggle />
+          </div>
+        ) : null}
       </div>
       ) : null}
     </div>

@@ -32,6 +32,10 @@ import {
   subscribeSharedCatalogFilters,
 } from '@/lib/catalogoFiltrosCompartidos'
 import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import {
+  CatalogAcordeonProvider,
+  collectLoteKeysFromGrilla,
+} from '@/components/catalog/CatalogAcordeonContext'
 
 type FilterItem = { id: number; label: string }
 type GeneroItem = { codigo: string; label: string }
@@ -441,7 +445,10 @@ export function CatalogoClient({ initialFilters }: Props) {
 
   const esProntaEntrega = isCatalogoOrigenPe(filters)
 
+  const allLoteKeys = useMemo(() => collectLoteKeysFromGrilla(productos), [productos])
+
   return (
+    <CatalogAcordeonProvider allKeys={allLoteKeys}>
     <>
       {esProntaEntrega && (
         <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-sm font-semibold text-emerald-900">
@@ -535,5 +542,6 @@ export function CatalogoClient({ initialFilters }: Props) {
         />
       )}
     </>
+    </CatalogAcordeonProvider>
   )
 }

@@ -12,7 +12,7 @@ alwaysApply: true
 - La vista `v_stock_rimec`: 1 fila por `ppd.id` (DISTINCT ON); JOIN `linea`/`material`/`color` con `proveedor_id` del PP; columna `cajas_disponibles` (no duplicar chips). Recrear con `scripts/fix_v_stock_rimec.py` o `APLICAR_VISTA_CATALOGO.bat`.
 - **Tarjetas multi-origen:** `lib/agruparTarjetasCatalogo.ts` agrupa por `cardKey = sku_id + origen_tipo + origen_referencia_id` (ver `lib/catalogoOrigen.ts`). Mismo SKU con distinto ETA/PP → dos tarjetas DOM independientes; dentro de cada tarjeta, variantes = colores (`det_id`) del mismo origen. Solo `cajas_disponibles > 0`.
 - Paleta reactiva: `catalogoOrigen.ts` → `shell` (fondo, borde, badge, acento) según quincena ETA o tipo stock/depósito.
-- **Dato duro (concepto clave):** en catálogo = `quincena_desc` desde FK `quincena_arribo_id` (tabla `quincena_arribo`, 1–24). **No** usar ETA variable ni el texto «Dato duro» en UI. Chip visible = fecha de embarque legible (ej. `1ra Q. de Agosto`). Tarjetas fusionadas (pill Todos): un SKU, varios lotes → acordeón `CatalogLotesAcordeon.tsx` — colapsado solo muestra el dato duro + pares; expandir todo / de a uno.
+- **Dato duro (concepto clave):** en catálogo = `quincena_desc` desde FK `quincena_arribo_id`. Colapsado = texto completo + pares naranja. **Extender todos los datos** en pie de cabecera filtros (`CatalogExtenderDatosToggle` · paridad Report `GrillaPeImportadora`) — toggle único naranja; no botones dentro de tarjeta.
 
 ## Estadísticas
 

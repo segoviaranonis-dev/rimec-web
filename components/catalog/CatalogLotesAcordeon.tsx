@@ -1,21 +1,20 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
 import type { ListaId } from '@/store/sesionVenta'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { CatalogPanelOrigen } from '@/components/catalog/CatalogPanelOrigen'
-import { origenChipStyle } from '@/lib/catalogCardChrome'
+import { useCatalogAcordeon } from '@/components/catalog/CatalogAcordeonContext'
 import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
 
-/** Etiqueta visible del acordeón = quincena_desc (dato duro FK quincena_arribo_id). */
-function etiquetaDatoDuro(lote: TarjetaCatalogo): string {
+/** Etiqueta colapsada = quincena_desc (dato duro) o Pronta entrega. */
+export function etiquetaDatoDuroLote(lote: TarjetaCatalogo): string {
   const v = lote.variantes.find(vv => vv.cajas_disponibles > 0) ?? lote.variantes[0]
   if (lote.origen_tipo === 'PRONTA_ENTREGA') return 'Pronta entrega'
   if (v?.quincena_desc) return v.quincena_desc
   return lote.origen_label || 'Compra previa'
 }
 
-function paresEnLote(lote: TarjetaCatalogo): number {
+export function paresEnLoteCatalogo(lote: TarjetaCatalogo): number {
   return lote.variantes
     .filter(v => v.cajas_disponibles > 0)
     .reduce((s, v) => {
@@ -39,89 +38,47 @@ type Props = {
 }
 
 export function CatalogLotesAcordeon({ lotes, activa, listaPrecioId, onNeedSession }: Props) {
-  const keys = useMemo(() => lotes.map(l => l.cardKey), [lotes])
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-
-  const isOpen = useCallback((key: string) => expanded[key] === true, [expanded])
-
-  const toggleOne = useCallback((key: string) => {
-    setExpanded(prev => ({ ...prev, [key]: !prev[key] }))
-  }, [])
-
-  const expandAll = useCallback(() => {
-    setExpanded(Object.fromEntries(keys.map(k => [k, true])))
-  }, [keys])
-
-  const collapseAll = useCallback(() => {
-    setExpanded(Object.fromEntries(keys.map(k => [k, false])))
-  }, [keys])
-
-  const anyOpen = keys.some(k => expanded[k])
-  const allOpen = keys.length > 0 && keys.every(k => expanded[k])
+  const { isOpen, toggle } = useCatalogAcordeon()
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          onClick={expandAll}
-          disabled={allOpen}
-          className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[9px] font-bold text-slate-700 disabled:opacity-40"
-        >
-          Expandir todo
-        </button>
-        <button
-          type="button"
-          onClick={collapseAll}
-          disabled={!anyOpen}
-          className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[9px] font-bold text-slate-700 disabled:opacity-40"
-        >
-          Colapsar todo
-        </button>
-      </div>
-
+    <div className="space-y-1">
       {lotes.map(lote => {
         const open = isOpen(lote.cardKey)
-        const label = etiquetaDatoDuro(lote)
-        const pares = paresEnLote(lote)
+        const label = etiquetaDatoDuroLote(lote)
+        const pares = paresEnLoteCatalogo(lote)
         const esPe = lote.origen_tipo === 'PRONTA_ENTREGA'
-        const panelBg = esPe
-          ? 'border-emerald-200/80 bg-emerald-50/40'
-          : 'border-blue-200/80 bg-blue-50/40'
+        const accent = esPe ? 'border-l-emerald-500' : 'border-l-sky-600'
 
         return (
-          <div
-            key={lote.cardKey}
-            className={`overflow-hidden rounded-xl border ${panelBg}`}
-          >
+          <div key={lote.cardKey} className="overflow-hidden rounded-lg">
             <button
               type="button"
-              onClick={() => toggleOne(lote.cardKey)}
+              onClick={() => toggle(lote.cardKey)}
               aria-expanded={open}
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
+              className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-1.5 text-left shadow-sm transition hover:bg-slate-50/80 ${accent}`}
             >
               <span
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-[10px] font-bold text-slate-600"
+                className="mt-0.5 shrink-0 text-[11px] font-bold leading-none text-slate-400"
                 aria-hidden
               >
-                {open ? '−' : '+'}
+                {open ? '▾' : '▸'}
               </span>
               <span
-                className="inline-flex min-w-0 flex-1 items-center truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
-                style={origenChipStyle(lote.shell)}
+                className="min-w-0 flex-1 text-[10px] font-semibold leading-snug text-slate-800 break-words whitespace-normal"
                 title={label}
               >
                 {label}
               </span>
               {pares > 0 ? (
-                <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white">
-                  {Math.round(pares)} p
+                <span className="ml-0.5 shrink-0 rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm">
+                  {Math.round(pares)}
+                  <span className="text-[8px] font-bold opacity-90"> p</span>
                 </span>
               ) : null}
             </button>
 
             {open ? (
-              <div className="border-t border-slate-200/70 px-2 pb-2 pt-1">
+              <div className="border border-t-0 border-slate-200/90 bg-slate-50/50 px-1.5 pb-1.5 pt-1">
                 <CatalogPanelOrigen
                   lote={lote}
                   activa={activa}

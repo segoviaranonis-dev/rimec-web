@@ -8,7 +8,6 @@ import { DialogoActivacion } from '@/components/DialogoActivacion'
 import { CatalogCarruselColores } from '@/components/catalog/CatalogCarruselColores'
 import { CatalogGrillaDeposito } from '@/components/catalog/CatalogGrillaDeposito'
 import { CatalogTarjetaDeposito } from '@/components/catalog/CatalogTarjetaDeposito'
-import { CatalogTonosFila } from '@/components/catalog/CatalogTonosFila'
 import { PromoCasoBadge } from '@/components/catalog/PromoCasoBadge'
 import { ProductImage } from '@/components/ProductImage'
 import {
@@ -27,7 +26,6 @@ import {
   type TarjetaCatalogoFusionada,
   type TarjetaGrilla,
 } from '@/lib/fusionTarjetasCatalogo'
-import { CatalogPanelOrigen } from '@/components/catalog/CatalogPanelOrigen'
 import { CatalogLotesAcordeon } from '@/components/catalog/CatalogLotesAcordeon'
 
 export type { RimecVariante, TarjetaCatalogo }
@@ -429,209 +427,33 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
 }
 
 function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCatalogo; onNeedSession: () => void }) {
-  // Filtrar solo variantes con stock disponible
   const variantesConStock = p.variantes.filter(v => v.cajas_disponibles > 0)
-
   const [varIdx, setVarIdx] = useState(0)
   const [lightbox, setLightbox] = useState(false)
-
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
-  const activaStore   = useSesion(s => s.activa)
-  const carrito       = useSesion(s => s.carrito)
+  const activaStore = useSesion(s => s.activa)
   const listaPrecioId = useSesion(s => s.listaPrecioId)
-  const agregarCaja   = useSesion(s => s.agregarCaja)
-  const quitarCaja    = useSesion(s => s.quitarCaja)
-
   const activa = mounted ? activaStore : false
 
-  // Usar solo variantes con stock
   const v = variantesConStock[varIdx] || p.variantes[0]
-
   const precioVal = precioCatalogo(v, listaPrecioId, p.descp_caso, p.origen_tipo)
   const tienePrecio = precioVal !== null && precioVal > 0
-  const precio = tienePrecio ? new Intl.NumberFormat('es-PY').format(precioVal as number) : null
-  const shell = p.shell
-  const cartItem = carrito[`det_${v.det_id}`]
-  const cajas = cartItem ? cartItem.cajas : 0
-  const maxCajas = v.cajas_disponibles
-
-  const puedeAgregar = !!activa && tienePrecio && maxCajas > 0 && cajas < maxCajas
-
-  const motivoPlusDeshabilitado = !activa
-    ? 'Activá la venta (cliente + lista)'
-    : !tienePrecio
-      ? `Sin precio en lista ${LISTAS.find(l => l.id === listaPrecioId)?.nombre ?? 'activa'}`
-      : maxCajas <= 0
-        ? 'Sin stock vendible (caja cerrada)'
-        : cajas >= maxCajas
-          ? 'Stock máximo en carrito'
-          : 'Agregar 1 caja'
-
-  const botonPlusColor = !activa
-    ? '#CBD5E1'
-    : !tienePrecio
-      ? '#F1F5F9'
-      : cajas >= maxCajas
-        ? '#E2E8F0'
-        : AZUL
-
-  const botonPlusTxt = !activa
-    ? 'white'
-    : !tienePrecio
-      ? '#CBD5E1'
-      : cajas >= maxCajas
-        ? '#94A3B8'
-        : 'white'
-
-  const handleAgregar = () => {
-    if (!activa) { onNeedSession(); return }
-    if (!tienePrecio || cajas >= maxCajas) return
-    const ppIdPe = p.origen_tipo === 'PRONTA_ENTREGA'
-      ? syntheticPpIdForPe({ deposito_id: v.deposito_id, proforma: v.proforma, pp_nro: v.pp_nro })
-      : (v.pp_id ?? 0)
-    void agregarCaja({
-      det_id:            v.det_id,
-      linea_codigo:      p.linea_codigo,
-      referencia_codigo: p.referencia_codigo,
-      material_code:     v.material_code,
-      color_code:        v.color_code,
-      color_nombre:      v.descp_color,
-      pp_id:             ppIdPe,
-      pp_nro:            v.pp_nro,
-      proforma:          v.proforma,
-      quincena_desc:     v.quincena_desc,
-      marca:             p.descp_marca ?? '',
-      marca_id:          p.marca_id ?? null,
-      caso:              p.descp_caso ?? '',
-      caso_id:           p.caso_id ?? null,
-      nombre:            p.nombre,
-      gradas_fmt:         v.gradas_fmt,
-      imagen_url:         v.imagen_url,
-      lista_precio_id:   listaPrecioId,
-      precio_base:        precioVal as number,
-      precio_lpn:         v.lpn ?? 0,
-      precio_lpc02:       v.lpc02 ?? 0,
-      precio_lpc03:       v.lpc03 ?? 0,
-      precio_lpc04:       v.lpc04 ?? 0,
-      cant_caja:          resolveParesPorCaja({
-        pares_por_caja: v.pares_por_caja,
-        cantidad_cajas: v.cantidad_cajas,
-        saldo_pares: v.saldo_pares,
-        origen_tipo: p.origen_tipo,
-        det_id: v.det_id,
-        pp_id: v.pp_id,
-      }),
-      cajas_disponibles:  maxCajas,
-      origen_tipo:        p.origen_tipo,
-    })
-  }
-
-  const ppcVariante = resolveParesPorCaja({
-    pares_por_caja: v.pares_por_caja,
-    cantidad_cajas: v.cantidad_cajas,
-    cantidad_pares: v.saldo_pares,
-    saldo_pares: v.saldo_pares,
-    origen_tipo: p.origen_tipo,
-    det_id: v.det_id,
-    pp_id: v.pp_id,
-  })
-  const paresStock = Math.max(0, v.cajas_disponibles * ppcVariante)
   const precioTarjeta = activa && tienePrecio ? (precioVal as number) : null
-  const unidadLabel = 'cajas'
+  const paresStock = paresEnTarjeta(p)
   const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
-
-  const bloqueCantidad = (
-    <div style={{ opacity: activa && !tienePrecio ? 0.55 : 1 }}>
-      {!activa ? (
-        <button
-          type="button"
-          onClick={onNeedSession}
-          className="w-full rounded-lg bg-slate-900 py-1.5 text-[10px] font-bold text-white"
-        >
-          Activar venta
-        </button>
-      ) : (
-        <>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => { if (!tienePrecio) return; void quitarCaja(v.det_id) }}
-              disabled={!tienePrecio || cajas === 0}
-              className="flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm font-bold disabled:opacity-40"
-              style={{ borderColor: cajas > 0 && tienePrecio ? AZUL : '#E2E8F0', color: cajas > 0 && tienePrecio ? AZUL : '#CBD5E1' }}
-            >−</button>
-            <div className="flex-1 text-center">
-              <p className="text-base font-black leading-none" style={{ color: tienePrecio ? AZUL : '#CBD5E1' }}>{cajas}</p>
-              <p className="text-[8px] text-slate-500">{unidadLabel}</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleAgregar}
-              disabled={!puedeAgregar}
-              title={motivoPlusDeshabilitado}
-              className="flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm font-bold text-white disabled:opacity-40"
-              style={{ borderColor: botonPlusColor, backgroundColor: botonPlusColor, color: botonPlusTxt }}
-            >+</button>
-          </div>
-          {!tienePrecio && (
-            <p className="mt-1 text-center text-[8px] font-semibold text-amber-800">
-              {esPe ? 'Precio pendiente PE' : 'Precio pendiente PP'}
-            </p>
-          )}
-          {cajas > 0 && tienePrecio && (
-            <a href="/carrito" className="mt-1 block rounded-lg bg-emerald-500 py-1 text-center text-[10px] font-bold text-white">
-              En pedido ✅
-            </a>
-          )}
-        </>
-      )}
-    </div>
-  )
-
-  const ventaFooter = (
-    <>
-      <div className="mb-1.5 flex items-center justify-between gap-1">
-        <span
-          className="inline-flex max-w-[75%] items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
-          style={origenChipStyle(shell)}
-          title={esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-        >
-          {esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-        </span>
-        {paresStock > 0 ? (
-          <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white">
-            {Math.round(paresStock)} p
-          </span>
-        ) : null}
-      </div>
-      <p className="mb-1 line-clamp-2 text-[10px] leading-snug text-slate-600">
-        {p.descp_material} · {v.descp_color}
-      </p>
-      {v.gradas_fmt ? (
-        <p className="mb-2 font-mono text-[9px] font-bold text-slate-500">{v.gradas_fmt}</p>
-      ) : (
-        <div className="mb-2 min-h-[14px]" aria-hidden />
-      )}
-
-      <CatalogTonosFila
-        variantes={variantesConStock.map(vv => ({
-          det_id: vv.det_id,
-          color_hex: vv.color_hex,
-          tono_canon: vv.tono_canon,
-          descp_color: vv.descp_color,
-        }))}
-        activeIdx={varIdx}
-        onSelect={setVarIdx}
-      />
-
-      {bloqueCantidad}
-    </>
-  )
-
   const esPromo = esCasoPromocional(p.descp_caso)
   const shellVariant = esPe ? 'pe' as const : 'cp' as const
+
+  const ventaFooter = (
+    <CatalogLotesAcordeon
+      lotes={[p]}
+      activa={activa}
+      listaPrecioId={listaPrecioId}
+      onNeedSession={onNeedSession}
+    />
+  )
 
   return (
     <>
@@ -712,16 +534,9 @@ function TarjetaProductoFusion({
   const precioTarjeta = activa && precioHero && precioHero > 0 ? precioHero : null
   const esPromo = p.lotes.some(l => esCasoPromocional(l.descp_caso))
 
-  const ventaFooter = p.lotes.length > 1 ? (
+  const ventaFooter = (
     <CatalogLotesAcordeon
       lotes={p.lotes}
-      activa={activa}
-      listaPrecioId={listaPrecioId}
-      onNeedSession={onNeedSession}
-    />
-  ) : (
-    <CatalogPanelOrigen
-      lote={p.lotes[0]!}
       activa={activa}
       listaPrecioId={listaPrecioId}
       onNeedSession={onNeedSession}

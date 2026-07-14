@@ -86,10 +86,34 @@ export function FiltrosCatalogo({
   const sinTono = value?.sin_tono ?? searchParams.get('sin_tono') === '1'
   const buscarActual = value?.buscar ?? searchParams.get('buscar') ?? ''
   const [buscarLocal, setBuscarLocal] = useState(buscarActual)
+  const [encabezadoOculto, setEncabezadoOculto] = useState(false)
   const esProntaEntrega = origenActual.toUpperCase().includes('PRONTA')
+  const esTodos = origenActual.toUpperCase() === 'TODOS'
+  const esCpSolo = !esProntaEntrega && !esTodos
   const generosLista = generos.length ? generos : GENEROS_FALLBACK
 
   useEffect(() => { setBuscarLocal(buscarActual) }, [buscarActual])
+
+  useEffect(() => {
+    try {
+      setEncabezadoOculto(localStorage.getItem('rimec-web-filtros-collapsed') === '1')
+    } catch { /* ignore */ }
+  }, [])
+
+  const toggleEncabezado = () => {
+    setEncabezadoOculto(prev => {
+      const next = !prev
+      try { localStorage.setItem('rimec-web-filtros-collapsed', next ? '1' : '0') } catch { /* ignore */ }
+      return next
+    })
+  }
+
+  const resetCascadeAlCambiarRamo = {
+    marca_id: '',
+    linea_ids: [] as number[],
+    tipo_ids: [] as number[],
+    grupo_estilo_id: '',
+  }
 
   const aplicar = useCallback((opts: {
     grupo_estilo_id?: string
@@ -172,7 +196,8 @@ export function FiltrosCatalogo({
   const hayFiltros = !!(
     estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length ||
     colorsSel.length || quincenasSel.length || generoActual || tonosSel.length || sinTono ||
-    buscarActual.trim() || esProntaEntrega || ramoActual || depositoActual
+    buscarActual.trim() || esProntaEntrega || (ramoActual && ramoActual !== 'CALZADO') || depositoActual ||
+    (origenActual && origenActual.toUpperCase() !== 'TODOS' && !esProntaEntrega)
   )
 
   const activeEstiloLabel = estilos.find(e => String(e.id) === estiloIdActual)?.label
@@ -203,12 +228,23 @@ export function FiltrosCatalogo({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-end gap-2">
+          <button
+            type="button"
+            onClick={toggleEncabezado}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-all hover:border-slate-400 hover:bg-slate-50"
+            style={{ borderColor: '#e2e8f0', color: '#64748b' }}
+            aria-expanded={!encabezadoOculto}
+          >
+            {encabezadoOculto ? 'Mostrar filtros ▼' : 'Ocultar filtros ▲'}
+          </button>
+
         {hayFiltros && (
           <button
             onClick={() => {
               const empty: CatalogoFilterState = {
                 grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
-                origen_tipo: '', ramo_tipo: '', deposito_codigo: '',
+                origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
                 genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
               }
               if (onChange) {
@@ -216,7 +252,7 @@ export function FiltrosCatalogo({
                 onChange(empty)
               } else {
                 clearSharedCatalogFilters()
-                router.push('/')
+                router.push('/?origen_tipo=TODOS&ramo_tipo=CALZADO')
               }
             }}
             className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl
@@ -229,9 +265,10 @@ export function FiltrosCatalogo({
             Limpiar filtros
           </button>
         )}
+        </div>
       </div>
 
-      {/* ── CABECERA DE FILTROS (paridad Bazzar/Report) ── */}
+      {!encabezadoOculto ? (
       <div className="rounded-2xl border-2 border-slate-200 bg-white p-3 shadow-md space-y-2.5">
 
         {/* Origen — compra previa vs pronta entrega */}
@@ -239,8 +276,14 @@ export function FiltrosCatalogo({
           <FilterLabel>Origen</FilterLabel>
           <div className="flex flex-wrap gap-2">
             <MarcaPill
-              active={!esProntaEntrega}
-              onClick={() => aplicar({ origen_tipo: '', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
+              active={esTodos}
+              onClick={() => aplicar({ origen_tipo: 'TODOS', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
+            >
+              ⊞ Todos
+            </MarcaPill>
+            <MarcaPill
+              active={esCpSolo}
+              onClick={() => aplicar({ origen_tipo: 'CP', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
             >
               🚢 Compra previa
             </MarcaPill>
@@ -253,7 +296,7 @@ export function FiltrosCatalogo({
           </div>
         </div>
 
-        {esProntaEntrega && (
+        {(esProntaEntrega || esTodos) && (
           <>
             <div className="h-px bg-slate-200" />
             {/* tipo_v2 — trascendental PE (paridad Report PE) */}
@@ -267,14 +310,20 @@ export function FiltrosCatalogo({
                 <CategoriaBtn
                   active={ramoActual === 'CALZADO'}
                   dimmed={!!ramoActual && ramoActual !== 'CALZADO'}
-                  onClick={() => aplicar({ ramo_tipo: ramoActual === 'CALZADO' ? '' : 'CALZADO' })}
+                  onClick={() => aplicar({
+                    ramo_tipo: ramoActual === 'CALZADO' ? '' : 'CALZADO',
+                    ...(ramoActual === 'CALZADO' ? {} : resetCascadeAlCambiarRamo),
+                  })}
                 >
                   👟 Calzado
                 </CategoriaBtn>
                 <CategoriaBtn
                   active={ramoActual === 'CONFECCIONES'}
                   dimmed={!!ramoActual && ramoActual !== 'CONFECCIONES'}
-                  onClick={() => aplicar({ ramo_tipo: ramoActual === 'CONFECCIONES' ? '' : 'CONFECCIONES' })}
+                  onClick={() => aplicar({
+                    ramo_tipo: ramoActual === 'CONFECCIONES' ? '' : 'CONFECCIONES',
+                    ...(ramoActual === 'CONFECCIONES' ? {} : resetCascadeAlCambiarRamo),
+                  })}
                 >
                   👕 Confecciones
                 </CategoriaBtn>
@@ -330,14 +379,19 @@ export function FiltrosCatalogo({
         {marcas.length > 0 && (
           <FilterRow label="Marca">
             <ScrollPillsRow>
-              <CabeceraPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '' })}>
+              <CabeceraPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '', linea_ids: [], tonos: [], sin_tono: false })}>
                 Todas
               </CabeceraPill>
               {marcas.map(m => (
                 <CabeceraPill
                   key={m.id}
                   active={marcaIdActual === String(m.id)}
-                  onClick={() => aplicar({ marca_id: marcaIdActual === String(m.id) ? '' : String(m.id) })}
+                  onClick={() => aplicar({
+                    marca_id: marcaIdActual === String(m.id) ? '' : String(m.id),
+                    linea_ids: [],
+                    tonos: [],
+                    sin_tono: false,
+                  })}
                 >
                   {m.label.charAt(0) + m.label.slice(1).toLowerCase()}
                 </CabeceraPill>
@@ -349,14 +403,18 @@ export function FiltrosCatalogo({
         {estilos.length > 0 && (
           <FilterRow label="Estilo">
             <ScrollPillsRow>
-              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '' })}>
+              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '', linea_ids: [], tipo_ids: [] })}>
                 Todos
               </CabeceraPill>
               {estilos.map(e => (
                 <CabeceraPill
                   key={e.id}
                   active={estiloIdActual === String(e.id)}
-                  onClick={() => aplicar({ grupo_estilo_id: estiloIdActual === String(e.id) ? '' : String(e.id) })}
+                  onClick={() => aplicar({
+                    grupo_estilo_id: estiloIdActual === String(e.id) ? '' : String(e.id),
+                    linea_ids: [],
+                    tipo_ids: [],
+                  })}
                 >
                   {e.label}
                 </CabeceraPill>
@@ -459,6 +517,7 @@ export function FiltrosCatalogo({
           </div>
         )}
       </div>
+      ) : null}
     </div>
   )
 }

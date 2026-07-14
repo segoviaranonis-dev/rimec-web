@@ -34,6 +34,10 @@ type Props = {
   onImageClick?: () => void
   imageOverlay?: ReactNode
   ventaFooter?: ReactNode
+  /** Oculta badge naranja sobre la foto (pares van al panel origen). */
+  hideStockBadge?: boolean
+  /** cp = azul suave · pe = verde · fusion = pulso dual */
+  shellVariant?: 'cp' | 'pe' | 'fusion'
 }
 
 /** Tarjeta catálogo — paridad Tablet `TarjetaCajaDeposito` colapsada. */
@@ -57,8 +61,28 @@ export function CatalogTarjetaDeposito({
   onImageClick,
   imageOverlay,
   ventaFooter,
+  hideStockBadge = false,
+  shellVariant,
 }: Props) {
   const widthClass = compactGrid ? CATALOG_CARD_COMPACT_CLASS : CATALOG_CARD_WIDTH_CLASS
+
+  const shellClass =
+    shellVariant === 'cp'
+      ? 'border-blue-200/90 bg-gradient-to-b from-blue-50/95 via-white to-white'
+      : shellVariant === 'pe'
+        ? 'border-emerald-200/90 bg-gradient-to-b from-emerald-50/95 via-white to-white'
+        : shellVariant === 'fusion'
+          ? 'catalog-card-fusion-pulse border-violet-200/80 bg-gradient-to-b from-violet-50/40 via-white to-white'
+          : 'border-slate-300 bg-white'
+
+  const footerShellClass =
+    shellVariant === 'cp'
+      ? 'border-blue-100/80 bg-blue-50/30'
+      : shellVariant === 'pe'
+        ? 'border-emerald-100/80 bg-emerald-50/30'
+        : shellVariant === 'fusion'
+          ? 'border-violet-100/80 bg-white/80'
+          : 'border-slate-200 bg-white'
 
   const image = (
     <ProductImage
@@ -78,7 +102,7 @@ export function CatalogTarjetaDeposito({
 
   return (
     <div className={`flex flex-col ${widthClass}`}>
-      <article className="flex flex-col overflow-hidden rounded-xl border border-slate-300 bg-white">
+      <article className={`flex flex-col overflow-hidden rounded-xl border ${shellClass}`}>
         <div className="flex items-center justify-between gap-1 px-2 pb-0.5 pt-1.5">
           <div className="flex min-w-0 flex-1 items-center gap-1">
             <p className="min-w-0 truncate text-[9px] font-normal uppercase tracking-wide text-rimec-azul sm:text-[10px]">
@@ -86,9 +110,11 @@ export function CatalogTarjetaDeposito({
             </p>
             {esPromo ? <PromoCasoBadge size="compact" /> : null}
           </div>
-          <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white sm:px-2 sm:text-[10px]">
-            {Math.round(stockPares)} p
-          </span>
+          {!hideStockBadge && (
+            <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white sm:px-2 sm:text-[10px]">
+              {Math.round(stockPares)} p
+            </span>
+          )}
         </div>
 
         {onImageClick ? (
@@ -119,7 +145,7 @@ export function CatalogTarjetaDeposito({
       </article>
 
       {ventaFooter ? (
-        <div className="mt-1.5 rounded-xl border border-slate-200 bg-white px-2 py-2 shadow-sm">
+        <div className={`mt-1.5 rounded-xl border px-2 py-2 shadow-sm ${footerShellClass}`}>
           {ventaFooter}
         </div>
       ) : null}

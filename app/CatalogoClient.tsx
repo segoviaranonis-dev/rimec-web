@@ -4,12 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { CatalogoGrid } from './CatalogoGrid'
 import { FiltrosCatalogo, type CatalogoFilterState } from './components/FiltrosCatalogo'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
+import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
+import { isCatalogoOrigenPe, isCatalogoOrigenTodos } from '@/lib/catalogoFilters'
 import {
   CARD_PAGE_LIMIT,
   catalogWarmCacheKey,
   CP_DEFAULT_FILTERS,
+  TODOS_DEFAULT_FILTERS,
   ensureDualCatalogWarm,
   ensurePeCatalogWarm,
+  ensureTodosCatalogWarm,
   getPageWarmCache,
   getScrollWarmCache,
   isCatalogWarmEnough,
@@ -62,6 +67,10 @@ function filtersMatchDefault(a: CatalogoFilterState, b: CatalogoFilterState) {
   return catalogWarmCacheKey(a) === catalogWarmCacheKey(b)
 }
 
+function isTodosDefault(filters: CatalogoFilterState) {
+  return filtersMatchDefault(filters, TODOS_DEFAULT_FILTERS)
+}
+
 function isCpDefault(filters: CatalogoFilterState) {
   return filtersMatchDefault(filters, CP_DEFAULT_FILTERS)
 }
@@ -83,8 +92,9 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [tonoCatalog, setTonoCatalog] = useState<ColorEstandar[]>(COLORES_ESTANDAR_DEFAULT)
   const [colores, setColores] = useState<string[]>([])
   const [quincenas, setQuincenas] = useState<QuincenaItem[]>([])
+  const [tonosDisponibles, setTonosDisponibles] = useState<string[]>([])
 
-  const [productos, setProductos] = useState<TarjetaCatalogo[]>([])
+  const [productos, setProductos] = useState<TarjetaGrilla[]>([])
   const [rowFrom, setRowFrom] = useState(0)
   const [excludeKeys, setExcludeKeys] = useState<string[]>([])
   const [hasMore, setHasMore] = useState(true)
@@ -143,18 +153,25 @@ export function CatalogoClient({ initialFilters }: Props) {
 
     async function loadFiltros(attempt = 0) {
       try {
-        const params = new URLSearchParams()
-        if (filters.origen_tipo) params.set('origen_tipo', filters.origen_tipo)
-        if (filters.ramo_tipo) params.set('ramo_tipo', filters.ramo_tipo)
-        if (filters.deposito_codigo) params.set('deposito_codigo', filters.deposito_codigo)
-        const qs = params.toString() ? `?${params}` : ''
-        const r = await fetch(`/api/catalogo/filtros${qs}`, { credentials: 'same-origin' })
+        const qs = filterToSearchParams(filters).toString()
+        const r = await fetch(`/api/catalogo/filtros${qs ? `?${qs}` : ''}`, { credentials: 'same-origin' })
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const json = await r.json()
         if (cancelled || json.error) return
-        setFiltrosMeta(json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] })
+        const meta = json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] }
+        setFiltrosMeta(meta)
         setColores(json.colores ?? [])
         setQuincenas(json.quincenas ?? [])
+        setTonosDisponibles(json.tonosDisponibles ?? [])
+
+        const lineaIdsValid = new Set((meta.todasLineas as FilterItem[]).map(l => l.id))
+        const invalidLineas = filters.linea_ids.filter(id => !lineaIdsValid.has(id))
+        if (invalidLineas.length) {
+          setFilters(prev => ({
+            ...prev,
+            linea_ids: prev.linea_ids.filter(id => lineaIdsValid.has(id)),
+          }))
+        }
       } catch {
         if (!cancelled && attempt < 2) {
           setTimeout(() => loadFiltros(attempt + 1), 800 * (attempt + 1))
@@ -162,7 +179,7 @@ export function CatalogoClient({ initialFilters }: Props) {
       }
     }
 
-    if (isCpDefault(filters)) {
+    if (isCpDefault(filters) && !isCatalogoOrigenTodos(filters)) {
       runWhenIdle(() => {
         if (!cancelled) void loadFiltros()
       })
@@ -171,7 +188,21 @@ export function CatalogoClient({ initialFilters }: Props) {
     }
 
     return () => { cancelled = true }
-  }, [filters.origen_tipo ?? '', filters.ramo_tipo ?? '', filters.deposito_codigo ?? ''])
+  }, [
+    filters.origen_tipo ?? '',
+    filters.ramo_tipo ?? '',
+    filters.deposito_codigo ?? '',
+    filters.marca_id ?? '',
+    filters.grupo_estilo_id ?? '',
+    filters.genero_codigo ?? '',
+    filters.linea_ids.join(','),
+    filters.tipo_ids.join(','),
+    filters.colores.join(','),
+    filters.quincenas.join(','),
+    filters.tonos?.join(',') ?? '',
+    filters.sin_tono ? '1' : '',
+    filters.buscar ?? '',
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -183,13 +214,20 @@ export function CatalogoClient({ initialFilters }: Props) {
         })
         .catch(() => {})
     }
-    if (isCpDefault(filters)) {
+    if (isCpDefault(filters) && !isCatalogoOrigenTodos(filters)) {
       runWhenIdle(loadTonos)
     } else {
       loadTonos()
     }
     return () => { cancelled = true }
-  }, [filters.origen_tipo ?? ''])
+  }, [])
+
+  const tonoCatalogFiltrado = useMemo(() => {
+    if (!tonosDisponibles.length) return tonoCatalog
+    const set = new Set(tonosDisponibles.map(t => t.toLowerCase()))
+    const filtrado = tonoCatalog.filter(c => set.has(c.etiqueta.toLowerCase()))
+    return filtrado.length ? filtrado : tonoCatalog
+  }, [tonoCatalog, tonosDisponibles.join('|')])
 
   const filtersQueryString = useCallback(
     (f: CatalogoFilterState) => filterToSearchParams(f).toString(),
@@ -208,7 +246,7 @@ export function CatalogoClient({ initialFilters }: Props) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error cargando catálogo')
       return json as {
-        tarjetas: TarjetaCatalogo[]
+        tarjetas: TarjetaGrilla[]
         nextRowFrom: number
         hasMore: boolean
         excludeCardKeys: string[]
@@ -219,7 +257,8 @@ export function CatalogoClient({ initialFilters }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    const esPe = (filters.origen_tipo ?? '').toUpperCase().includes('PRONTA')
+    const esPe = isCatalogoOrigenPe(filters)
+    const esTodos = isCatalogoOrigenTodos(filters)
     const cacheKey = catalogWarmCacheKey(filters)
     const cached = getPageWarmCache(cacheKey)
     const cacheReady = isCatalogWarmEnough(cached)
@@ -251,7 +290,8 @@ export function CatalogoClient({ initialFilters }: Props) {
       return () => { cancelled = true }
     }
 
-    if (esPe) ensurePeCatalogWarm()
+    if (esTodos) ensureTodosCatalogWarm()
+    else if (esPe) ensurePeCatalogWarm()
 
     fetchPage({ fromRow: 0, exclude: [], currentFilters: filters })
       .then(json => {
@@ -261,7 +301,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         setExcludeKeys(json.excludeCardKeys ?? [])
         setHasMore(Boolean(json.hasMore))
         warmCatalogImages(json.tarjetas ?? [])
-        if (isCpDefault(filters) || esPe) {
+        if (isTodosDefault(filters) || isCpDefault(filters) || esPe) {
           storePageWarmCache(cacheKey, {
             tarjetas: json.tarjetas ?? [],
             nextRowFrom: json.nextRowFrom ?? 0,
@@ -351,38 +391,38 @@ export function CatalogoClient({ initialFilters }: Props) {
     })
   }
 
-  const pps = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          productos.flatMap(p =>
-            p.variantes.map(v => [v.pp_nro, { nro: v.pp_nro }] as const),
-          ),
-        ).values(),
-      ).sort((a, b) => a.nro.localeCompare(b.nro)),
-    [productos],
-  )
+  const pps = useMemo(() => {
+    const lotes = productos.flatMap(p => (isTarjetaFusionada(p) ? p.lotes : [p]))
+    return Array.from(
+      new Map(
+        lotes.flatMap(p =>
+          p.variantes.map(v => [v.pp_nro, { nro: v.pp_nro }] as const),
+        ),
+      ).values(),
+    ).sort((a, b) => a.nro.localeCompare(b.nro))
+  }, [productos])
 
-  const totalPares = useMemo(
-    () =>
-      productos.reduce(
-        (s, p) =>
-          s +
-          p.variantes.reduce((vs, v) => {
-            const ppc = resolveParesPorCaja({
-              pares_por_caja: v.pares_por_caja,
-              cantidad_cajas: v.cantidad_cajas,
-              saldo_pares: v.saldo_pares,
-              origen_tipo: p.origen_tipo,
-              det_id: v.det_id,
-              pp_id: v.pp_id,
-            })
-            return vs + Math.max(0, v.cajas_disponibles * ppc)
-          }, 0),
-        0,
-      ),
-    [productos],
-  )
+  const totalPares = useMemo(() => {
+    function paresDeLote(p: TarjetaCatalogo) {
+      return p.variantes.reduce((vs, v) => {
+        const ppc = resolveParesPorCaja({
+          pares_por_caja: v.pares_por_caja,
+          cantidad_cajas: v.cantidad_cajas,
+          saldo_pares: v.saldo_pares,
+          origen_tipo: p.origen_tipo,
+          det_id: v.det_id,
+          pp_id: v.pp_id,
+        })
+        return vs + Math.max(0, v.cajas_disponibles * ppc)
+      }, 0)
+    }
+    return productos.reduce((s, p) => {
+      if (isTarjetaFusionada(p)) {
+        return s + p.lotes.reduce((ls, l) => ls + paresDeLote(l), 0)
+      }
+      return s + paresDeLote(p)
+    }, 0)
+  }, [productos])
 
   const isInitial =
     filters.grupo_estilo_id === initialFilters.grupo_estilo_id &&
@@ -399,7 +439,7 @@ export function CatalogoClient({ initialFilters }: Props) {
     Boolean(filters.sin_tono) === Boolean(initialFilters.sin_tono) &&
     (filters.buscar ?? '') === (initialFilters.buscar ?? '')
 
-  const esProntaEntrega = (filters.origen_tipo ?? '').toUpperCase().includes('PRONTA')
+  const esProntaEntrega = isCatalogoOrigenPe(filters)
 
   return (
     <>
@@ -414,7 +454,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         lineas={filtrosMeta.todasLineas}
         tipos={filtrosMeta.todosTipos}
         generos={filtrosMeta.todosGeneros}
-        tonoCatalog={tonoCatalog}
+        tonoCatalog={tonoCatalogFiltrado}
         colores={colores}
         quincenas={quincenas}
         totalModelos={productos.length}
@@ -461,9 +501,9 @@ export function CatalogoClient({ initialFilters }: Props) {
                 tipo_ids: [],
                 colores: [],
                 quincenas: [],
-                origen_tipo: filters.origen_tipo ?? '',
-                ramo_tipo: filters.ramo_tipo ?? '',
-                deposito_codigo: filters.deposito_codigo ?? '',
+                origen_tipo: 'TODOS',
+                ramo_tipo: 'CALZADO',
+                deposito_codigo: '',
                 genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
               })
             }

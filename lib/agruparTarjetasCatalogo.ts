@@ -15,6 +15,7 @@ import {
   type TarjetaShellStyle,
 } from '@/lib/catalogoOrigen'
 import { enrichImagenUrls } from '@/lib/productImage'
+import { gradasFmtFromRow } from '@/lib/gradasFmt'
 import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
 
 export interface RimecVariante {
@@ -78,16 +79,6 @@ export interface TarjetaCatalogo {
   tipo_1_id?: number
   descp_tipo_1?: string | null
   variantes: RimecVariante[]
-}
-
-function gradasFmtFromJson(grades_json: StockRow['grades_json']): string {
-  if (!grades_json) return ''
-  const g = grades_json
-  const keys = Object.keys(g).sort(
-    (a, b) => parseFloat(a.split('/')[0]) - parseFloat(b.split('/')[0]),
-  )
-  if (keys.length === 0) return ''
-  return `${keys[0]}(${keys.map(k => g[k]).join('-')})${keys[keys.length - 1]}`
 }
 
 export function agruparTarjetasCatalogo(
@@ -154,6 +145,9 @@ export function agruparTarjetasCatalogo(
       material: item.material_code,
       color: item.color_code,
       imagenNombre: item.imagen_url,
+      proveedorImportacionId: item.proveedor_importacion_id ?? null,
+      tipoV2Id: item.tipo_v2_id ?? null,
+      imagenColorExcel: item.imagen_color_excel ?? null,
     })
 
     cardMap.get(cardKey)!.variantes.push({
@@ -170,7 +164,7 @@ export function agruparTarjetasCatalogo(
       descp_color: item.descp_color,
       color_hex: item.color_hex,
       tono_canon: item.color_tono_canon ?? null,
-      gradas_fmt: gradasFmtFromJson(item.grades_json),
+      gradas_fmt: gradasFmtFromRow(item),
       imagen_nombre: item.imagen_url,
       imagen_url: imgs.imagen_url_thumb ?? imgs.imagen_url_flat ?? '',
       imagen_url_thumb: imgs.imagen_url_thumb,
@@ -186,6 +180,7 @@ export function agruparTarjetasCatalogo(
         cantidad_pares: item.cantidad_pares,
         saldo_pares: item.saldo_pares,
         grades_json: item.grades_json,
+        grada: item.grada,
         origen_tipo: item.origen_tipo,
         det_id: item.det_id,
         pp_id: item.pp_id,

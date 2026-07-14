@@ -6,6 +6,6 @@ export function formatearQuincena(fechaISO: string | null | undefined): string {
   const mes  = fecha.toLocaleString('es-PY', { month: 'long' })
   const anio = fecha.getFullYear()
   const mesCapital = mes.charAt(0).toUpperCase() + mes.slice(1)
-  const quincena = dia <= 15 ? '1ra Quincena' : '2da Quincena'
+  const quincena = dia <= 15 ? '1ra Q.' : '2da Q.'
   return `${quincena} de ${mesCapital} ${anio}`
 }

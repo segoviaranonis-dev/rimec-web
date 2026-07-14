@@ -21,6 +21,13 @@ import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
 import { esCasoPromocional } from '@/lib/precioLista'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import {
+  isTarjetaFusionada,
+  varianteHeroFusionada,
+  type TarjetaCatalogoFusionada,
+  type TarjetaGrilla,
+} from '@/lib/fusionTarjetasCatalogo'
+import { CatalogPanelOrigen } from '@/components/catalog/CatalogPanelOrigen'
 
 export type { RimecVariante, TarjetaCatalogo }
 /** @deprecated Usar TarjetaCatalogo — alias para compatibilidad interna */
@@ -584,28 +591,27 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
 
   const ventaFooter = (
     <>
-      <span
-        className="mb-1.5 inline-flex max-w-full items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
-        style={origenChipStyle(shell)}
-        title={esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-      >
-        {esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-      </span>
-      {!esPe ? (
-        <>
-          <p className="mb-1 line-clamp-2 text-[10px] leading-snug text-slate-600">
-            {p.descp_material} · {v.descp_color}
-          </p>
-          {v.gradas_fmt ? (
-            <p className="mb-2 font-mono text-[9px] font-bold text-slate-500">{v.gradas_fmt}</p>
-          ) : (
-            <div className="mb-2 min-h-[14px]" aria-hidden />
-          )}
-        </>
+      <div className="mb-1.5 flex items-center justify-between gap-1">
+        <span
+          className="inline-flex max-w-[75%] items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
+          style={origenChipStyle(shell)}
+          title={esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
+        >
+          {esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
+        </span>
+        {paresStock > 0 ? (
+          <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white">
+            {Math.round(paresStock)} p
+          </span>
+        ) : null}
+      </div>
+      <p className="mb-1 line-clamp-2 text-[10px] leading-snug text-slate-600">
+        {p.descp_material} · {v.descp_color}
+      </p>
+      {v.gradas_fmt ? (
+        <p className="mb-2 font-mono text-[9px] font-bold text-slate-500">{v.gradas_fmt}</p>
       ) : (
-        <p className="mb-2 line-clamp-2 text-[10px] leading-snug text-slate-600">
-          {p.descp_material} · {v.descp_color}
-        </p>
+        <div className="mb-2 min-h-[14px]" aria-hidden />
       )}
 
       <CatalogTonosFila
@@ -624,6 +630,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   )
 
   const esPromo = esCasoPromocional(p.descp_caso)
+  const shellVariant = esPe ? 'pe' as const : 'cp' as const
 
   return (
     <>
@@ -631,6 +638,8 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
         marca={p.descp_marca}
         esPromo={esPromo}
         stockPares={paresStock}
+        hideStockBadge
+        shellVariant={shellVariant}
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
         material={v.material_code}
@@ -665,6 +674,105 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   )
 }
 
+function paresEnTarjeta(p: TarjetaCatalogo): number {
+  return p.variantes
+    .filter(v => v.cajas_disponibles > 0)
+    .reduce((s, v) => {
+      const ppc = resolveParesPorCaja({
+        pares_por_caja: v.pares_por_caja,
+        cantidad_cajas: v.cantidad_cajas,
+        saldo_pares: v.saldo_pares,
+        origen_tipo: p.origen_tipo,
+        det_id: v.det_id,
+        pp_id: v.pp_id,
+      })
+      return s + Math.max(0, v.cajas_disponibles * ppc)
+    }, 0)
+}
+
+function TarjetaProductoFusion({
+  producto: p,
+  onNeedSession,
+}: {
+  producto: TarjetaCatalogoFusionada
+  onNeedSession: () => void
+}) {
+  const [lightbox, setLightbox] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
+  const activaStore = useSesion(s => s.activa)
+  const listaPrecioId = useSesion(s => s.listaPrecioId)
+  const activa = mounted ? activaStore : false
+
+  const { lote: loteHero, variante: vHero } = varianteHeroFusionada(p)
+  const paresStock = p.lotes.reduce((s, l) => s + paresEnTarjeta(l), 0)
+  const precioHero = precioCatalogo(vHero, listaPrecioId, loteHero.descp_caso, loteHero.origen_tipo)
+  const precioTarjeta = activa && precioHero && precioHero > 0 ? precioHero : null
+  const esPromo = p.lotes.some(l => esCasoPromocional(l.descp_caso))
+
+  const ventaFooter = (
+    <div className="space-y-2">
+      {p.lotes.map(lote => (
+        <CatalogPanelOrigen
+          key={lote.cardKey}
+          lote={lote}
+          activa={activa}
+          listaPrecioId={listaPrecioId}
+          onNeedSession={onNeedSession}
+          stacked={p.lotes.length > 1}
+        />
+      ))}
+    </div>
+  )
+
+  return (
+    <>
+      <CatalogTarjetaDeposito
+        marca={p.descp_marca}
+        esPromo={esPromo}
+        stockPares={paresStock}
+        hideStockBadge
+        shellVariant="fusion"
+        linea={p.linea_codigo}
+        referencia={p.referencia_codigo}
+        material={vHero.material_code}
+        color={vHero.color_code}
+        imagenNombre={vHero.imagen_nombre}
+        thumbSrc={vHero.imagen_url_thumb}
+        flatSrc={vHero.imagen_url_flat}
+        thumbCandidates={vHero.imagen_candidates_thumb}
+        alt={`${p.linea_codigo}-${p.referencia_codigo}`}
+        precio={precioTarjeta}
+        priority
+        compactGrid
+        onImageClick={() => setLightbox(true)}
+        ventaFooter={ventaFooter}
+      />
+      {lightbox && (
+        <Lightbox
+          producto={loteHero}
+          initialIdx={Math.max(0, loteHero.variantes.findIndex(vv => vv.det_id === vHero.det_id))}
+          onClose={() => setLightbox(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function TarjetaGrillaItem({
+  producto,
+  onNeedSession,
+}: {
+  producto: TarjetaGrilla
+  onNeedSession: () => void
+}) {
+  if (isTarjetaFusionada(producto)) {
+    return <TarjetaProductoFusion producto={producto} onNeedSession={onNeedSession} />
+  }
+  return <TarjetaProducto producto={producto} onNeedSession={onNeedSession} />
+}
+
 
 function Pill({ active, onClick, children }: { active: boolean, onClick: () => void, children: React.ReactNode }) {
   return (
@@ -686,7 +794,7 @@ export function CatalogoGrid({
   loadingMore = false,
   onLoadMore,
 }: {
-  productos: TarjetaCatalogo[]
+  productos: TarjetaGrilla[]
   pps: any[]
   hasMore?: boolean
   loadingMore?: boolean
@@ -719,22 +827,10 @@ export function CatalogoGrid({
   const cartCount = cartItems.length
 
   const grillaPares = filtered.reduce((sum, p) => {
-    return (
-      sum +
-      p.variantes
-        .filter(v => v.cajas_disponibles > 0)
-        .reduce((s, v) => {
-          const ppc = resolveParesPorCaja({
-            pares_por_caja: v.pares_por_caja,
-            cantidad_cajas: v.cantidad_cajas,
-            saldo_pares: v.saldo_pares,
-            origen_tipo: p.origen_tipo,
-            det_id: v.det_id,
-            pp_id: v.pp_id,
-          })
-          return s + Math.max(0, v.cajas_disponibles * ppc)
-        }, 0)
-    )
+    if (isTarjetaFusionada(p)) {
+      return sum + p.lotes.reduce((s, l) => s + paresEnTarjeta(l), 0)
+    }
+    return sum + paresEnTarjeta(p)
   }, 0)
 
   const handleGenerarPDFCatalogo = async () => {
@@ -743,24 +839,27 @@ export function CatalogoGrid({
     setGenerandoPDF(true)
     try {
       // Preparar datos: solo productos visibles (respetando filtros)
-      const productosParaPDF = filtered.map(p => ({
-        linea_codigo: p.linea_codigo,
-        referencia_codigo: p.referencia_codigo,
-        descp_material: p.descp_material,
-        descp_marca: p.descp_marca,
-        quincena_desc: p.variantes[0]?.quincena_desc || null,
-        variantes: p.variantes
-          .filter(v => v.cajas_disponibles > 0)
-          .map(v => ({
-            det_id: v.det_id,
-            descp_color: v.descp_color,
-            imagen_url: v.imagen_url,
-            gradas_fmt: v.gradas_fmt,
-            cajas_disponibles: v.cajas_disponibles,
-            precio_base: precioCatalogo(v, listaPrecioId, p.descp_caso, p.origen_tipo) || 0,
-            lista_precio_id: listaPrecioId,
-          })),
-      }))
+      const productosParaPDF = filtered.flatMap(p => {
+        const lotes = isTarjetaFusionada(p) ? p.lotes : [p]
+        return lotes.map(lote => ({
+          linea_codigo: lote.linea_codigo,
+          referencia_codigo: lote.referencia_codigo,
+          descp_material: lote.descp_material,
+          descp_marca: lote.descp_marca,
+          quincena_desc: lote.variantes[0]?.quincena_desc || null,
+          variantes: lote.variantes
+            .filter(v => v.cajas_disponibles > 0)
+            .map(v => ({
+              det_id: v.det_id,
+              descp_color: v.descp_color,
+              imagen_url: v.imagen_url,
+              gradas_fmt: v.gradas_fmt,
+              cajas_disponibles: v.cajas_disponibles,
+              precio_base: precioCatalogo(v, listaPrecioId, lote.descp_caso, lote.origen_tipo) || 0,
+              lista_precio_id: listaPrecioId,
+            })),
+        }))
+      })
 
       const catalogoData = {
         cliente_nombre: cliente.descp_cliente || 'Cliente',
@@ -893,7 +992,7 @@ export function CatalogoGrid({
       ) : (
         <CatalogGrillaDeposito totalModelos={filtered.length} totalPares={grillaPares} compactStats>
           {filtered.map(p => (
-            <TarjetaProducto key={p.cardKey} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
+            <TarjetaGrillaItem key={p.cardKey} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
           ))}
         </CatalogGrillaDeposito>
       )}

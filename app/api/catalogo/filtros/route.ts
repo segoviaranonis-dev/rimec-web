@@ -1,65 +1,124 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
 import { fetchCatalogoMetaRows } from '@/lib/catalogoData'
 import {
   applyMemoryFilters,
   applyPeDepositoQuery,
+  applyNonOrigenSqlFilters,
+  applySqlFiltersToQuery,
   buildColoresFromRows,
   buildFiltrosFromRows,
   buildQuincenasFromRows,
-  catalogoStockView,
+  buildTonosDisponiblesFromRows,
+  isCatalogoOrigenTodos,
   normalizeOrigenCatalogo,
+  parseCatalogoFiltersFromSearchParams,
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import type { StockRow } from '@/app/catalogo-types'
 import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
+import { fetchCatalogoMetaViaRpc, metaRpcToFiltrosResponse } from '@/lib/catalogoMetaRpc'
+import { supabase } from '@/lib/supabase'
+import { unstable_cache } from 'next/cache'
 
 export const dynamic = 'force-dynamic'
 
-function parseFilters(req: NextRequest): CatalogoFilterStateExtended {
-  const sp = req.nextUrl.searchParams
-  return {
-    grupo_estilo_id: sp.get('grupo_estilo_id') ?? '',
-    marca_id: sp.get('marca_id') ?? '',
-    linea_ids: [],
-    tipo_ids: [],
-    colores: [],
-    quincenas: [],
-    origen_tipo: normalizeOrigenCatalogo(sp.get('origen_tipo')),
-    ramo_tipo: (sp.get('ramo_tipo') as CatalogoFilterStateExtended['ramo_tipo']) ?? '',
-    deposito_codigo: (sp.get('deposito_codigo') as CatalogoFilterStateExtended['deposito_codigo']) ?? '',
+async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promise<StockRow[]> {
+  if (isCatalogoOrigenTodos(filters)) {
+    const peFilters: CatalogoFilterStateExtended = {
+      ...filters,
+      origen_tipo: 'PRONTA_ENTREGA',
+      quincenas: [],
+    }
+
+    if (filters.ramo_tipo === 'CONFECCIONES') {
+      const peRes = await fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
+        applySql: q => applyPeDepositoQuery(applyNonOrigenSqlFilters(q, peFilters), filters),
+      })
+      if (peRes.error) throw new Error(peRes.error.message)
+      const vendibles = (peRes.data ?? []).filter(r => cajasDisponiblesDeFila(r) > 0)
+      const enriched = await enrichCatalogoRows(vendibles as StockRow[])
+      return applyMemoryFilters(enriched, filters)
+    }
+
+    const cpFilters: CatalogoFilterStateExtended = {
+      ...filters,
+      origen_tipo: 'TRÁNSITO_PP',
+      ramo_tipo: filters.ramo_tipo === 'CALZADO' ? 'CALZADO' : '',
+      deposito_codigo: '',
+    }
+
+    const [cpRes, peRes] = await Promise.all([
+      fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_rimec', {
+        applySql: q => applyNonOrigenSqlFilters(q, cpFilters),
+      }),
+      fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
+        applySql: q => applyPeDepositoQuery(applyNonOrigenSqlFilters(q, peFilters), filters),
+      }),
+    ])
+    if (cpRes.error) throw new Error(cpRes.error.message)
+    if (peRes.error) throw new Error(peRes.error.message)
+
+    const merged = [...(cpRes.data ?? []), ...(peRes.data ?? [])]
+    const vendibles = merged.filter(r => cajasDisponiblesDeFila(r) > 0)
+    const enriched = await enrichCatalogoRows(vendibles as StockRow[])
+    return applyMemoryFilters(enriched, filters)
   }
+
+  const view = normalizeOrigenCatalogo(filters.origen_tipo) === 'PRONTA_ENTREGA'
+    ? 'v_stock_pe_rimec'
+    : 'v_stock_rimec'
+
+  const { data, error } = await fetchCatalogoMetaRows<StockRow>(supabase, view, {
+    applySql: q => {
+      if (view === 'v_stock_pe_rimec') {
+        return applyPeDepositoQuery(applyNonOrigenSqlFilters(q, { ...filters, quincenas: [] }), filters)
+      }
+      return applySqlFiltersToQuery(q, filters)
+    },
+  })
+  if (error) throw new Error(error.message)
+
+  const vendibles = (data ?? []).filter(r => cajasDisponiblesDeFila(r) > 0)
+  const enriched = await enrichCatalogoRows(vendibles as StockRow[])
+  return applyMemoryFilters(enriched, filters)
 }
 
-/** Sidebar catálogo — meta alineada con filtros activos (origen · ramo · depósito). */
+const cachedMetaRpc = unstable_cache(
+  async (key: string) => {
+    const filters = JSON.parse(key) as CatalogoFilterStateExtended
+    return fetchCatalogoMetaViaRpc(filters)
+  },
+  ['catalogo-meta-rpc'],
+  { revalidate: 300 },
+)
+
+/** GET — meta sidebar en cascada (marca → líneas → tonos). */
 export async function GET(req: NextRequest) {
   try {
-    const filters = parseFilters(req)
-    const view = catalogoStockView(filters)
+    const filters = parseCatalogoFiltersFromSearchParams(req.nextUrl.searchParams)
+    const cacheKey = JSON.stringify(filters)
 
-    const { data, error } = await fetchCatalogoMetaRows<StockRow>(supabase, view, {
-      applySql: q => {
-        let query = q
-        if (filters.marca_id) query = query.eq('marca_id', Number(filters.marca_id))
-        if (view === 'v_stock_pe_rimec') {
-          query = applyPeDepositoQuery(query, filters)
-        }
-        return query
-      },
-    })
-    if (error) throw new Error(error.message)
+    const rpcMeta = await cachedMetaRpc(cacheKey)
+    if (rpcMeta) {
+      const payload = metaRpcToFiltrosResponse(rpcMeta)
+      return NextResponse.json({
+        ...payload,
+        totalFilas: null,
+        origen: filters.origen_tipo,
+        metaSource: 'rpc',
+      })
+    }
 
-    const vendibles = (data ?? []).filter(r => cajasDisponiblesDeFila(r) > 0)
-    const enriched = await enrichCatalogoRows(vendibles as StockRow[])
-    const rows = applyMemoryFilters(enriched, filters)
-
+    const rows = await rowsForFiltrosLegacy(filters)
     return NextResponse.json({
       filtros: buildFiltrosFromRows(rows),
       colores: buildColoresFromRows(rows),
       quincenas: buildQuincenasFromRows(rows),
+      tonosDisponibles: buildTonosDisponiblesFromRows(rows),
       totalFilas: rows.length,
       origen: filters.origen_tipo,
+      metaSource: 'legacy',
     })
   } catch (err) {
     console.error('[catalogo/filtros]', err)

@@ -224,9 +224,24 @@ function IconEstadisticas({ className }: { className?: string }) {
 function HeaderShell({ data: initialData, esPe, esEstadisticas }: { data: HeaderData; esPe: boolean; esEstadisticas: boolean }) {
   const [data, setData] = useState(initialData)
   const [open, setOpen]   = useState<MegaKey>(null)
+  const [navOculto, setNavOculto] = useState(false)
   const closeTimer        = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [user, setUser]   = useState<{ name: string; categoria: string } | null>(null)
   const router            = useRouter()
+
+  useEffect(() => {
+    try {
+      setNavOculto(localStorage.getItem('rimec-web-header-collapsed') === '1')
+    } catch { /* ignore */ }
+  }, [])
+
+  const toggleNav = () => {
+    setNavOculto(prev => {
+      const next = !prev
+      try { localStorage.setItem('rimec-web-header-collapsed', next ? '1' : '0') } catch { /* ignore */ }
+      return next
+    })
+  }
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -286,6 +301,8 @@ function HeaderShell({ data: initialData, esPe, esEstadisticas }: { data: Header
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 transition-all duration-300">
 
+      {!navOculto && (
+      <>
       {/* Announcement bar */}
       <div className="text-white text-center text-[10px] tracking-[0.2em] uppercase py-2.5 px-4 font-medium"
            style={{ backgroundColor: RIMEC_BLUE }}>
@@ -319,7 +336,7 @@ function HeaderShell({ data: initialData, esPe, esEstadisticas }: { data: Header
                 {navItem('hombres', data.hombres.label)}
               </>
             )}
-            <Link href={esPe ? '/?origen_tipo=PRONTA_ENTREGA' : '/'}
+            <Link href={esPe ? '/?origen_tipo=PRONTA_ENTREGA' : '/?origen_tipo=TODOS&ramo_tipo=CALZADO'}
               className="text-sm tracking-wide text-gray-800 hover:text-[#0EA5E9] transition-colors py-5 border-b-2 border-transparent">
               Catálogo
             </Link>
@@ -327,6 +344,14 @@ function HeaderShell({ data: initialData, esPe, esEstadisticas }: { data: Header
 
           {/* Acciones */}
           <div className="flex items-center gap-4 text-sm font-medium tracking-wide text-gray-800">
+            <button
+              type="button"
+              onClick={toggleNav}
+              className="hidden md:inline text-xs text-gray-500 hover:text-[#0EA5E9]"
+              aria-expanded={!navOculto}
+            >
+              Ocultar menú ▲
+            </button>
             <SearchBar />
             {user && <NotificationBell />}
             <Link href="/carrito" className="hover:text-[#0EA5E9] transition-colors ml-2">
@@ -370,10 +395,30 @@ function HeaderShell({ data: initialData, esPe, esEstadisticas }: { data: Header
         </div>
       </div>
 
-      {/* Overlay cierra mega menus */}
       {open && (
         <div className="fixed inset-0 top-[calc(4rem+2.25rem)] z-30"
           onMouseEnter={leave} onClick={() => setOpen(null)} />
+      )}
+      </>
+      )}
+
+      {navOculto && (
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-12 flex items-center justify-between h-11 gap-3">
+          <Link href="/" className="font-serif text-lg font-bold" style={{ color: RIMEC_BLUE }}>RIMEC</Link>
+          <button
+            type="button"
+            onClick={toggleNav}
+            className="text-xs font-semibold text-gray-600 hover:text-[#0EA5E9] px-3 py-1 rounded-lg border border-gray-200"
+          >
+            Mostrar menú ▼
+          </button>
+          <div className="flex items-center gap-3 text-xs font-medium">
+            <Link href="/carrito" className="hover:text-[#0EA5E9]">Carrito</Link>
+            {user && (
+              <button type="button" onClick={handleLogout} className="hover:text-red-600">Salir</button>
+            )}
+          </div>
+        </div>
       )}
     </header>
   )

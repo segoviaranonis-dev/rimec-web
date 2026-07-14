@@ -1,9 +1,31 @@
 /**
- * Protocolo Imágenes Nexus — tiers sm/md/lg · LEY_INTEGRIDAD_VISUAL_IMAGEN.md
+ * Protocolo Imágenes Nexus — tiers sm/md/lg · LEY 2.01.04.021 · ramas 654/638
  * Paridad con report/src/lib/retail/product-image.ts
  */
 
+import {
+  productImagePrimaryStem,
+  resolveProductImageProtocol,
+  stems638,
+  stem654,
+  type ProductImageProtocol,
+} from './productImageProtocol'
 import { resolveSupabaseUrl } from './supabaseEnv'
+
+export type ProductImageContext = {
+  proveedorImportacionId?: number | null
+  tipoV2Id?: number | null
+  protocol?: ProductImageProtocol
+  /** Color Excel Kyly (sin K) — stem 638 cuando color_code es bigint pilar. */
+  imagenColorExcel?: string | null
+}
+
+export {
+  PROVEEDOR_CALZADO,
+  PROVEEDOR_CONFECCIONES_KYLY,
+  resolveProductImageProtocol,
+  type ProductImageProtocol,
+} from './productImageProtocol'
 
 export type ImageSize = 'sm' | 'md' | 'lg'
 export type ImageVariant = 'thumb' | 'hero'
@@ -42,6 +64,10 @@ function variantToSize(variant: ImageVariant): ImageSize {
   return variant === 'hero' ? 'lg' : 'sm'
 }
 
+function resolveCtxProtocol(input: ProductImageContext & { imagenNombre?: string | null }): ProductImageProtocol {
+  return input.protocol ?? resolveProductImageProtocol(input)
+}
+
 /** URL plana legacy — fallback único cuando sm/ falta (Tablet depósito). */
 export function resolveFlatImageUrl(input: {
   linea: string
@@ -49,7 +75,7 @@ export function resolveFlatImageUrl(input: {
   material: string | number
   color: string | number
   imagenNombre?: string | null
-}): string | null {
+} & ProductImageContext): string | null {
   const excel = String(input.imagenNombre ?? '').trim()
   if (excel) {
     const direct = publicProductosUrlFromInput(excel)
@@ -59,13 +85,24 @@ export function resolveFlatImageUrl(input: {
     return publicStorageObjectUrl('productos', file) || null
   }
 
-  const L = normPillarSegmentStrict(input.linea)
-  const R = normPillarSegmentStrict(input.referencia)
-  if (!L || !R) return null
+  const protocol = resolveCtxProtocol(input)
+  const colorFor638 = input.imagenColorExcel ?? input.color
+  if (protocol === '638') {
+    const stem = stems638(input.linea, colorFor638)[0]
+    if (!stem) return null
+    return publicStorageObjectUrl('productos', `${stem}.jpg`) || null
+  }
 
-  const M = normPillarSegmentStrict(input.material)
-  const C = normPillarSegmentStrict(input.color)
-  const stem = joinPillarStem([L, R, M, C]) || joinPillarStem([L, R])
+  const stem =
+    stem654(input.linea, input.referencia, input.material, input.color) ??
+    (() => {
+      const L = normPillarSegmentStrict(input.linea)
+      const R = normPillarSegmentStrict(input.referencia)
+      if (!L || !R) return null
+      const M = normPillarSegmentStrict(input.material)
+      const C = normPillarSegmentStrict(input.color)
+      return joinPillarStem([L, R, M, C]) || joinPillarStem([L, R])
+    })()
   if (!stem) return null
 
   return publicStorageObjectUrl('productos', `${stem}.jpg`) || null
@@ -79,7 +116,7 @@ export function resolveCanonicalImageUrl(input: {
   color: string | number
   imagenNombre?: string | null
   variant: ImageVariant
-}): string | null {
+} & ProductImageContext): string | null {
   const size = variantToSize(input.variant)
   const excel = String(input.imagenNombre ?? '').trim()
   if (excel) {
@@ -89,13 +126,12 @@ export function resolveCanonicalImageUrl(input: {
     return url || null
   }
 
-  const L = normPillarSegmentStrict(input.linea)
-  const R = normPillarSegmentStrict(input.referencia)
-  if (!L || !R) return null
-
-  const M = normPillarSegmentStrict(input.material)
-  const C = normPillarSegmentStrict(input.color)
-  const stem = joinPillarStem([L, R, M, C]) || joinPillarStem([L, R])
+  const protocol = resolveCtxProtocol(input)
+  const colorFor638 = input.imagenColorExcel ?? input.color
+  const stem =
+    protocol === '638'
+      ? stems638(input.linea, colorFor638)[0]
+      : stem654(input.linea, input.referencia, input.material, input.color)
   if (!stem) return null
 
   const url = publicStorageObjectUrl('productos', `${size}/${stem}.jpg`)
@@ -168,8 +204,9 @@ export function enrichImagenUrls(input: {
   material: string | number
   color: string | number
   imagenNombre?: string | null
-}): ImagenUrls {
-  const base = { ...input, imagenNombre: input.imagenNombre ?? null }
+} & ProductImageContext): ImagenUrls {
+  const ctx = { ...input, imagenNombre: input.imagenNombre ?? null }
+  const base = ctx
   const flat = resolveFlatImageUrl(base)
   const thumbCandidates = productImageCandidatesForUi(
     input.linea,
@@ -178,6 +215,7 @@ export function enrichImagenUrls(input: {
     input.color,
     input.imagenNombre ?? null,
     'thumb',
+    ctx,
   )
   const heroCandidates = productImageCandidatesForUi(
     input.linea,
@@ -186,6 +224,7 @@ export function enrichImagenUrls(input: {
     input.color,
     input.imagenNombre ?? null,
     'modal',
+    ctx,
   )
   const thumbChain = dedupeUrls(thumbCandidates)
   const heroChain = dedupeUrls(heroCandidates)
@@ -339,7 +378,19 @@ export function productImageCandidates(
   materialCode: string | number,
   colorCode: string | number,
   variant: ImageVariant = 'thumb',
+  ctx?: ProductImageContext & { imagenNombre?: string | null },
 ): string[] {
+  const protocol = ctx ? resolveCtxProtocol({ ...ctx, imagenNombre: ctx.imagenNombre }) : '654'
+
+  if (protocol === '638') {
+    const colorFor638 = ctx?.imagenColorExcel ?? colorCode
+    const urls: string[] = []
+    for (const stem of stems638(lineaCodigo, colorFor638)) {
+      for (const u of stemCandidates(stem, variant)) pushUnique(urls, u)
+    }
+    return urls
+  }
+
   const L = normPillarSegment(lineaCodigo)
   const R = normPillarSegment(referenciaCodigo)
   const M = normPillarSegment(materialCode)
@@ -396,6 +447,7 @@ export function productImageCandidatesForRow(
   colorCode: string | number,
   imagenNombre?: string | null,
   variant: ImageVariant = 'thumb',
+  ctx?: ProductImageContext,
 ): string[] {
   const fromExcel = imagenNombreToCandidates(imagenNombre, variant)
   const fromMolecule = productImageCandidates(
@@ -404,6 +456,7 @@ export function productImageCandidatesForRow(
     materialCode,
     colorCode,
     variant,
+    { ...ctx, imagenNombre },
   )
   const out = [...fromExcel]
   for (const u of fromMolecule) {
@@ -449,13 +502,15 @@ export function productImagePrimaryFileName(
   referenciaCodigo: string,
   materialCode: string | number,
   colorCode: string | number,
+  ctx?: ProductImageContext & { imagenNombre?: string | null },
 ): string | null {
-  const L = normPillarSegment(lineaCodigo)
-  const R = normPillarSegment(referenciaCodigo)
-  const M = normPillarSegment(materialCode)
-  const C = normPillarSegment(colorCode)
-  if (!L || !R) return null
-  const stem = joinPillarStem([L, R, M, C]) || joinPillarStem([L, R])
+  const stem = productImagePrimaryStem({
+    ...ctx,
+    linea: lineaCodigo,
+    referencia: referenciaCodigo,
+    material: materialCode,
+    color: ctx?.imagenColorExcel ?? colorCode,
+  })
   if (!stem) return null
   return `${stem}.jpg`
 }
@@ -468,6 +523,7 @@ export function productImageCandidatesForUi(
   colorCode: string | number,
   imagenNombre: string | null | undefined,
   ui: 'thumb' | 'card' | 'modal',
+  ctx?: ProductImageContext,
 ): string[] {
   const variant: ImageVariant = ui === 'modal' ? 'hero' : 'thumb'
   const base = productImageCandidatesForRow(
@@ -477,9 +533,16 @@ export function productImageCandidatesForUi(
     colorCode,
     imagenNombre,
     variant,
+    ctx,
   )
 
-  const file = productImagePrimaryFileName(lineaCodigo, referenciaCodigo, materialCode, colorCode)
+  const file = productImagePrimaryFileName(
+    lineaCodigo,
+    referenciaCodigo,
+    materialCode,
+    colorCode,
+    { ...ctx, imagenNombre },
+  )
 
   if (ui === 'thumb' || ui === 'card') {
     const flat = resolveFlatImageUrl({
@@ -488,6 +551,7 @@ export function productImageCandidatesForUi(
       material: materialCode,
       color: colorCode,
       imagenNombre,
+      ...ctx,
     })
     const ordered: string[] = []
     if (flat) pushUnique(ordered, flat)

@@ -6,13 +6,14 @@ const MAX_CATALOGO_ROWS = 15000
 /** Catálogo mayorista: solo compra previa — excluir PE en la query (no post-fetch). */
 export const CATALOGO_SOLO_COMPRA_PREVIA = true
 
-/** Columnas comunes CP + PE. */
+/** Columnas comunes CP + PE (sin grada — solo PE la tiene en vista). */
 const CATALOGO_STOCK_SELECT_BASE = `
   det_id, pp_id, pp_nro, proforma,
   quincena_arribo_id, quincena_desc,
   marca_id, descp_marca, caso_id, descp_caso,
   linea_id, linea_codigo, referencia_id, referencia_codigo, nombre,
   material_code, descp_material, color_code, descp_color, color_hex,
+  color_tono_canon, genero_codigo, descp_genero, ramo_tipo,
   grades_json, cantidad_cajas, cantidad_pares, pares_vendidos, saldo_pares,
   cajas_disponibles, pares_por_caja, lpn, lpc02, lpc03, lpc04,
   grupo_estilo_id, descp_grupo_estilo, tipo_1_id, descp_tipo_1,
@@ -22,8 +23,8 @@ const CATALOGO_STOCK_SELECT_BASE = `
 /** Compra previa — v_stock_rimec (MIG-138). Sin imagen_color_excel (solo PE · MIG-149). */
 export const CATALOGO_STOCK_SELECT_CP = CATALOGO_STOCK_SELECT_BASE
 
-/** Pronta entrega — v_stock_pe_rimec · dual 654/638 · excel_color Kyly. */
-export const CATALOGO_STOCK_SELECT_PE = `${CATALOGO_STOCK_SELECT_BASE}, proveedor_importacion_id, tipo_v2_id, imagen_color_excel`
+/** Pronta entrega — v_stock_pe_rimec · dual 654/638 · excel_color Kyly · grada texto MIG-150. */
+export const CATALOGO_STOCK_SELECT_PE = `${CATALOGO_STOCK_SELECT_BASE.replace('grades_json,', 'grades_json, grada,')}, proveedor_importacion_id, tipo_v2_id, imagen_color_excel`
 
 /** @deprecated Usar catalogoStockSelect(view). */
 export const CATALOGO_STOCK_SELECT = CATALOGO_STOCK_SELECT_CP
@@ -89,7 +90,8 @@ export function fetchCatalogoMetaRows<T>(
       linea_id, linea_codigo, referencia_id, referencia_codigo,
       grupo_estilo_id, descp_grupo_estilo,
       tipo_1_id, descp_tipo_1,
-      descp_color, nombre, material_code,
+      descp_color, nombre, material_code, color_code,
+      color_tono_canon, genero_codigo, descp_genero,
       origen_tipo, quincena_desc, quincena_arribo_id,
       deposito_nombre,
       cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas

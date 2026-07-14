@@ -4,6 +4,8 @@
  * Solo cambia el camino (origen PE vs tránsito CP), no la cantidad por click.
  */
 
+import { sumGradaPares } from '@/lib/gradasFmt'
+
 export const PE_DET_ID_BASE = 800_000_000
 
 export function isProntaEntregaDetId(detId: number): boolean {
@@ -56,14 +58,10 @@ export interface ParesPorCajaInput {
   cantidad_pares?: number | null
   saldo_pares?: number | null
   grades_json?: Record<string, number> | null
+  grada?: string | null
   origen_tipo?: string | null
   det_id?: number | null
   pp_id?: number | null
-}
-
-function sumGradesJson(grades: Record<string, number> | null | undefined): number {
-  if (!grades || typeof grades !== 'object') return 0
-  return Object.values(grades).reduce((s, n) => s + (Number(n) || 0), 0)
 }
 
 /**
@@ -87,7 +85,7 @@ export function resolveParesPorCaja(input: ParesPorCajaInput): number {
     if (Number.isFinite(ppc) && ppc > 0 && ppc <= 48) return Math.round(ppc)
   }
 
-  const fromGrades = sumGradesJson(input.grades_json ?? null)
+  const fromGrades = sumGradaPares(input)
   if (fromGrades > 0) return Math.round(fromGrades)
 
   const cc = Number(input.cantidad_cajas ?? 0)

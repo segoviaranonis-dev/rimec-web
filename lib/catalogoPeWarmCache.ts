@@ -3,7 +3,8 @@
  * Característica producto: CHUSAR_DUAL_CACHE_CATALOGO_INSTANTANEO.md
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
-import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
+import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
 import { mergeSharedIntoFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { preloadImageDecoded } from '@/lib/image-decode-cache'
 
@@ -20,7 +21,7 @@ export type WarmFiltrosMeta = {
 }
 
 export type PageWarmPayload = {
-  tarjetas: TarjetaCatalogo[]
+  tarjetas: TarjetaGrilla[]
   nextRowFrom: number
   hasMore: boolean
   excludeCardKeys: string[]
@@ -30,7 +31,7 @@ export type PageWarmPayload = {
   fetchedAt: number
 }
 
-/** Compra previa — entrada default RIMEC Web (sin origen PE). */
+/** Compra previa — cache warm legacy (origen vacío = CP). */
 export const CP_DEFAULT_FILTERS: CatalogoFilterState = {
   grupo_estilo_id: '',
   marca_id: '',
@@ -45,6 +46,19 @@ export const CP_DEFAULT_FILTERS: CatalogoFilterState = {
   tonos: [],
   sin_tono: false,
   buscar: '',
+}
+
+/** Modo Todos — CP+PE fusionados por SKU (default catálogo · 2026-07-13). */
+export const TODOS_DEFAULT_FILTERS: CatalogoFilterState = {
+  ...CP_DEFAULT_FILTERS,
+  origen_tipo: 'TODOS',
+  ramo_tipo: 'CALZADO',
+}
+
+/** Compra previa explícita (pill CP). */
+export const CP_SOLO_FILTERS: CatalogoFilterState = {
+  ...CP_DEFAULT_FILTERS,
+  origen_tipo: 'CP',
 }
 
 /** Pronta entrega — calzado preestablecido al abrir pill PE. */
@@ -140,12 +154,19 @@ export function getScrollWarmCache(
   return hit
 }
 
-export function warmCatalogImages(tarjetas: TarjetaCatalogo[], maxCards = CARD_PAGE_LIMIT) {
-  for (const card of tarjetas.slice(0, maxCards)) {
-    const v = card.variantes[0]
-    if (!v) continue
-    const url = v.imagen_url_thumb ?? v.imagen_url_flat ?? v.imagen_url
-    if (url) void preloadImageDecoded(url)
+export function warmCatalogImages(tarjetas: TarjetaGrilla[], maxCards = CARD_PAGE_LIMIT) {
+  let n = 0
+  for (const card of tarjetas) {
+    if (n >= maxCards) break
+    const lotes = isTarjetaFusionada(card) ? card.lotes : [card]
+    for (const lote of lotes) {
+      const v = lote.variantes[0]
+      if (!v) continue
+      const url = v.imagen_url_thumb ?? v.imagen_url_flat ?? v.imagen_url
+      if (url) void preloadImageDecoded(url)
+      n++
+      if (n >= maxCards) break
+    }
   }
 }
 
@@ -189,7 +210,7 @@ export async function prefetchCatalogPage(
 
   let rowFrom = 0
   let exclude: string[] = []
-  let tarjetas: TarjetaCatalogo[] = []
+  let tarjetas: TarjetaGrilla[] = []
   let hasMore = true
   let attempts = 0
   const MAX_WARM_ATTEMPTS = 8
@@ -232,6 +253,19 @@ export async function prefetchCatalogPage(
   storePageWarmCache(key, payload)
 }
 
+let todosInflight: Promise<void> | null = null
+
+/** Todos fusionado ≥30 modelos SKU — prioridad al abrir catálogo. */
+export function ensureTodosCatalogWarm(): void {
+  if (typeof window === 'undefined') return
+  const f = effectiveTodosWarmFilters()
+  const key = catalogWarmCacheKey(f)
+  if (isCatalogWarmEnough(getPageWarmCache(key)) || todosInflight) return
+  todosInflight = prefetchCatalogPage(f, { withFiltros: true })
+    .catch(() => undefined)
+    .finally(() => { todosInflight = null })
+}
+
 /** PE calzado ≥30 tarjetas — prioridad máxima en toda la sesión. */
 export function ensurePeCatalogWarm(): void {
   if (typeof window === 'undefined') return
@@ -241,6 +275,11 @@ export function ensurePeCatalogWarm(): void {
   peInflight = prefetchCatalogPage(peFilters, { withFiltros: true })
     .catch(() => undefined)
     .finally(() => { peInflight = null })
+}
+
+/** Todos + filtros compartidos sessionStorage. */
+export function effectiveTodosWarmFilters(): CatalogoFilterState {
+  return mergeSharedIntoFilters(TODOS_DEFAULT_FILTERS)
 }
 
 /** CP default + filtros compartidos sessionStorage (marca, línea, etc.). */
@@ -260,7 +299,8 @@ export function effectivePeWarmFilters(): CatalogoFilterState {
 export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): void {
   if (typeof window === 'undefined') return
 
-  // PE primero — canon 30 tarjetas calzado (Director · día operativo)
+  // Todos primero — grilla fusionada CP+PE (Director · 2026-07-13)
+  ensureTodosCatalogWarm()
   ensurePeCatalogWarm()
 
   const cpFilters = effectiveCpWarmFilters()

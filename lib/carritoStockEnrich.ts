@@ -2,8 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { PE_DET_ID_BASE } from '@/lib/prontaEntregaVenta'
 import { normalizarFilaStockVenta } from '@/lib/disponibilidad'
 
-export const CARRITO_STOCK_SELECT =
-  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, saldo_pares, cantidad_cajas, cantidad_pares, grades_json, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo, pp_id'
+const CARRITO_STOCK_SELECT_CP =
+  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, saldo_pares, cantidad_cajas, cantidad_pares, grades_json, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, proveedor_importacion_id, tipo_v2_id, pares_por_caja, descp_caso, origen_tipo, pp_id'
+
+const CARRITO_STOCK_SELECT_PE =
+  `${CARRITO_STOCK_SELECT_CP.replace('grades_json,', 'grades_json, grada,')}`
+
+/** @deprecated Usar select por vista. */
+export const CARRITO_STOCK_SELECT = CARRITO_STOCK_SELECT_CP
 
 export type CarritoStockEnriched = Record<string, unknown> & { det_id: number }
 
@@ -28,8 +34,8 @@ export async function fetchCarritoStockByDetIds(
   const expanded = expandPeDetIds(detIds)
 
   const [cpRes, peRes] = await Promise.all([
-    sb.from('v_stock_rimec').select(CARRITO_STOCK_SELECT).in('det_id', expanded),
-    sb.from('v_stock_pe_rimec').select(CARRITO_STOCK_SELECT).in('det_id', expanded),
+    sb.from('v_stock_rimec').select(CARRITO_STOCK_SELECT_CP).in('det_id', expanded),
+    sb.from('v_stock_pe_rimec').select(CARRITO_STOCK_SELECT_PE).in('det_id', expanded),
   ])
 
   const aliasKeys = new Set(detIds)
@@ -47,10 +53,10 @@ export async function fetchCarritoStockByDetIds(
   }
 
   for (const row of cpRes.data ?? []) {
-    storeRow(row as CarritoStockEnriched)
+    storeRow(row as unknown as CarritoStockEnriched)
   }
   for (const row of peRes.data ?? []) {
-    storeRow(row as CarritoStockEnriched)
+    storeRow(row as unknown as CarritoStockEnriched)
   }
   return map
 }

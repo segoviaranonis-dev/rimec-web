@@ -32,12 +32,13 @@ export default async function HomePage({
         tipo_ids: params.tipo_ids ? params.tipo_ids.split(',').filter(Boolean).map(Number) : [],
         colores: params.colores ? params.colores.split(',').filter(Boolean) : [],
         quincenas: params.quincenas?.split(',').filter(Boolean).map(Number) ?? [],
-        origen_tipo: params.origen_tipo ?? '',
+        origen_tipo: params.origen_tipo ?? 'TODOS',
         ramo_tipo: (() => {
           const esPe = String(params.origen_tipo ?? '').toUpperCase().includes('PRONTA')
           if (params.ramo_tipo === 'CONFECCIONES') return 'CONFECCIONES' as const
           if (params.ramo_tipo === 'CALZADO') return 'CALZADO' as const
           if (esPe) return 'CALZADO' as const
+          if (!params.origen_tipo || params.origen_tipo.toUpperCase() === 'TODOS') return 'CALZADO' as const
           return '' as const
         })(),
         deposito_codigo: (() => {

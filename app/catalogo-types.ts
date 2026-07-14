@@ -22,6 +22,8 @@ export interface StockRow {
   color_hex: string | null
   color_tono_canon?: unknown | null
   grades_json: Record<string, number> | null
+  /** PE: texto importación `34(1 2 3 3 2 1)39` cuando grades_json es null. */
+  grada?: string | null
   cantidad_cajas: number
   cantidad_pares: number
   pares_vendidos?: number
@@ -37,6 +39,9 @@ export interface StockRow {
   tipo_1_id: number
   descp_tipo_1: string | null
   imagen_url: string | null
+  imagen_color_excel?: string | null
+  proveedor_importacion_id?: number | null
+  tipo_v2_id?: number | null
   origen_tipo?: string | null
   deposito_id?: number | null
   deposito_nombre?: string | null
@@ -44,4 +49,5 @@ export interface StockRow {
   pp_estado?: string | null
   genero_codigo?: string | null
   descp_genero?: string | null
+  ramo_tipo?: string | null
 }

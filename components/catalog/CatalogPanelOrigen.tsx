@@ -54,9 +54,11 @@ type Props = {
   listaPrecioId: ListaId
   onNeedSession: () => void
   stacked?: boolean
+  /** Acordeón dato duro: el chip quincena va en la cabecera del acordeón. */
+  hideOrigenChip?: boolean
 }
 
-export function CatalogPanelOrigen({ lote: p, activa, listaPrecioId, onNeedSession, stacked }: Props) {
+export function CatalogPanelOrigen({ lote: p, activa, listaPrecioId, onNeedSession, stacked, hideOrigenChip }: Props) {
   const carrito = useSesion(s => s.carrito)
   const agregarCaja = useSesion(s => s.agregarCaja)
   const quitarCaja = useSesion(s => s.quitarCaja)
@@ -125,21 +127,23 @@ export function CatalogPanelOrigen({ lote: p, activa, listaPrecioId, onNeedSessi
     : 'rounded-xl border border-blue-200/80 bg-blue-50/45 p-2'
 
   return (
-    <div className={stacked ? panelBg : undefined}>
-      <div className="mb-1.5 flex items-center justify-between gap-1">
-        <span
-          className="inline-flex max-w-[75%] items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
-          style={origenChipStyle(shell)}
-          title={esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-        >
-          {esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-        </span>
-        {stacked && paresLote > 0 ? (
-          <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white">
-            {Math.round(paresLote)} p
+    <div className={stacked && !hideOrigenChip ? panelBg : undefined}>
+      {!hideOrigenChip ? (
+        <div className="mb-1.5 flex items-center justify-between gap-1">
+          <span
+            className="inline-flex max-w-[75%] items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
+            style={origenChipStyle(shell)}
+            title={esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
+          >
+            {esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
           </span>
-        ) : null}
-      </div>
+          {stacked && paresLote > 0 ? (
+            <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white">
+              {Math.round(paresLote)} p
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <p className="mb-1 line-clamp-2 text-[10px] leading-snug text-slate-600">
         {p.descp_material} · {v.descp_color}
       </p>

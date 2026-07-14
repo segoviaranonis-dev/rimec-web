@@ -28,6 +28,7 @@ import {
   type TarjetaGrilla,
 } from '@/lib/fusionTarjetasCatalogo'
 import { CatalogPanelOrigen } from '@/components/catalog/CatalogPanelOrigen'
+import { CatalogLotesAcordeon } from '@/components/catalog/CatalogLotesAcordeon'
 
 export type { RimecVariante, TarjetaCatalogo }
 /** @deprecated Usar TarjetaCatalogo — alias para compatibilidad interna */
@@ -711,19 +712,20 @@ function TarjetaProductoFusion({
   const precioTarjeta = activa && precioHero && precioHero > 0 ? precioHero : null
   const esPromo = p.lotes.some(l => esCasoPromocional(l.descp_caso))
 
-  const ventaFooter = (
-    <div className="space-y-2">
-      {p.lotes.map(lote => (
-        <CatalogPanelOrigen
-          key={lote.cardKey}
-          lote={lote}
-          activa={activa}
-          listaPrecioId={listaPrecioId}
-          onNeedSession={onNeedSession}
-          stacked={p.lotes.length > 1}
-        />
-      ))}
-    </div>
+  const ventaFooter = p.lotes.length > 1 ? (
+    <CatalogLotesAcordeon
+      lotes={p.lotes}
+      activa={activa}
+      listaPrecioId={listaPrecioId}
+      onNeedSession={onNeedSession}
+    />
+  ) : (
+    <CatalogPanelOrigen
+      lote={p.lotes[0]!}
+      activa={activa}
+      listaPrecioId={listaPrecioId}
+      onNeedSession={onNeedSession}
+    />
   )
 
   return (

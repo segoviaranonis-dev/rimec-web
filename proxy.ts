@@ -22,6 +22,14 @@ function nextWithPath(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
+  const host = request.headers.get('host') ?? ''
+  if (host.endsWith('.vercel.app')) {
+    return NextResponse.redirect(
+      new URL(request.nextUrl.pathname + request.nextUrl.search, 'https://www.rimec.com.py'),
+      308,
+    )
+  }
+
   const { pathname } = request.nextUrl
 
   // Rutas públicas

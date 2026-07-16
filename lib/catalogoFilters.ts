@@ -175,9 +175,18 @@ export function applyMemoryFilters(rows: StockRow[], filters: CatalogoFilterStat
   }
   const cadena = String(filters.cadena_comercial ?? '').trim().toUpperCase()
   if (cadena === 'LIQUIDACION') {
-    out = out.filter(r => r.es_liquidacion === true)
+    // Solo PE tiene es_liquidacion — no borrar CP en modo Todos.
+    out = out.filter(r => {
+      const origen = normalizeOrigenCatalogo(r.origen_tipo)
+      if (origen !== 'PRONTA_ENTREGA') return true
+      return r.es_liquidacion === true
+    })
   } else if (cadena && cadena !== 'REGULAR') {
-    out = out.filter(r => String(r.cadena_comercial ?? '').toUpperCase() === cadena)
+    out = out.filter(r => {
+      const origen = normalizeOrigenCatalogo(r.origen_tipo)
+      if (origen !== 'PRONTA_ENTREGA') return true
+      return String(r.cadena_comercial ?? '').toUpperCase() === cadena
+    })
   }
   if (filters.ramo_tipo && isCatalogoOrigenTodos(filters)) {
     out = out.filter(r => {

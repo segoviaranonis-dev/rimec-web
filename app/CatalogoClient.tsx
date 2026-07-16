@@ -80,6 +80,24 @@ function isCpDefault(filters: CatalogoFilterState) {
   return filtersMatchDefault(filters, CP_DEFAULT_FILTERS)
 }
 
+/** Filtros de sidebar — no short-circuit warm cache (evita grilla “sorda”). */
+function hasSidebarFilters(f: CatalogoFilterState): boolean {
+  return Boolean(
+    f.marca_id ||
+      f.grupo_estilo_id ||
+      f.genero_codigo ||
+      f.buscar?.trim() ||
+      f.linea_ids.length ||
+      f.tipo_ids.length ||
+      f.colores.length ||
+      f.quincenas.length ||
+      f.deposito_codigo ||
+      (f.tonos?.length ?? 0) > 0 ||
+      f.sin_tono ||
+      f.cadena_comercial?.trim(),
+  )
+}
+
 export function CatalogoClient({ initialFilters }: Props) {
   const [filters, setFilters] = useState<CatalogoFilterState>(() =>
     mergeSharedIntoFilters(initialFilters),
@@ -182,12 +200,15 @@ export function CatalogoClient({ initialFilters }: Props) {
         setTonosDisponibles(json.tonosDisponibles ?? [])
 
         const lineaIdsValid = new Set((meta.todasLineas as FilterItem[]).map(l => l.id))
-        const invalidLineas = filters.linea_ids.filter(id => !lineaIdsValid.has(id))
-        if (invalidLineas.length) {
-          setFilters(prev => ({
-            ...prev,
-            linea_ids: prev.linea_ids.filter(id => lineaIdsValid.has(id)),
-          }))
+        // No borrar líneas si meta vino vacía (RPC/legacy falló) — evita “filtros que no pegan”.
+        if (lineaIdsValid.size > 0) {
+          const invalidLineas = filters.linea_ids.filter(id => !lineaIdsValid.has(id))
+          if (invalidLineas.length) {
+            setFilters(prev => ({
+              ...prev,
+              linea_ids: prev.linea_ids.filter(id => lineaIdsValid.has(id)),
+            }))
+          }
         }
       } catch {
         if (!cancelled && attempt < 2) {
@@ -219,6 +240,7 @@ export function CatalogoClient({ initialFilters }: Props) {
     filters.tonos?.join(',') ?? '',
     filters.sin_tono ? '1' : '',
     filters.buscar ?? '',
+    filters.cadena_comercial ?? '',
   ])
 
   useEffect(() => {
@@ -309,7 +331,8 @@ export function CatalogoClient({ initialFilters }: Props) {
     setLoading(!hasCached)
     setError(null)
 
-    if (cacheReady) {
+    // Warm listo solo para perfiles default sin sidebar — con filtros siempre refetch.
+    if (cacheReady && !hasSidebarFilters(filters)) {
       ensureDualCatalogWarm(filters)
       return () => { cancelled = true }
     }
@@ -361,6 +384,7 @@ export function CatalogoClient({ initialFilters }: Props) {
     filters.tonos?.join(',') ?? '',
     filters.sin_tono ? '1' : '',
     filters.buscar ?? '',
+    filters.cadena_comercial ?? '',
     fetchPage,
   ])
 
@@ -462,7 +486,8 @@ export function CatalogoClient({ initialFilters }: Props) {
     (filters.genero_codigo ?? '') === (initialFilters.genero_codigo ?? '') &&
     sameArray(filters.tonos ?? [], initialFilters.tonos ?? []) &&
     Boolean(filters.sin_tono) === Boolean(initialFilters.sin_tono) &&
-    (filters.buscar ?? '') === (initialFilters.buscar ?? '')
+    (filters.buscar ?? '') === (initialFilters.buscar ?? '') &&
+    (filters.cadena_comercial ?? '') === (initialFilters.cadena_comercial ?? '')
 
   const esProntaEntrega = isCatalogoOrigenPe(filters)
 

@@ -121,6 +121,9 @@ export function FiltrosCatalogo({
     grupo_estilo_id: '',
   }
 
+  const cadenaActual =
+    value?.cadena_comercial ?? searchParams.get('cadena_comercial') ?? ''
+
   const aplicar = useCallback((opts: {
     grupo_estilo_id?: string
     marca_id?: string
@@ -135,6 +138,7 @@ export function FiltrosCatalogo({
     tonos?: string[]
     sin_tono?: boolean
     buscar?: string
+    cadena_comercial?: string
   }) => {
     const params = new URLSearchParams()
 
@@ -151,6 +155,7 @@ export function FiltrosCatalogo({
     const ton    = opts.tonos           !== undefined ? opts.tonos           : tonosSel
     const sinT   = opts.sin_tono        !== undefined ? opts.sin_tono        : sinTono
     const busq   = opts.buscar          !== undefined ? opts.buscar          : buscarActual
+    const cadena = opts.cadena_comercial !== undefined ? opts.cadena_comercial : cadenaActual
 
     const next = {
       grupo_estilo_id: estId,
@@ -166,6 +171,7 @@ export function FiltrosCatalogo({
       tonos: sinT ? [] : ton,
       sin_tono: sinT,
       buscar: busq,
+      cadena_comercial: cadena,
     }
 
     if (onChange) {
@@ -189,8 +195,9 @@ export function FiltrosCatalogo({
     if (sinT)        params.set('sin_tono',        '1')
     else if (ton.length) params.set('tonos',     ton.join(','))
     if (busq.trim()) params.set('buscar',          busq.trim())
+    if (cadena.trim()) params.set('cadena_comercial', cadena.trim())
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, router, onChange])
+  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, cadenaActual, router, onChange])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -283,13 +290,13 @@ export function FiltrosCatalogo({
           <div className="flex flex-wrap gap-2">
             <MarcaPill
               active={esTodos}
-              onClick={() => aplicar({ origen_tipo: 'TODOS', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
+              onClick={() => aplicar({ origen_tipo: 'TODOS', quincenas: [], ramo_tipo: 'CALZADO', deposito_codigo: '' })}
             >
               ⊞ Todos
             </MarcaPill>
             <MarcaPill
               active={esCpSolo}
-              onClick={() => aplicar({ origen_tipo: 'CP', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
+              onClick={() => aplicar({ origen_tipo: 'CP', quincenas: [], ramo_tipo: 'CALZADO', deposito_codigo: '' })}
             >
               🚢 Compra previa
             </MarcaPill>

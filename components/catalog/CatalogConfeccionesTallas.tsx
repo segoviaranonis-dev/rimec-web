@@ -156,9 +156,10 @@ export function CatalogConfeccionesTallas({
     return variantesPorColor(lote, tonoKey)
   }, [lote, colores.length, tonoKey])
 
+  // Siempre armar grupos: los botones talla deben verse aunque la venta no esté activa.
   const grupos = useMemo(
-    () => (activa ? agruparTallasPorPrecio(variantesTalla, lote, listaPrecioId) : []),
-    [activa, variantesTalla, lote, listaPrecioId],
+    () => agruparTallasPorPrecio(variantesTalla, lote, listaPrecioId),
+    [variantesTalla, lote, listaPrecioId],
   )
 
   const detIdsColor = useMemo(
@@ -177,28 +178,36 @@ export function CatalogConfeccionesTallas({
     void agregarCaja(buildCartItem(lote, line, listaPrecioId, esPe))
   }
 
-  if (!activa) {
-    return (
-      <button
-        type="button"
-        onClick={onNeedSession}
-        className="w-full rounded-lg bg-slate-900 py-1.5 text-[10px] font-bold text-white"
-      >
-        Activar venta
-      </button>
-    )
-  }
-
   if (grupos.length === 0) {
     return (
-      <p className="text-center text-[9px] font-semibold text-amber-800">
-        {esPe ? 'Precio pendiente PE' : 'Sin tallas con precio'}
-      </p>
+      <div className="space-y-1">
+        <p className="text-center text-[9px] font-semibold text-amber-800">
+          {esPe ? 'Precio pendiente PE' : 'Sin tallas con precio'}
+        </p>
+        {!activa ? (
+          <button
+            type="button"
+            onClick={onNeedSession}
+            className="w-full rounded-lg bg-slate-900 py-1.5 text-[10px] font-bold text-white"
+          >
+            Activar venta
+          </button>
+        ) : null}
+      </div>
     )
   }
 
   return (
     <div className="space-y-1">
+      {!activa ? (
+        <button
+          type="button"
+          onClick={onNeedSession}
+          className="w-full rounded-lg bg-slate-900 py-1 text-[9px] font-bold text-white"
+        >
+          Activar venta para cargar
+        </button>
+      ) : null}
       {grupos.map(grupo => {
         const [fila1, fila2] = splitDosFilas(grupo.tallas)
         return (
@@ -217,7 +226,7 @@ export function CatalogConfeccionesTallas({
           </div>
         )
       })}
-      {Object.values(carrito).some(i => detIdsColor.has(i.det_id)) ? (
+      {activa && Object.values(carrito).some(i => detIdsColor.has(i.det_id)) ? (
         <a
           href="/carrito"
           className="mt-0.5 block rounded-lg bg-emerald-500 py-1 text-center text-[10px] font-bold text-white"

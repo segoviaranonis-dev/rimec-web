@@ -177,7 +177,11 @@ export function agruparTarjetasCatalogo(
       descp_color: item.descp_color,
       color_hex: item.color_hex,
       tono_canon: item.color_tono_canon ?? null,
-      gradas_fmt: gradasFmtFromRow(item),
+      // 638: preferir texto `grada` (1 talle) — grades_json PE a veces trae stock, no curva.
+      gradas_fmt:
+        item.tipo_v2_id === 2 || String(item.ramo_tipo ?? '').toUpperCase() === 'CONFECCIONES'
+          ? gradasFmtFromRow({ grada: item.grada, grades_json: null }) || gradasFmtFromRow(item)
+          : gradasFmtFromRow(item),
       imagen_nombre: item.imagen_url,
       imagen_url: imgs.imagen_url_thumb ?? imgs.imagen_url_flat ?? '',
       imagen_url_thumb: imgs.imagen_url_thumb,

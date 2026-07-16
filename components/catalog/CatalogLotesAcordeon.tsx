@@ -59,9 +59,10 @@ export function CatalogLotesAcordeon({
   return (
     <div className="space-y-1">
       {lotes.map(lote => {
-        const open = isOpen(lote.cardKey)
-        const label = etiquetaDatoDuroLote(lote)
         const esConf = isConfecciones638Lote(lote)
+        // 638: botones talla siempre visibles (no esconder detrás del acordeón).
+        const open = esConf || isOpen(lote.cardKey)
+        const label = etiquetaDatoDuroLote(lote)
         const uCorta = unidadStockCorta(lote)
         const stockUds = paresEnLoteCatalogo(lote)
         const esPe = lote.origen_tipo === 'PRONTA_ENTREGA'
@@ -71,41 +72,60 @@ export function CatalogLotesAcordeon({
 
         return (
           <div key={lote.cardKey} className="overflow-hidden rounded-lg">
-            <button
-              type="button"
-              onClick={() => toggle(lote.cardKey)}
-              aria-expanded={open}
-              className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-1.5 text-left shadow-sm transition hover:bg-slate-50/80 ${accent}`}
-            >
-              <span
-                className="mt-0.5 shrink-0 text-[11px] font-bold leading-none text-slate-400"
-                aria-hidden
+            {!esConf ? (
+              <button
+                type="button"
+                onClick={() => toggle(lote.cardKey)}
+                aria-expanded={open}
+                className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-1.5 text-left shadow-sm transition hover:bg-slate-50/80 ${accent}`}
               >
-                {open ? '▾' : '▸'}
-              </span>
-              <span
-                className="min-w-0 flex-1 text-[10px] font-semibold leading-snug text-slate-800 break-words whitespace-normal"
-                title={label}
+                <span
+                  className="mt-0.5 shrink-0 text-[11px] font-bold leading-none text-slate-400"
+                  aria-hidden
+                >
+                  {open ? '▾' : '▸'}
+                </span>
+                <span
+                  className="min-w-0 flex-1 text-[10px] font-semibold leading-snug text-slate-800 break-words whitespace-normal"
+                  title={label}
+                >
+                  {label}
+                </span>
+                <span className="ml-0.5 flex shrink-0 flex-col items-end gap-0.5">
+                  {stockUds > 0 ? (
+                    <span className="rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm">
+                      {Math.round(stockUds)}
+                      <span className="text-[8px] font-bold opacity-90"> {uCorta}</span>
+                    </span>
+                  ) : null}
+                  {precioVal != null && precioVal > 0 ? (
+                    <span className="max-w-[88px] text-right text-[10px] font-bold leading-tight tabular-nums text-orange-600">
+                      {formatPrecioGs(precioVal)}
+                      <span className="block text-[7px] font-normal text-slate-400">/ par</span>
+                    </span>
+                  ) : activa ? (
+                    <span className="text-[7px] font-medium text-slate-400">Sin precio</span>
+                  ) : null}
+                </span>
+              </button>
+            ) : (
+              <div
+                className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-1.5 ${accent}`}
               >
-                {label}
-              </span>
-              <span className="ml-0.5 flex shrink-0 flex-col items-end gap-0.5">
+                <span
+                  className="min-w-0 flex-1 text-[10px] font-semibold leading-snug text-slate-800 break-words whitespace-normal"
+                  title={label}
+                >
+                  {label}
+                </span>
                 {stockUds > 0 ? (
                   <span className="rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm">
                     {Math.round(stockUds)}
                     <span className="text-[8px] font-bold opacity-90"> {uCorta}</span>
                   </span>
                 ) : null}
-                {precioVal != null && precioVal > 0 ? (
-                  <span className="max-w-[88px] text-right text-[10px] font-bold leading-tight tabular-nums text-orange-600">
-                    {formatPrecioGs(precioVal)}
-                    <span className="block text-[7px] font-normal text-slate-400">/ par</span>
-                  </span>
-                ) : activa && !esConf ? (
-                  <span className="text-[7px] font-medium text-slate-400">Sin precio</span>
-                ) : null}
-              </span>
-            </button>
+              </div>
+            )}
 
             {open ? (
               <div className="border border-t-0 border-slate-200/90 bg-slate-50/50 px-1.5 pb-1.5 pt-1">

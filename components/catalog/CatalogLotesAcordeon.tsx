@@ -5,8 +5,14 @@ import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { CatalogPanelOrigen } from '@/components/catalog/CatalogPanelOrigen'
 import { useCatalogAcordeon } from '@/components/catalog/CatalogAcordeonContext'
 import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import { formatPrecioGs } from '@/lib/formatPrecioGs'
+import { precioDeLoteCatalogo } from '@/lib/precioLoteCatalogo'
+import {
+  isConfecciones638Lote,
+  stockEnLote,
+  unidadStockCorta,
+} from '@/lib/confeccionesCatalogo'
 
-/** Etiqueta colapsada = quincena_desc (dato duro) o Pronta entrega. */
 export function etiquetaDatoDuroLote(lote: TarjetaCatalogo): string {
   const v = lote.variantes.find(vv => vv.cajas_disponibles > 0) ?? lote.variantes[0]
   if (lote.origen_tipo === 'PRONTA_ENTREGA') return 'Pronta entrega'
@@ -15,6 +21,7 @@ export function etiquetaDatoDuroLote(lote: TarjetaCatalogo): string {
 }
 
 export function paresEnLoteCatalogo(lote: TarjetaCatalogo): number {
+  if (isConfecciones638Lote(lote)) return stockEnLote(lote)
   return lote.variantes
     .filter(v => v.cajas_disponibles > 0)
     .reduce((s, v) => {
@@ -35,9 +42,18 @@ type Props = {
   activa: boolean
   listaPrecioId: ListaId
   onNeedSession: () => void
+  activeTonoKey: string
+  onSelectTonoKey: (tonoKey: string) => void
 }
 
-export function CatalogLotesAcordeon({ lotes, activa, listaPrecioId, onNeedSession }: Props) {
+export function CatalogLotesAcordeon({
+  lotes,
+  activa,
+  listaPrecioId,
+  onNeedSession,
+  activeTonoKey,
+  onSelectTonoKey,
+}: Props) {
   const { isOpen, toggle } = useCatalogAcordeon()
 
   return (
@@ -45,9 +61,13 @@ export function CatalogLotesAcordeon({ lotes, activa, listaPrecioId, onNeedSessi
       {lotes.map(lote => {
         const open = isOpen(lote.cardKey)
         const label = etiquetaDatoDuroLote(lote)
-        const pares = paresEnLoteCatalogo(lote)
+        const esConf = isConfecciones638Lote(lote)
+        const uCorta = unidadStockCorta(lote)
+        const stockUds = paresEnLoteCatalogo(lote)
         const esPe = lote.origen_tipo === 'PRONTA_ENTREGA'
         const accent = esPe ? 'border-l-emerald-500' : 'border-l-sky-600'
+        // Protocolo: precio solo con venta activa (4.01.04.001) — confecciones: precio en sub-tarjetas por talla
+        const precioVal = activa && !esConf ? precioDeLoteCatalogo(lote, listaPrecioId) : null
 
         return (
           <div key={lote.cardKey} className="overflow-hidden rounded-lg">
@@ -69,12 +89,22 @@ export function CatalogLotesAcordeon({ lotes, activa, listaPrecioId, onNeedSessi
               >
                 {label}
               </span>
-              {pares > 0 ? (
-                <span className="ml-0.5 shrink-0 rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm">
-                  {Math.round(pares)}
-                  <span className="text-[8px] font-bold opacity-90"> p</span>
-                </span>
-              ) : null}
+              <span className="ml-0.5 flex shrink-0 flex-col items-end gap-0.5">
+                {stockUds > 0 ? (
+                  <span className="rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm">
+                    {Math.round(stockUds)}
+                    <span className="text-[8px] font-bold opacity-90"> {uCorta}</span>
+                  </span>
+                ) : null}
+                {precioVal != null && precioVal > 0 ? (
+                  <span className="max-w-[88px] text-right text-[10px] font-bold leading-tight tabular-nums text-orange-600">
+                    {formatPrecioGs(precioVal)}
+                    <span className="block text-[7px] font-normal text-slate-400">/ par</span>
+                  </span>
+                ) : activa && !esConf ? (
+                  <span className="text-[7px] font-medium text-slate-400">Sin precio</span>
+                ) : null}
+              </span>
             </button>
 
             {open ? (
@@ -85,6 +115,8 @@ export function CatalogLotesAcordeon({ lotes, activa, listaPrecioId, onNeedSessi
                   listaPrecioId={listaPrecioId}
                   onNeedSession={onNeedSession}
                   hideOrigenChip
+                  activeTonoKey={activeTonoKey}
+                  onSelectTonoKey={onSelectTonoKey}
                 />
               </div>
             ) : null}

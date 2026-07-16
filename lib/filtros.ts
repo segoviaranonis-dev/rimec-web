@@ -11,7 +11,12 @@ import {
   fetchCatalogoMetaViaRpc,
   type CatalogoMetaRpc,
 } from './catalogoMetaRpc'
-import type { CatalogoFilterStateExtended } from './catalogoFilters'
+import {
+  dedupeFilterItemsByLabel,
+  normalizeFilterItems,
+  type CatalogoFilterStateExtended,
+} from './catalogoFilters'
+import { getSupabaseAdmin } from './supabaseAdmin'
 
 export interface FilterItem {
   id: number
@@ -79,7 +84,56 @@ function sectionFromMeta(label: string, meta: CatalogoMetaRpc): SectionData {
   }
 }
 
+function normalizeMetaSlice(raw: Partial<CatalogoMetaRpc> | null | undefined): CatalogoMetaRpc {
+  const empty: CatalogoMetaRpc = {
+    marcas: [], lineas: [], estilos: [], tipos: [],
+    generos: [], colores: [], quincenas: [], tonos: [],
+  }
+  if (!raw) return empty
+  return {
+    marcas: normalizeFilterItems(raw.marcas ?? []),
+    lineas: normalizeFilterItems(raw.lineas ?? []),
+    estilos: normalizeFilterItems(raw.estilos ?? []),
+    tipos: normalizeFilterItems(raw.tipos ?? []),
+    generos: raw.generos ?? [],
+    colores: raw.colores ?? [],
+    quincenas: raw.quincenas ?? [],
+    tonos: raw.tonos ?? [],
+  }
+}
+
+/** MIG-157 — 1 RPC header (global + 4 géneros). Fallback: 5× rimec_catalogo_meta. */
 async function getFiltrosFromRpc() {
+  try {
+    const { data, error } = await getSupabaseAdmin().rpc('rimec_catalogo_header_meta')
+    if (!error && data) {
+      const payload = data as {
+        global?: Partial<CatalogoMetaRpc>
+        secciones?: Record<string, Partial<CatalogoMetaRpc>>
+      }
+      const global = normalizeMetaSlice(payload.global)
+      const sec = payload.secciones ?? {}
+      if (global.lineas.length || global.marcas.length) {
+        return {
+          header: {
+            mujeres: sectionFromMeta('Damas', normalizeMetaSlice(sec.DAMAS ?? global)),
+            ninas: sectionFromMeta('Niñas', normalizeMetaSlice(sec.NINAS ?? global)),
+            ninos: sectionFromMeta('Niños', normalizeMetaSlice(sec.NINOS ?? global)),
+            hombres: sectionFromMeta('Caballeros', normalizeMetaSlice(sec.CABALLEROS ?? global)),
+          },
+          todasLineas: global.lineas,
+          todasMarcas: global.marcas,
+          todosEstilos: global.estilos,
+          todosTipos: global.tipos,
+        }
+      }
+    } else if (error) {
+      console.error('[filtros] header_meta', error.message)
+    }
+  } catch (e) {
+    console.error('[filtros] header_meta', e)
+  }
+
   const [global, ...byGenero] = await Promise.all([
     fetchCatalogoMetaViaRpc(CP_BASE_FILTERS),
     ...GENERO_SECTIONS.map(g =>
@@ -88,15 +142,13 @@ async function getFiltrosFromRpc() {
   ])
   if (!global) return null
 
-  const header = {
-    mujeres: sectionFromMeta('Damas', byGenero[0] ?? global),
-    ninas: sectionFromMeta('Niñas', byGenero[1] ?? global),
-    ninos: sectionFromMeta('Niños', byGenero[2] ?? global),
-    hombres: sectionFromMeta('Caballeros', byGenero[3] ?? global),
-  }
-
   return {
-    header,
+    header: {
+      mujeres: sectionFromMeta('Damas', byGenero[0] ?? global),
+      ninas: sectionFromMeta('Niñas', byGenero[1] ?? global),
+      ninos: sectionFromMeta('Niños', byGenero[2] ?? global),
+      hombres: sectionFromMeta('Caballeros', byGenero[3] ?? global),
+    },
     todasLineas: global.lineas,
     todasMarcas: global.marcas,
     todosEstilos: global.estilos,
@@ -106,7 +158,7 @@ async function getFiltrosFromRpc() {
 
 const cachedHeaderRpc = unstable_cache(
   async () => getFiltrosFromRpc(),
-  ['catalogo-header-rpc-v1'],
+  ['catalogo-header-rpc-v2-mig157'],
   { revalidate: 300 },
 )
 
@@ -206,9 +258,12 @@ async function getFiltrosLegacy() {
   }
 
   const toItems = (m: Map<number, string>): FilterItem[] =>
-    Array.from(m.entries())
-      .map(([id, label]) => ({ id, label: String(label || '').trim() || `ID ${id}` }))
-      .sort((a, b) => a.label.localeCompare(b.label))
+    normalizeFilterItems(
+      Array.from(m.entries()).map(([id, label]) => ({
+        id,
+        label: String(label || '').trim() || `ID ${id}`,
+      })),
+    )
 
   const formatSec = (s: ReturnType<typeof init>): SectionData => ({
     label:   s.label || 'Damas',

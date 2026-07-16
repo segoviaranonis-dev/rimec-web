@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchCatalogoMetaRows } from '@/lib/catalogoData'
 import {
   applyMemoryFilters,
+  applyPeCommercialSqlFilters,
   applyPeDepositoQuery,
   applyNonOrigenSqlFilters,
   applySqlFiltersToQuery,
@@ -46,6 +47,7 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
       origen_tipo: 'TRÁNSITO_PP',
       ramo_tipo: filters.ramo_tipo === 'CALZADO' ? 'CALZADO' : '',
       deposito_codigo: '',
+      cadena_comercial: '',
     }
 
     const [cpRes, peRes] = await Promise.all([
@@ -53,7 +55,11 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
         applySql: q => applyNonOrigenSqlFilters(q, cpFilters),
       }),
       fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
-        applySql: q => applyPeDepositoQuery(applyNonOrigenSqlFilters(q, peFilters), filters),
+        applySql: q =>
+          applyPeCommercialSqlFilters(
+            applyPeDepositoQuery(applyNonOrigenSqlFilters(q, peFilters), filters),
+            filters,
+          ),
       }),
     ])
     if (cpRes.error) throw new Error(cpRes.error.message)
@@ -72,9 +78,12 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
   const { data, error } = await fetchCatalogoMetaRows<StockRow>(supabase, view, {
     applySql: q => {
       if (view === 'v_stock_pe_rimec') {
-        return applyPeDepositoQuery(applyNonOrigenSqlFilters(q, { ...filters, quincenas: [] }), filters)
+        return applyPeCommercialSqlFilters(
+          applyPeDepositoQuery(applyNonOrigenSqlFilters(q, { ...filters, quincenas: [] }), filters),
+          filters,
+        )
       }
-      return applySqlFiltersToQuery(q, filters)
+      return applySqlFiltersToQuery(q, { ...filters, cadena_comercial: '' })
     },
   })
   if (error) throw new Error(error.message)

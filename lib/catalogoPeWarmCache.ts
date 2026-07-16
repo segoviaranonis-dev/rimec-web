@@ -7,6 +7,7 @@ import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
 import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
 import { mergeSharedIntoFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { preloadImageDecoded } from '@/lib/image-decode-cache'
+import { requestTarjetasPage } from '@/lib/catalogoFetch'
 
 export const CARD_PAGE_LIMIT = 30
 /** Mínimo de tarjetas en cache para cambio CP↔PE instantáneo (Director · 2026-07-13). */
@@ -101,6 +102,7 @@ function filtersQueryString(filters: CatalogoFilterState) {
   if (filters.sin_tono) params.set('sin_tono', '1')
   else if (filters.tonos?.length) params.set('tonos', filters.tonos.join(','))
   if (filters.buscar?.trim()) params.set('buscar', filters.buscar.trim())
+  if (filters.cadena_comercial?.trim()) params.set('cadena_comercial', filters.cadena_comercial.trim())
   return params.toString()
 }
 
@@ -176,20 +178,24 @@ async function fetchTarjetasPageClient(
   exclude: string[],
 ): Promise<PageWarmPayload | null> {
   const qs = filtersQueryString(filters)
-  const params = new URLSearchParams(qs)
-  params.set('row_from', String(fromRow))
-  params.set('limit', String(CARD_PAGE_LIMIT))
-  if (exclude.length) params.set('exclude', exclude.join(','))
 
-  const res = await fetch(`/api/catalogo/tarjetas?${params}`, { credentials: 'same-origin' })
-  if (!res.ok) return null
-  const json = await res.json()
-  return {
-    tarjetas: json.tarjetas ?? [],
-    nextRowFrom: json.nextRowFrom ?? 0,
-    hasMore: Boolean(json.hasMore),
-    excludeCardKeys: json.excludeCardKeys ?? [],
-    fetchedAt: Date.now(),
+  try {
+    const res = await requestTarjetasPage({
+      filtersQuery: qs,
+      filters: filters as unknown as Record<string, unknown>,
+      fromRow,
+      limit: CARD_PAGE_LIMIT,
+      exclude,
+    })
+    return {
+      tarjetas: (res.tarjetas ?? []) as TarjetaGrilla[],
+      nextRowFrom: res.nextRowFrom ?? 0,
+      hasMore: Boolean(res.hasMore),
+      excludeCardKeys: res.excludeCardKeys ?? [],
+      fetchedAt: Date.now(),
+    }
+  } catch {
+    return null
   }
 }
 

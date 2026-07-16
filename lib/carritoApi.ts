@@ -87,6 +87,8 @@ export interface ValidarItemResult {
   det_id: number
   cajas_solicitadas: number
   cajas_actuales: number
+  pares_solicitados?: number
+  pares_actuales?: number
   precio_carrito: number
   precio_actual: number | null
   ok: boolean
@@ -235,6 +237,27 @@ export async function carritoRecalcularFactura(
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ pp_id, marca, caso }),
+  })
+  return asJson(res)
+}
+
+export async function carritoGuardarDescuentosFi(
+  pp_id: number,
+  marca: string,
+  caso: string,
+  config: { lista_precio_id: number; descuentos: number[] },
+): Promise<{
+  ok: boolean
+  items_actualizados: number
+  lista_aplicada: number
+  descuentos_aplicados: number[]
+  origen: 'CP' | 'PE' | 'MIXTO'
+}> {
+  const res = await fetch('/api/carrito/factura/guardar-descuentos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ pp_id, marca, caso, ...config }),
   })
   return asJson(res)
 }

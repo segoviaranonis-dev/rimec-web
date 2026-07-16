@@ -5,6 +5,8 @@ import type { ReactNode } from 'react'
 type Props = {
   totalModelos: number
   totalPares: number
+  /** Etiqueta stats grilla — default pares */
+  stockLabel?: string
   totalValor?: number | null
   compactStats?: boolean
   children: ReactNode
@@ -17,6 +19,7 @@ type Props = {
 export function CatalogGrillaDeposito({
   totalModelos,
   totalPares,
+  stockLabel = 'pares',
   totalValor,
   compactStats = true,
   children,
@@ -40,7 +43,7 @@ export function CatalogGrillaDeposito({
             compactStats ? 'px-2 py-0.5' : 'px-3 py-1'
           }`}
         >
-          {Math.round(totalPares).toLocaleString('es-PY')} pares
+          {Math.round(totalPares).toLocaleString('es-PY')} {stockLabel}
         </span>
         {totalValor != null && totalValor > 0 ? (
           <span

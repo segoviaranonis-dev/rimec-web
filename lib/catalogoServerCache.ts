@@ -14,6 +14,23 @@ export function isWarmTarjetasRequest(
   exclude: string[],
 ): boolean {
   if (rowFrom !== 0 || exclude.length > 0) return false
+
+  const hasExtraFilters =
+    Boolean(filters.marca_id) ||
+    Boolean(filters.grupo_estilo_id) ||
+    Boolean(filters.buscar?.trim()) ||
+    filters.linea_ids.length > 0 ||
+    filters.tipo_ids.length > 0 ||
+    filters.colores.length > 0 ||
+    filters.quincenas.length > 0 ||
+    Boolean(filters.genero_codigo?.trim()) ||
+    Boolean(filters.deposito_codigo) ||
+    (filters.tonos?.length ?? 0) > 0 ||
+    Boolean(filters.sin_tono) ||
+    Boolean(filters.cadena_comercial?.trim())
+
+  if (hasExtraFilters) return false
+
   const o = normalizeOrigenCatalogo(filters.origen_tipo)
   if (o === 'TODOS' && filters.ramo_tipo === 'CALZADO') return true
   if (o === 'PRONTA_ENTREGA' && filters.ramo_tipo === 'CALZADO') return true

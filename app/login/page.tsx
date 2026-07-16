@@ -114,7 +114,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center text-xs text-gray-500">
-            Solo usuarios RIMEC autorizados (VENDEDOR, ADMIN, DIOS)
+            Solo usuarios RIMEC autorizados (VENDEDOR, ADMIN, SUPERIOR)
           </div>
         </div>
       </div>

@@ -19,6 +19,16 @@
   animation: catalog-fusion-pulse 2.4s ease-in-out infinite;
 }
 
+/* LIQUIDACIÓN PE — latido verde · frecuencia más alta que fusion (2.4s) */
+@keyframes catalog-liquidacion-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.22); }
+  50% { box-shadow: 0 0 0 5px rgba(5, 150, 105, 0.32); }
+}
+
+.catalog-card-liquidacion-pulse {
+  animation: catalog-liquidacion-pulse 1.35s ease-in-out infinite;
+}
+
 body {
   color: #0F172A;
   background: #FAFAFA;

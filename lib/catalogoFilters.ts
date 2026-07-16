@@ -12,6 +12,8 @@ export type CatalogoFilterStateExtended = CatalogoFilterState & {
   tonos?: string[]
   sin_tono?: boolean
   buscar?: string
+  /** Filtro comercial SDRM — gobernado desde Report (pe_catalogo_filtro_web). */
+  cadena_comercial?: string
 }
 
 export const CATALOGO_ORIGEN_TODOS = 'TODOS'
@@ -110,6 +112,21 @@ export function applyNonOrigenSqlFilters(query: any, filters: CatalogoFilterStat
   return applyGeneroRamoBuscarSql(q, filters)
 }
 
+/** Filtro comercial SDRM — solo v_stock_pe_rimec (MIG-162). CP no tiene es_liquidacion. */
+export function applyPeCommercialSqlFilters(
+  query: any,
+  filters: CatalogoFilterStateExtended,
+): any {
+  const cadena = String(filters.cadena_comercial ?? '').trim().toUpperCase()
+  if (cadena === 'LIQUIDACION') {
+    return query.eq('es_liquidacion', true)
+  }
+  if (cadena && cadena !== 'REGULAR') {
+    return query.eq('cadena_comercial', cadena)
+  }
+  return query
+}
+
 export function applySqlFiltersToQuery(query: any, filters: CatalogoFilterStateExtended): any {
   let q = applyOrigenTipoQuery(query, filters)
   return applyNonOrigenSqlFilters(q, filters)
@@ -156,6 +173,12 @@ export function applyMemoryFilters(rows: StockRow[], filters: CatalogoFilterStat
       return r.quincena_arribo_id != null && qSet.has(r.quincena_arribo_id)
     })
   }
+  const cadena = String(filters.cadena_comercial ?? '').trim().toUpperCase()
+  if (cadena === 'LIQUIDACION') {
+    out = out.filter(r => r.es_liquidacion === true)
+  } else if (cadena && cadena !== 'REGULAR') {
+    out = out.filter(r => String(r.cadena_comercial ?? '').toUpperCase() === cadena)
+  }
   if (filters.ramo_tipo && isCatalogoOrigenTodos(filters)) {
     out = out.filter(r => {
       const origen = normalizeOrigenCatalogo(r.origen_tipo)
@@ -194,6 +217,38 @@ export function dedupeFilterItemsByLabel(items: { id: number; label: string }[])
   )
 }
 
+/** Evita keys React duplicadas — mismo id con labels distintos (PE+CP merge, RPC). */
+export function dedupeFilterItemsById(items: { id: number; label: string }[]): { id: number; label: string }[] {
+  const byId = new Map<number, { id: number; label: string }>()
+  for (const item of items) {
+    const id = Number(item.id)
+    if (!Number.isFinite(id) || id <= 0) continue
+    const label = String(item.label ?? '').trim()
+    if (!label) continue
+    const prev = byId.get(id)
+    if (!prev) {
+      byId.set(id, { id, label })
+      continue
+    }
+    if (prev.label === label) continue
+    const pick =
+      /^\d+$/.test(label) && !/^\d+$/.test(prev.label)
+        ? label
+        : label.length > prev.label.length
+          ? label
+          : prev.label
+    byId.set(id, { id, label: pick })
+  }
+  return [...byId.values()]
+}
+
+/** Canónico sidebar catálogo — id único + label único. */
+export function normalizeFilterItems(items: { id: number; label: string }[]): { id: number; label: string }[] {
+  return dedupeFilterItemsByLabel(dedupeFilterItemsById(items)).sort((a, b) =>
+    a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }),
+  )
+}
+
 export function buildFiltrosFromRows(rows: StockRow[]) {
   const lineas = new Map<number, string>()
   const marcas = new Map<number, string>()
@@ -218,9 +273,7 @@ export function buildFiltrosFromRows(rows: StockRow[]) {
     }
   }
   const toItems = (m: Map<number, string>) =>
-    dedupeFilterItemsByLabel(
-      [...m.entries()].map(([id, label]) => ({ id, label })),
-    )
+    normalizeFilterItems([...m.entries()].map(([id, label]) => ({ id, label })))
   return {
     todasLineas: toItems(lineas),
     todasMarcas: toItems(marcas),
@@ -261,6 +314,7 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
     tonos: sinTono ? [] : tonosRaw,
     sin_tono: sinTono,
     buscar: sp.get('buscar') ?? '',
+    cadena_comercial: sp.get('cadena_comercial') ?? '',
   }
 }
 

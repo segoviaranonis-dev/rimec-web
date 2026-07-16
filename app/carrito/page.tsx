@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSesion, fragmentarCarrito, LISTAS } from '@/store/sesionVenta'
 import { supabase } from '@/lib/supabase'
-import { carritoValidar, type ValidarItemResult } from '@/lib/carritoApi'
+import { carritoValidar, type FacturaConfig, type ValidarItemResult } from '@/lib/carritoApi'
 import { ProductImage } from '@/components/ProductImage'
+import { EditorDescuentosFi } from '@/components/EditorDescuentosFi'
 import { getImageCandidatesForUi } from '@/lib/imagen'
 import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
+import { etiquetaDescuentos, normalizarDescuentos4 } from '@/lib/carritoDescuentosFi'
 
 const AZUL = '#1E40AF'
 const VERDE = '#10B981'
@@ -31,10 +33,8 @@ export default function CarritoPage() {
   const plazo               = useSesion(s => s.plazo)
   const listaPrecioId       = useSesion(s => s.listaPrecioId)
   const descuentos          = useSesion(s => s.descuentos)
-  const descuentosPorLote   = useSesion(s => s.descuentosPorLote)
-  const setDescuentoLote    = useSesion(s => s.setDescuentoLote)
   const facturas            = useSesion(s => s.facturas)
-  const actualizarDescuentosFactura = useSesion(s => s.actualizarDescuentosFactura)
+  const guardarDescuentosFactura = useSesion(s => s.guardarDescuentosFactura)
   const carrito             = useSesion(s => s.carrito)
   const desactivar          = useSesion(s => s.desactivar)
   const activa              = useSesion(s => s.activa)
@@ -45,6 +45,8 @@ export default function CarritoPage() {
   const setValidacion       = useSesion(s => s.setValidacion)
   const limpiarValidacion   = useSesion(s => s.limpiarValidacion)
   const cargarDesdeBD       = useSesion(s => s.cargarDesdeBD)
+  const hydrating           = useSesion(s => s.hydrating)
+  const hydrated            = useSesion(s => s.hydrated)
 
   const router = useRouter()
   const [enviando, setEnviando] = useState(false)
@@ -52,6 +54,8 @@ export default function CarritoPage() {
   const [validando, setValidando] = useState(false)
   const [exito, setExito] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [editorFi, setEditorFi] = useState<FacturaConfig | null>(null)
+  const [guardandoDesc, setGuardandoDesc] = useState(false)
 
   // Countdown del token (60 s desde validacion.expiraEn).
   const [now, setNow] = useState(() => Date.now())
@@ -73,15 +77,39 @@ export default function CarritoPage() {
     }
   }, [segundosRestantes, validacion.estado, limpiarValidacion])
 
+  const descLabel = useMemo(() => {
+    const nFi = facturas.filter((f) => normalizarDescuentos4(f.descuentos).some((d) => d > 0)).length
+    if (nFi > 0) return `${nFi} FI con descuento`
+    if (descuentos.length > 0) return descuentos.map((d) => `${d}%`).join(' + ')
+    return 'Sin descuento global · editar por FI'
+  }, [facturas, descuentos])
+
+  useEffect(() => {
+    if (!hydrated && !hydrating) void cargarDesdeBD()
+  }, [hydrated, hydrating, cargarDesdeBD])
+
+  if (hydrating || (!hydrated && vendedor?.id_vendedor)) {
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 0', color: '#64748B' }}>
+        <p style={{ fontSize: 18, fontWeight: 600 }}>Cargando carrito…</p>
+      </div>
+    )
+  }
+
   // Cualquier mutación del carrito limpia el token (lo hace el store).
   // Si el usuario cierra venta sin confirmar, volver al catálogo.
   if (!activa || Object.keys(carrito).length === 0) {
+    const logueado = Boolean(vendedor?.id_vendedor)
     return (
       <div style={{ textAlign: 'center', padding: '80px 0' }}>
         <p style={{ fontSize: 48, marginBottom: 12 }}>🛒</p>
         <h1 style={{ fontSize: 24, fontWeight: 900, color: AZUL, marginBottom: 8 }}>Carrito vacío</h1>
         <p style={{ color: '#64748B', marginBottom: 24 }}>
-          {!activa ? 'Iniciá sesión para agregar productos.' : 'Agregá productos desde el catálogo.'}
+          {!activa && !logueado
+            ? 'Iniciá sesión para agregar productos.'
+            : !activa
+              ? 'Iniciá una venta con cliente desde el catálogo.'
+              : 'Agregá productos desde el catálogo.'}
         </p>
         <a href="/" style={{
           display: 'inline-block', padding: '14px 28px', borderRadius: 12,
@@ -91,12 +119,15 @@ export default function CarritoPage() {
     )
   }
 
-  const lotes         = fragmentarCarrito(carrito, descuentos, descuentosPorLote, facturas)
+  const lotes         = fragmentarCarrito(carrito, descuentos, {}, facturas)
   const listaActiva   = LISTAS.find(l => l.id === listaPrecioId) ?? LISTAS[0]
   const totalGenPares = lotes.reduce((s, l) => s + l.total_pares, 0)
   const totalGenMonto = lotes.reduce((s, l) => s + l.total_monto, 0)
-  const descLabel     = descuentos.length > 0 ? descuentos.map(d => `${d}%`).join(' + ') : 'Sin descuento'
   const totalFacturas = lotes.reduce((s, l) => s + l.cantidad_facturas, 0)
+  const carritoItems  = Object.values(carrito)
+  const totalRefs     = carritoItems.length
+  const totalCajas    = carritoItems.reduce((s, i) => s + i.cajas, 0)
+  const totalParesCarrito = carritoItems.reduce((s, i) => s + i.pares, 0)
 
   const itemsConProblema: ValidarItemResult[] =
     validacion.estado === 'DIFERENCIAS'
@@ -104,8 +135,10 @@ export default function CarritoPage() {
           .filter((i) => !i.ok)
           .map((i) => ({
             det_id: i.det_id,
-            cajas_solicitadas: carrito[`det_${i.det_id}`]?.cajas ?? 0,
-            cajas_actuales: i.cajas_actuales,
+            cajas_solicitadas: i.cajas_solicitadas ?? carrito[`det_${i.det_id}`]?.cajas ?? 0,
+            cajas_actuales: i.cajas_actuales ?? 0,
+            pares_solicitados: i.pares_solicitados,
+            pares_actuales: i.pares_actuales,
             precio_carrito: carrito[`det_${i.det_id}`]?.precio_base ?? 0,
             precio_actual: i.precio_actual,
             ok: false,
@@ -132,7 +165,14 @@ export default function CarritoPage() {
       return 'Debés eliminar este artículo por falta de stock — saldo agotado tras la última carga.'
     }
     if (item.motivo === 'STOCK_INSUFICIENTE') {
-      return `Stock insuficiente: hay ${item.cajas_actuales} caja(s) y pediste ${item.cajas_solicitadas}. Reducí cantidad o eliminá el ítem.`
+      const cs = item.cajas_solicitadas ?? 0
+      const ca = item.cajas_actuales ?? 0
+      const ps = item.pares_solicitados
+      const pa = item.pares_actuales
+      if (cs <= ca && ps != null && pa != null && ps > pa) {
+        return `Stock insuficiente en pares: hay ${pa} pares (${ca} cj) y pediste ${ps} pares (${cs} cj). Reducí o quitá el ítem.`
+      }
+      return `Stock insuficiente: hay ${ca} caja(s) y pediste ${cs}. Reducí cantidad o eliminá el ítem.`
     }
     if (item.motivo === 'PRECIO_CAMBIO') {
       return `Precio cambió: ${item.precio_carrito.toLocaleString('es-PY')} → ${item.precio_actual?.toLocaleString('es-PY') ?? '—'}`
@@ -167,6 +207,9 @@ export default function CarritoPage() {
           ok: i.ok,
           motivo: i.motivo,
           cajas_actuales: i.cajas_actuales,
+          cajas_solicitadas: i.cajas_solicitadas,
+          pares_actuales: i.pares_actuales,
+          pares_solicitados: i.pares_solicitados,
           precio_actual: i.precio_actual,
         })),
       })
@@ -224,7 +267,7 @@ export default function CarritoPage() {
               const facturaConfig = facturas.find(
                 fc => fc.pp_id === lote.pp_id && fc.marca === m.marca && fc.caso === f.caso
               )
-              const descFactura = facturaConfig?.descuentos ?? [...descuentos, ...(descuentosPorLote[lote.pp_id] ?? [])]
+              const descFactura = normalizarDescuentos4(facturaConfig?.descuentos ?? descuentos)
               const listaFactura = facturaConfig?.lista_precio_id ?? listaPrecioId
 
               return {
@@ -233,10 +276,10 @@ export default function CarritoPage() {
                 caso: String(f.caso || ''),
                 caso_id: f.caso_id,
                 lista_precio_id: listaFactura,
-                descuento_1: Number(descFactura[0]) || 0,
-                descuento_2: Number(descFactura[1]) || 0,
-                descuento_3: Number(descFactura[2]) || 0,
-                descuento_4: Number(descFactura[3]) || 0,
+                descuento_1: descFactura[0],
+                descuento_2: descFactura[1],
+                descuento_3: descFactura[2],
+                descuento_4: descFactura[3],
                 total_pares: Number(f.total_pares) || 0,
                 total_monto: Number(f.total_monto) || 0,
                 items: f.items.map((item) => ({
@@ -317,9 +360,8 @@ export default function CarritoPage() {
       }
       setError(mensajeAmigableError(rawMsg))
       if (esStockCambiado) {
-        // El token de validación ya quedó inválido en el servidor (el RPC lo rechazó);
-        // limpiarlo local fuerza al vendedor a Revalidar antes de reintentar Confirmar.
         limpiarValidacion()
+        void validar()
       }
     } finally {
       confirmLock.current = false
@@ -330,6 +372,7 @@ export default function CarritoPage() {
   const sinVendedor = !vendedor?.id_vendedor
   const tokenVigente = validacion.estado === 'OK' && segundosRestantes > 0
   const motivoBloqueoConfirmar =
+    editorFi ? 'editando_descuentos' :
     enviando ? 'procesando' :
     sinVendedor ? 'sin_vendedor' :
     validacion.estado === 'ERROR' ? 'error_validacion' :
@@ -340,6 +383,7 @@ export default function CarritoPage() {
 
   const labelConfirmar = (() => {
     switch (motivoBloqueoConfirmar) {
+      case 'editando_descuentos':  return 'Guardá o cancelá descuentos primero'
       case 'procesando':         return 'Procesando...'
       case 'sin_vendedor':       return 'Sesión sin vendedor — reactivá la venta'
       case 'error_validacion':   return 'Reintentá VALIDAR'
@@ -359,6 +403,17 @@ export default function CarritoPage() {
         <h1 style={{ fontSize: 22, fontWeight: 900, color: AZUL, marginBottom: 6 }}>
           Revisión del Pedido
         </h1>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          marginBottom: 12, padding: '8px 14px', borderRadius: 10,
+          backgroundColor: '#1E293B', color: 'white', fontSize: 14, fontWeight: 800,
+        }}>
+          <span aria-hidden>🛒</span>
+          <span>
+            {totalRefs.toLocaleString('es-PY')} ref · {totalCajas.toLocaleString('es-PY')} cajas ·{' '}
+            {totalParesCarrito.toLocaleString('es-PY')} pares
+          </span>
+        </div>
         <p style={{ fontSize: 16, color: '#1E293B', marginBottom: 4 }}>
           <strong>Cliente:</strong> {cliente?.descp_cliente}
           &nbsp;·&nbsp;<strong>Lista:</strong> {listaActiva.nombre}
@@ -490,9 +545,7 @@ export default function CarritoPage() {
       )}
 
       {/* Lotes */}
-      {lotes.map((lote) => {
-        const descLote = descuentosPorLote[lote.pp_id] ?? []
-        return (
+      {lotes.map((lote) => (
           <div key={`${lote.pp_id}-${lote.pp_nro}`} style={{ border: '1px solid #E2E8F0', borderRadius: 16, marginBottom: 20, overflow: 'hidden', ...(lote.pp_id < 0 ? { borderColor: '#10B981', borderWidth: 2 } : {}) }}>
             <div style={{
               backgroundColor: '#F8FAFC', padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
@@ -506,25 +559,6 @@ export default function CarritoPage() {
                   {lote.pp_nro} ({lote.proforma}) · {lote.total_pares.toLocaleString('es-PY')} pares
                   &nbsp;·&nbsp;Gs. {lote.total_monto.toLocaleString('es-PY')}
                 </p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13, color: '#64748B' }}>Desc. lote:</span>
-                {descLote.map((d, i) => (
-                  <span key={i} style={{ fontSize: 13, fontWeight: 700, color: AZUL, padding: '3px 10px', backgroundColor: '#DBEAFE', borderRadius: 99 }}>{d}%</span>
-                ))}
-                {descLote.length < 2 && (
-                  <input
-                    placeholder="%" type="number" min={0} max={99}
-                    style={{ width: 56, padding: '4px 8px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, textAlign: 'center' }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const val = parseFloat((e.target as HTMLInputElement).value)
-                        if (!isNaN(val) && val > 0) void setDescuentoLote(lote.pp_id, [...descLote, val])
-                        ;(e.target as HTMLInputElement).value = ''
-                      }
-                    }}
-                  />
-                )}
               </div>
             </div>
 
@@ -574,58 +608,23 @@ export default function CarritoPage() {
                         </div>
                       )}
                       {facturaConfig && (
-                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px', backgroundColor: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Lista de precios:</span>
-                            <select
-                              value={facturaConfig.lista_precio_id}
-                              onChange={async (e) => {
-                                const newLista = parseInt(e.target.value, 10)
-                                await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
-                                  lista_precio_id: newLista
-                                })
-                              }}
-                              style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: 12, fontWeight: 600, cursor: 'pointer', backgroundColor: 'white' }}
-                              title="Seleccionar lista de precios base para esta factura"
-                            >
-                              {LISTAS.map((lista) => (
-                                <option key={lista.id} value={lista.id}>
-                                  {lista.nombre}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Descuentos (%):</span>
-                            {[0, 1, 2, 3].map(i => (
-                              <input
-                                key={i}
-                                type="number"
-                                min={0}
-                                max={95}
-                                step={5}
-                                defaultValue={facturaConfig.descuentos[i] || 0}
-                                onBlur={async (e) => {
-                                  const val = parseInt(e.target.value, 10) || 0
-                                  const rounded = Math.round(val / 5) * 5
-                                  const final = Math.max(0, Math.min(95, rounded))
-                                  e.target.value = String(final)
-                                  const newDesc = [...facturaConfig.descuentos]
-                                  newDesc[i] = final
-                                  await actualizarDescuentosFactura(lote.pp_id, marca.marca, fact.caso, {
-                                    descuentos: newDesc
-                                  })
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.currentTarget.blur()
-                                  }
-                                }}
-                                style={{ width: 52, padding: '5px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: 12, textAlign: 'center', backgroundColor: 'white' }}
-                                title={`Descuento ${i + 1} - Múltiplos de 5 (cascada). Presioná Enter para aplicar.`}
-                              />
-                            ))}
-                          </div>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 14px', backgroundColor: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                          <span style={{ fontSize: 12, color: '#64748B' }}>
+                            <strong>Lista:</strong> {LISTAS.find(l => l.id === facturaConfig.lista_precio_id)?.nombre ?? 'LPN'}
+                            &nbsp;·&nbsp;<strong>Desc.:</strong> {etiquetaDescuentos(facturaConfig.descuentos)}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={guardandoDesc || !!editorFi}
+                            onClick={() => setEditorFi(facturaConfig)}
+                            style={{
+                              marginLeft: 'auto', padding: '7px 14px', borderRadius: 8,
+                              border: `2px solid ${AZUL}`, backgroundColor: 'white', color: AZUL,
+                              fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                            }}
+                          >
+                            Editar descuentos
+                          </button>
                         </div>
                       )}
                     </div>
@@ -737,8 +736,7 @@ export default function CarritoPage() {
               </div>
             ))}
           </div>
-        )
-      })}
+      ))}
 
       {/* Total + Validar + Confirmar */}
       <div style={{ border: `2px solid ${AZUL}`, borderRadius: 16, padding: 24, backgroundColor: '#EFF6FF' }}>
@@ -789,7 +787,7 @@ export default function CarritoPage() {
         </div>
 
         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-          <button type="button" onClick={validar} disabled={validando || sinVendedor}
+          <button type="button" onClick={validar} disabled={validando || sinVendedor || !!editorFi}
             style={{
               flex: 1, padding: '14px 0', borderRadius: 12,
               backgroundColor: validando || sinVendedor ? '#94A3B8' : VERDE,
@@ -811,10 +809,43 @@ export default function CarritoPage() {
           </button>
         </div>
 
-        <a href="/" style={{ display: 'block', textAlign: 'center', color: '#64748B', fontSize: 14 }}>
+        <a href="/" style={{
+          display: 'block', textAlign: 'center', color: editorFi ? '#CBD5E1' : '#64748B',
+          fontSize: 14, pointerEvents: editorFi ? 'none' : 'auto',
+        }}>
           ← Seguir agregando
         </a>
       </div>
+
+      {editorFi && (
+        <EditorDescuentosFi
+          abierto
+          factura={editorFi}
+          ppId={editorFi.pp_id}
+          esPeLote={editorFi.pp_id < 0}
+          guardando={guardandoDesc}
+          onCancelar={() => { if (!guardandoDesc) setEditorFi(null) }}
+          onGuardar={async (payload) => {
+            setGuardandoDesc(true)
+            setError(null)
+            try {
+              const res = await guardarDescuentosFactura(
+                editorFi.pp_id,
+                editorFi.marca,
+                editorFi.caso,
+                payload,
+              )
+              setEditorFi(null)
+              setError(null)
+              setExito(`Descuentos guardados (${res.origen}) · ${res.items_actualizados} ítems · Revalidá antes de confirmar.`)
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'No se pudieron guardar los descuentos')
+            } finally {
+              setGuardandoDesc(false)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

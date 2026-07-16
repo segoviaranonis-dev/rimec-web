@@ -24,7 +24,7 @@ const CATALOGO_STOCK_SELECT_BASE = `
 export const CATALOGO_STOCK_SELECT_CP = CATALOGO_STOCK_SELECT_BASE
 
 /** Pronta entrega — v_stock_pe_rimec · dual 654/638 · excel_color Kyly · grada texto MIG-150. */
-export const CATALOGO_STOCK_SELECT_PE = `${CATALOGO_STOCK_SELECT_BASE.replace('grades_json,', 'grades_json, grada,')}, proveedor_importacion_id, tipo_v2_id, imagen_color_excel`
+export const CATALOGO_STOCK_SELECT_PE = `${CATALOGO_STOCK_SELECT_BASE.replace('grades_json,', 'grades_json, grada,')}, proveedor_importacion_id, tipo_v2_id, imagen_color_excel, cod_grupo, sdrm_marca, sdrm_tipo0, sdrm_tipo1, sdrm_tipo2, es_liquidacion, es_promo, cadena_comercial`
 
 /** @deprecated Usar catalogoStockSelect(view). */
 export const CATALOGO_STOCK_SELECT = CATALOGO_STOCK_SELECT_CP

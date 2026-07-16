@@ -13,6 +13,10 @@ interface FilterItem {
   label: string
 }
 
+function filterItemKey(prefix: string, item: FilterItem, index: number) {
+  return `${prefix}-${item.id}-${item.label}-${index}`
+}
+
 interface GeneroItem {
   codigo: string
   label: string
@@ -52,6 +56,7 @@ export type CatalogoFilterState = {
   tonos?: string[]
   sin_tono?: boolean
   buscar?: string
+  cadena_comercial?: string
 }
 
 const GENEROS_FALLBACK: GeneroItem[] = [
@@ -383,9 +388,9 @@ export function FiltrosCatalogo({
               <CabeceraPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '', linea_ids: [], tonos: [], sin_tono: false })}>
                 Todas
               </CabeceraPill>
-              {marcas.map(m => (
+              {marcas.map((m, idx) => (
                 <CabeceraPill
-                  key={m.id}
+                  key={filterItemKey('marca', m, idx)}
                   active={marcaIdActual === String(m.id)}
                   onClick={() => aplicar({
                     marca_id: marcaIdActual === String(m.id) ? '' : String(m.id),
@@ -407,9 +412,9 @@ export function FiltrosCatalogo({
               <CabeceraPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '', linea_ids: [], tipo_ids: [] })}>
                 Todos
               </CabeceraPill>
-              {estilos.map(e => (
+              {estilos.map((e, idx) => (
                 <CabeceraPill
-                  key={e.id}
+                  key={filterItemKey('estilo', e, idx)}
                   active={estiloIdActual === String(e.id)}
                   onClick={() => aplicar({
                     grupo_estilo_id: estiloIdActual === String(e.id) ? '' : String(e.id),
@@ -430,11 +435,11 @@ export function FiltrosCatalogo({
               <CabeceraPill active={!tiposSelIds.length} onClick={() => aplicar({ tipo_ids: [] })}>
                 Todos
               </CabeceraPill>
-              {tipos.map(t => {
+              {tipos.map((t, idx) => {
                 const sel = tiposSelIds.includes(t.id)
                 return (
                   <CabeceraPill
-                    key={t.id}
+                    key={filterItemKey('tipo', t, idx)}
                     active={sel}
                     onClick={() => {
                       const next = sel ? tiposSelIds.filter(x => x !== t.id) : [...tiposSelIds, t.id]
@@ -455,11 +460,11 @@ export function FiltrosCatalogo({
               <CabeceraPill active={!lineasSelIds.length} onClick={() => aplicar({ linea_ids: [] })}>
                 Todas
               </CabeceraPill>
-              {lineas.map(l => {
+              {lineas.map((l, idx) => {
                 const sel = lineasSelIds.includes(l.id)
                 return (
                   <CabeceraPill
-                    key={l.id}
+                    key={filterItemKey('linea', l, idx)}
                     active={sel}
                     onClick={() => {
                       const next = sel ? lineasSelIds.filter(x => x !== l.id) : [...lineasSelIds, l.id]

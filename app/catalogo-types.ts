@@ -50,4 +50,12 @@ export interface StockRow {
   genero_codigo?: string | null
   descp_genero?: string | null
   ramo_tipo?: string | null
+  cod_grupo?: string | null
+  sdrm_marca?: string | null
+  sdrm_tipo0?: string | null
+  sdrm_tipo1?: string | null
+  sdrm_tipo2?: string | null
+  es_liquidacion?: boolean | null
+  es_promo?: boolean | null
+  cadena_comercial?: string | null
 }

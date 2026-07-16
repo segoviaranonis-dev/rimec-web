@@ -1,5 +1,6 @@
 /** Filtros sidebar derivados de tarjetas ya cargadas (sin scan BD). */
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import { normalizeFilterItems } from '@/lib/catalogoFilters'
 
 export function buildFiltrosFromTarjetas(tarjetas: TarjetaCatalogo[]) {
   const lineas = new Map<number, string>()
@@ -24,9 +25,7 @@ export function buildFiltrosFromTarjetas(tarjetas: TarjetaCatalogo[]) {
   }
 
   const toItems = (m: Map<number, string>) =>
-    [...m.entries()]
-      .sort((a, b) => a[1].localeCompare(b[1], 'es', { sensitivity: 'base' }))
-      .map(([id, label]) => ({ id, label }))
+    normalizeFilterItems([...m.entries()].map(([id, label]) => ({ id, label })))
 
   return {
     filtros: {

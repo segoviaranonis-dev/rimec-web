@@ -1,4 +1,4 @@
-import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import { isGradaAbiertaConfecciones, resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
 
 export interface StockRowMin {
   cajas_disponibles?: number | null
@@ -12,10 +12,20 @@ export interface StockRowMin {
   origen_tipo?: string | null
   det_id?: number | null
   pp_id?: number | null
+  tipo_v2_id?: number | null
+  ramo_tipo?: string | null
+  proveedor_importacion_id?: number | null
+}
+
+function esConfecciones638Fila(item: StockRowMin): boolean {
+  if (Number(item.proveedor_importacion_id) === 638) return true
+  return isGradaAbiertaConfecciones({
+    tipo_v2_id: item.tipo_v2_id,
+    ramo_tipo: item.ramo_tipo,
+  })
 }
 
 function saldoParesDeFila(item: StockRowMin): number {
-  // v_stock_* ya entrega saldo_pares = cantidad − vendidos. No restar de nuevo.
   if (item.saldo_pares != null && Number.isFinite(Number(item.saldo_pares))) {
     return Math.max(0, Number(item.saldo_pares))
   }
@@ -26,8 +36,8 @@ function saldoParesDeFila(item: StockRowMin): number {
   return 0
 }
 
-function paresPorCajaDeFila(item: StockRowMin, saldoPares: number): number {
-  return resolveParesPorCaja({
+function paresInputDeFila(item: StockRowMin, saldoPares: number) {
+  return {
     pares_por_caja: item.pares_por_caja,
     cantidad_cajas: item.cantidad_cajas,
     cantidad_pares: item.cantidad_pares,
@@ -37,13 +47,23 @@ function paresPorCajaDeFila(item: StockRowMin, saldoPares: number): number {
     origen_tipo: item.origen_tipo,
     det_id: item.det_id,
     pp_id: item.pp_id,
-  })
+    tipo_v2_id: item.tipo_v2_id,
+    ramo_tipo: item.ramo_tipo,
+  }
 }
 
-/** Cajas cerradas vendibles (PE = CP · Director 2026-07-13). */
+function paresPorCajaDeFila(item: StockRowMin, saldoPares: number): number {
+  return resolveParesPorCaja(paresInputDeFila(item, saldoPares))
+}
+
+/** Cajas cerradas vendibles · 638 confecciones = saldo en prendas (no ÷ pares/caja). */
 export function cajasDisponiblesDeFila(item: StockRowMin): number {
   const saldoPares = saldoParesDeFila(item)
   if (saldoPares <= 0) return 0
+
+  if (esConfecciones638Fila(item)) {
+    return Math.floor(saldoPares)
+  }
 
   const ppc = paresPorCajaDeFila(item, saldoPares)
   if (ppc <= 0) return 0
@@ -51,16 +71,19 @@ export function cajasDisponiblesDeFila(item: StockRowMin): number {
   if (saldoPares > 0 && saldoPares < ppc) return 1
 
   const fromView = Number(item.cajas_disponibles)
-  if (Number.isFinite(fromView) && fromView > 0 && fromView * ppc <= saldoPares + ppc) {
-    return Math.max(0, Math.floor(fromView))
+  if (Number.isFinite(fromView) && fromView > 0) {
+    const maxCajasPorSaldo = Math.floor(saldoPares / ppc)
+    return Math.max(0, Math.min(Math.floor(fromView), maxCajasPorSaldo))
   }
 
   return Math.max(0, Math.floor(saldoPares / ppc))
 }
 
-/** Pares realmente vendibles, alineados con unidades de carrito. */
+/** Pares/prendas vendibles alineados con carrito. */
 export function paresDisponiblesDeFila(item: StockRowMin): number {
   const saldoPares = saldoParesDeFila(item)
+  if (saldoPares <= 0) return 0
+  if (esConfecciones638Fila(item)) return Math.floor(saldoPares)
   const cajas = cajasDisponiblesDeFila(item)
   const ppc = paresPorCajaDeFila(item, saldoPares)
   if (cajas <= 0) return 0

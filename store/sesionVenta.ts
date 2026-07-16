@@ -5,6 +5,7 @@ import {
   carritoDeleteItem,
   carritoDeleteSesion,
   carritoGet,
+  carritoGuardarDescuentosFi,
   carritoPatchFactura,
   carritoPatchItem,
   carritoPutSesion,
@@ -20,7 +21,12 @@ import {
   getPrecioActivo as getPrecioActivoLib,
   getPrecioActivoPe as getPrecioActivoPeLib,
 } from '@/lib/precioLista'
-import { isProntaEntregaStockRow, paresDesdeCajasCerradas, resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import {
+  isProntaEntregaStockRow,
+  paresCarritoDesdeCajas,
+  resolveParesPorCaja,
+} from '@/lib/prontaEntregaVenta'
+import { normalizarDescuentos4, precioNetoCascada } from '@/lib/carritoDescuentosFi'
 import { gradasFmtFromRow } from '@/lib/gradasFmt'
 
 export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
@@ -81,6 +87,9 @@ export interface ItemCarrito {
   pares:           number
   subtotal:        number
   cajas_disponibles: number  // Stock disponible para validación del botón +
+  saldo_pares?:    number | null
+  grada?:          string | null
+  grades_json?:    Record<string, number> | null
   origen_tipo?: string | null
 }
 
@@ -112,6 +121,9 @@ export interface SesionVenta {
       ok: boolean
       motivo: string | null
       cajas_actuales: number
+      cajas_solicitadas?: number
+      pares_actuales?: number
+      pares_solicitados?: number
       precio_actual: number | null
     }>
   }
@@ -123,6 +135,7 @@ export interface SesionVenta {
   setDescuentos:    (desc: number[]) => Promise<void>
   setDescuentoLote: (ppId: number, desc: number[]) => Promise<void>
   actualizarDescuentosFactura: (pp_id: number, marca: string, caso: string, config: { lista_precio_id?: number; descuentos?: number[]; pre_autorizado?: boolean }) => Promise<void>
+  guardarDescuentosFactura: (pp_id: number, marca: string, caso: string, config: { lista_precio_id: number; descuentos: number[] }) => Promise<{ items_actualizados: number; origen: string }>
   recalcularFactura: (pp_id: number, marca: string, caso: string) => Promise<{ ok: boolean; items_actualizados: number; lista_aplicada: number; descuentos_aplicados: number[] }>
   agregarCaja:      (item: ItemCarritoMeta) => Promise<void>
   quitarCaja:       (det_id: number) => Promise<void>
@@ -160,18 +173,11 @@ export function esSesionAntigua(activatedAt: string | null | undefined, horas = 
 }
 
 function calcularPrecioNeto(precioBase: number, descuentos: number[]): number {
-  let precio = precioBase
-  for (const d of descuentos) precio = precio * (1 - d / 100)
-  return Math.floor(precio / 100) * 100
+  return precioNetoCascada(precioBase, normalizarDescuentos4(descuentos))
 }
 
 function paresCalc(item: ItemCarritoMeta, cajas: number): number {
-  return paresDesdeCajasCerradas(cajas, {
-    pares_por_caja: item.cant_caja,
-    origen_tipo: item.origen_tipo,
-    det_id: item.det_id,
-    pp_id: item.pp_id,
-  })
+  return paresCarritoDesdeCajas(cajas, item)
 }
 
 function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, listaId: ListaId): ItemCarrito | null {
@@ -185,10 +191,31 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
   const precio_lpc04 = Number(stockRow?.lpc04) > 0 ? Number(stockRow?.lpc04) : 0
 
   // Si tenemos META_CACHE (localStorage), usarlo
+  const stockAny = stockRow as {
+    saldo_pares?: number
+    grada?: string | null
+    cantidad_cajas?: number
+    cantidad_pares?: number
+    pares_por_caja?: number
+    grades_json?: Record<string, number> | null
+    origen_tipo?: string
+    cajas_disponibles?: number
+  } | undefined
+  const stockSaldo = stockAny?.saldo_pares
+  const stockGrada = stockAny?.grada
+  const stockGrades = stockAny?.grades_json
+
   if (base) {
-    const pares = paresCalc(base, row.cantidad_cajas)
-    return {
+    const enriched: ItemCarritoMeta = {
       ...base,
+      saldo_pares: base.saldo_pares ?? stockSaldo ?? null,
+      grada: base.grada ?? stockGrada ?? null,
+      grades_json: base.grades_json ?? stockGrades ?? null,
+    }
+    persistMeta(enriched)
+    const pares = paresCalc(enriched, row.cantidad_cajas)
+    return {
+      ...enriched,
       lista_precio_id: listaId,
       precio_base: row.precio_snapshot,
       precio_lpn,
@@ -198,21 +225,33 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
       cajas: row.cantidad_cajas,
       pares,
       subtotal: row.precio_snapshot * pares,
-      cajas_disponibles: stockRow?.cajas_disponibles ?? 0,
+      cajas_disponibles: stockAny?.cajas_disponibles ?? base.cajas_disponibles ?? 0,
     }
   }
 
   // SIN META_CACHE (otro dispositivo): usar datos de vista stock
-  const origenTipo = (stockRow as { origen_tipo?: string } | undefined)?.origen_tipo
+  const origenTipo = stockAny?.origen_tipo
+  const saldo_pares = stockSaldo ?? null
   const cant_caja = resolveParesPorCaja({
-    pares_por_caja: stockRow?.pares_por_caja,
-    cantidad_cajas: undefined,
-    saldo_pares: (stockRow as { saldo_pares?: number } | undefined)?.saldo_pares,
+    pares_por_caja: stockAny?.pares_por_caja,
+    cantidad_cajas: stockAny?.cantidad_cajas,
+    cantidad_pares: stockAny?.cantidad_pares,
+    saldo_pares,
+    grades_json: stockGrades,
+    grada: stockGrada,
     origen_tipo: origenTipo,
     det_id: row.det_id,
     pp_id: row.pp_id,
   })
-  const pares = row.cantidad_cajas * cant_caja
+  const pares = paresCarritoDesdeCajas(row.cantidad_cajas, {
+    cant_caja,
+    saldo_pares,
+    grades_json: stockGrades,
+    grada: stockGrada,
+    origen_tipo: origenTipo,
+    det_id: row.det_id,
+    pp_id: row.pp_id,
+  })
 
   return {
     det_id: row.det_id,
@@ -242,10 +281,13 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     precio_lpc03,
     precio_lpc04,
     cant_caja,
+    saldo_pares,
+    grada: stockGrada ?? null,
+    grades_json: stockGrades ?? null,
     cajas: row.cantidad_cajas,
     pares,
     subtotal: row.precio_snapshot * pares,
-    cajas_disponibles: stockRow?.cajas_disponibles ?? 0,
+    cajas_disponibles: stockAny?.cajas_disponibles ?? 0,
   }
 }
 
@@ -448,6 +490,18 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     await get().cargarDesdeBD()
   },
 
+  guardarDescuentosFactura: async (pp_id, marca, caso, config) => {
+    const result = await carritoGuardarDescuentosFi(pp_id, marca, caso, config)
+    await get().cargarDesdeBD()
+    set({
+      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+    })
+    return {
+      items_actualizados: result.items_actualizados,
+      origen: result.origen,
+    }
+  },
+
   recalcularFactura: async (pp_id, marca, caso) => {
     try {
       const result = await carritoRecalcularFactura(pp_id, marca, caso)
@@ -503,7 +557,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
         return
       }
       await carritoPatchItem(det_id, cajas)
-      const pares = actual.cant_caja * cajas
+      const pares = paresCarritoDesdeCajas(cajas, actual)
       set((st) => ({
         carrito: { ...st.carrito, [key]: { ...actual, cajas, pares, subtotal: actual.precio_base * pares } },
         validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
@@ -533,12 +587,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     }
     try {
       await carritoPatchItem(det_id, safe)
-      const pares = paresDesdeCajasCerradas(safe, {
-        pares_por_caja: actual.cant_caja,
-        origen_tipo: actual.origen_tipo,
-        det_id: actual.det_id,
-        pp_id: actual.pp_id,
-      })
+      const pares = paresCarritoDesdeCajas(safe, actual)
       set((st) => ({
         carrito: { ...st.carrito, [key]: { ...actual, cajas: safe, pares, subtotal: actual.precio_base * pares } },
         validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
@@ -635,8 +684,7 @@ export function fragmentarCarrito(
 
   return Object.entries(byPP).map(([ppIdStr, items]) => {
     const ppId = Number(ppIdStr)
-    const descLote = descuentosPorLote[ppId] ?? []
-    const descTotal = [...descuentosCabecera, ...descLote]
+    const descCabecera = normalizarDescuentos4(descuentosCabecera)
 
     const byMarca: Record<string, ItemCarrito[]> = {}
     for (const item of items) {
@@ -658,7 +706,7 @@ export function fragmentarCarrito(
         const facturaConfig = facturasConfig?.find(
           f => f.pp_id === ppId && f.marca === marca && f.caso === caso
         )
-        const descFactura = facturaConfig?.descuentos ?? descTotal
+        const descFactura = normalizarDescuentos4(facturaConfig?.descuentos ?? descCabecera)
         const listaFactura = facturaConfig?.lista_precio_id ?? 1
 
         const detalle: ItemFragmentado[] = cItems.map((item) => {
@@ -685,7 +733,8 @@ export function fragmentarCarrito(
             (item.precio_base > 0 ? item.precio_base : 0)
 
           const precioNeto = calcularPrecioNeto(precioBaseLista, descFactura)
-          const subtotal = precioNeto * item.pares
+          const paresConfirmar = paresCarritoDesdeCajas(item.cajas, item)
+          const subtotal = precioNeto * paresConfirmar
 
           return {
             det_id: item.det_id,
@@ -697,7 +746,7 @@ export function fragmentarCarrito(
             gradas_fmt: item.gradas_fmt,
             imagen_url: item.imagen_url,
             cajas: item.cajas,
-            pares: item.pares,
+            pares: paresConfirmar,
             precio_base: precioBaseLista,
             precio_neto: precioNeto,
             subtotal,
@@ -730,7 +779,7 @@ export function fragmentarCarrito(
       pp_nro: pp.pp_nro,
       proforma: pp.proforma,
       quincena: pp.quincena_desc ?? 'Sin quincena asignada',
-      descuentos_lote: descLote,
+      descuentos_lote: [],
       total_pares: marcas.reduce((s, m) => s + m.total_pares, 0),
       total_monto: marcas.reduce((s, m) => s + m.total_monto, 0),
       cantidad_facturas: marcas.reduce((s, m) => s + m.cantidad_facturas, 0),

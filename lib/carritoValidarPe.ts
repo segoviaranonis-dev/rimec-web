@@ -1,13 +1,19 @@
 /**
- * Validación Pronta entrega — RPC carrito_validar solo mira v_stock_rimec (CP).
- * PE-only: validar en app sin RPC (el RPC pisa precio_snapshot a 0).
+ * Validación carrito CP + PE con misma lógica que catálogo (disponibilidad.ts).
+ * RPC carrito_validar recalcula precios; el parche app re-valida stock/precio neto por FI.
  */
 import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { normalizarDescuentos4, precioNetoCascada } from '@/lib/carritoDescuentosFi'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
-import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
-import { getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
-import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
+import {
+  cajasDisponiblesDeFila,
+  normalizarFilaStockVenta,
+  paresDisponiblesDeFila,
+  type StockRowMin,
+} from '@/lib/disponibilidad'
+import { getPrecioActivo, getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
+import { isProntaEntregaStockRow, paresDesdeCajasCerradas } from '@/lib/prontaEntregaVenta'
 
 export type ValidarItem = {
   det_id: number
@@ -15,6 +21,8 @@ export type ValidarItem = {
   motivo: string | null
   cajas_actuales?: number
   cajas_solicitadas?: number
+  pares_actuales?: number
+  pares_solicitados?: number
   precio_actual?: number | null
   precio_carrito?: number | null
 }
@@ -45,6 +53,41 @@ function listaParaItem(
   return 1
 }
 
+function descuentosParaItem(
+  sesion: { descuentos_lote?: { facturas?: Array<Record<string, unknown>> }; descuentos?: number[] },
+  item: { pp_id: number; marca_snapshot: string; caso_snapshot: string },
+): number[] {
+  const facturas = sesion.descuentos_lote?.facturas ?? []
+  const hit = facturas.find(
+    (f) =>
+      Number(f.pp_id) === item.pp_id &&
+      String(f.marca) === item.marca_snapshot &&
+      String(f.caso) === item.caso_snapshot,
+  )
+  const raw = hit?.descuentos ?? sesion.descuentos ?? []
+  return [...normalizarDescuentos4(raw)]
+}
+
+function filaValidacion(stock: Record<string, unknown>, detId: number, ppId: number): StockRowMin {
+  const norm = normalizarFilaStockVenta(stock as unknown as StockRowMin)
+  return { ...norm, det_id: detId, pp_id: ppId }
+}
+
+function paresInputDeFila(fila: StockRowMin): Parameters<typeof paresDesdeCajasCerradas>[1] {
+  return {
+    pares_por_caja: fila.pares_por_caja,
+    cantidad_cajas: fila.cantidad_cajas,
+    cantidad_pares: fila.cantidad_pares,
+    saldo_pares: fila.saldo_pares,
+    pares_vendidos: fila.pares_vendidos,
+    grades_json: fila.grades_json,
+    grada: fila.grada,
+    origen_tipo: fila.origen_tipo,
+    det_id: fila.det_id,
+    pp_id: fila.pp_id,
+  }
+}
+
 async function emitirTokenValidacion(
   sb: SupabaseClient,
   idUsuario: number,
@@ -58,13 +101,14 @@ async function emitirTokenValidacion(
       validacion_token: token,
       validacion_estado: 'OK',
       validada_en: now.toISOString(),
-      actualizada_en: now.toISOString(),
+      actualizada_en: new Date().toISOString(),
     })
     .eq('id_usuario', idUsuario)
   return { token, expira_en: expira.toISOString() }
 }
 
-async function validarItemsPeEnCarrito(
+/** CP + PE — paridad catálogo (cajas + pares + precio neto por FI). */
+async function validarItemsStockEnCarrito(
   sb: SupabaseClient,
   idUsuario: number,
   items: Array<Record<string, unknown>>,
@@ -88,74 +132,75 @@ async function validarItemsPeEnCarrito(
       caso_snapshot: string
     }
     const detId = Number(item.det_id)
-    const stock = stockMap.get(detId)
-    const isPe = isProntaEntregaStockRow({
-      det_id: detId,
-      pp_id: item.pp_id,
-      origen_tipo: stock?.origen_tipo as string | null | undefined,
-    })
+    const stockRaw = stockMap.get(detId)
+    const cajasSolicitadas = Number(item.cantidad_cajas ?? 0)
+    const precioCarrito = Number(item.precio_snapshot ?? 0)
 
-    if (!isPe) continue
-
-    if (!stock) {
+    if (!stockRaw) {
       out.push({
         det_id: detId,
         ok: false,
         motivo: 'ITEM_OBSOLETO',
         cajas_actuales: 0,
-        cajas_solicitadas: Number(item.cantidad_cajas ?? 0),
+        cajas_solicitadas: cajasSolicitadas,
+        pares_actuales: 0,
+        pares_solicitados: 0,
         precio_actual: null,
-        precio_carrito: Number(item.precio_snapshot ?? 0),
+        precio_carrito: precioCarrito,
       })
       continue
     }
 
-    const listaId = listaParaItem(sesion, item)
-    const caso = String(item.caso_snapshot ?? stock.descp_caso ?? '')
-    const precioActual = getPrecioActivoPe(
-      {
-        lpn: Number(stock.lpn) || null,
-        lpc02: Number(stock.lpc02) || null,
-        lpc03: Number(stock.lpc03) || null,
-        lpc04: Number(stock.lpc04) || null,
-        descp_caso: String(stock.descp_caso ?? caso),
-      },
-      listaId,
-      caso,
-    )
-    const cajasActuales = cajasDisponiblesDeFila({
-      cajas_disponibles: stock.cajas_disponibles as number,
-      saldo_pares: stock.saldo_pares as number,
-      cantidad_pares: Number(stock.cantidad_pares ?? stock.saldo_pares ?? 0),
-      pares_vendidos: 0,
-      pares_por_caja: Number(stock.pares_por_caja ?? 0),
-      cantidad_cajas: Number(stock.cantidad_cajas ?? 0),
-      origen_tipo: stock.origen_tipo as string,
+    const isPe = isProntaEntregaStockRow({
       det_id: detId,
       pp_id: item.pp_id,
+      origen_tipo: stockRaw.origen_tipo as string | null | undefined,
     })
-    const cajasSolicitadas = Number(item.cantidad_cajas ?? 0)
-    const precioCarrito = Number(item.precio_snapshot ?? 0)
+    const fila = filaValidacion(stockRaw, detId, item.pp_id)
+    const cajasActuales = cajasDisponiblesDeFila(fila)
+    const paresActuales = paresDisponiblesDeFila(fila)
+    const paresSolicitados = paresDesdeCajasCerradas(cajasSolicitadas, paresInputDeFila(fila))
+
+    const listaId = listaParaItem(sesion, item)
+    const descuentos = descuentosParaItem(sesion, item)
+    const caso = String(item.caso_snapshot ?? stockRaw.descp_caso ?? '')
+    const rowPrecio = {
+      lpn: Number(stockRaw.lpn) || null,
+      lpc02: Number(stockRaw.lpc02) || null,
+      lpc03: Number(stockRaw.lpc03) || null,
+      lpc04: Number(stockRaw.lpc04) || null,
+      descp_caso: String(stockRaw.descp_caso ?? caso),
+    }
+    const precioBruto = isPe
+      ? getPrecioActivoPe(rowPrecio, listaId, caso)
+      : getPrecioActivo(rowPrecio, listaId, caso)
+    const precioEsperado =
+      precioBruto != null && precioBruto > 0
+        ? precioNetoCascada(precioBruto, descuentos)
+        : null
 
     let ok = true
     let motivo: string | null = null
 
-    if (!precioActual || precioActual <= 0) {
+    if (precioEsperado == null || precioEsperado <= 0) {
       ok = false
       motivo = 'SIN_PRECIO'
-    } else if (cajasSolicitadas > cajasActuales) {
+    } else if (cajasActuales <= 0 || paresActuales <= 0) {
       ok = false
       motivo = 'STOCK_INSUFICIENTE'
-    } else if (precioCarrito > 0 && precioCarrito !== precioActual) {
+    } else if (cajasSolicitadas > cajasActuales || paresSolicitados > paresActuales) {
+      ok = false
+      motivo = 'STOCK_INSUFICIENTE'
+    } else if (precioCarrito > 0 && precioCarrito !== precioEsperado) {
       ok = false
       motivo = 'PRECIO_CAMBIO'
     }
 
-    if (ok && precioActual !== precioCarrito) {
+    if (ok && precioEsperado != null && precioCarrito !== precioEsperado) {
       await sb
         .from('carrito_item')
         .update({
-          precio_snapshot: precioActual,
+          precio_snapshot: precioEsperado,
           actualizado_en: new Date().toISOString(),
         })
         .eq('id_usuario', idUsuario)
@@ -169,7 +214,9 @@ async function validarItemsPeEnCarrito(
       motivo,
       cajas_actuales: cajasActuales,
       cajas_solicitadas: cajasSolicitadas,
-      precio_actual: precioActual,
+      pares_actuales: paresActuales,
+      pares_solicitados: paresSolicitados,
+      precio_actual: precioEsperado,
       precio_carrito: precioCarrito,
     })
   }
@@ -177,7 +224,7 @@ async function validarItemsPeEnCarrito(
   return { items: out, recalculados }
 }
 
-/** Carrito 100% PE — no invocar RPC (pisa snapshots). */
+/** Carrito 100% PE — no invocar RPC (pisa snapshots CP). */
 export async function validarCarritoPeApp(
   sb: SupabaseClient,
   idUsuario: number,
@@ -194,20 +241,12 @@ export async function validarCarritoPeApp(
     return { success: false, estado: 'ERROR', detail: 'Sesión de venta no activa' }
   }
 
-  const { items: validados, recalculados } = await validarItemsPeEnCarrito(
+  const { items: validados, recalculados } = await validarItemsStockEnCarrito(
     sb,
     idUsuario,
     items,
     sesion,
   )
-
-  if (validados.length !== items.length) {
-    return {
-      success: false,
-      estado: 'ERROR',
-      detail: 'Carrito mixto — usar validación combinada',
-    }
-  }
 
   const allOk = validados.every((i) => i.ok)
   if (!allOk) {
@@ -241,6 +280,7 @@ export async function validarCarritoPeApp(
   }
 }
 
+/** Reemplaza stock/precio del RPC con validación enriquecida (CP + PE). */
 export async function parcheValidarProntaEntrega(
   sb: SupabaseClient,
   idUsuario: number,
@@ -253,25 +293,15 @@ export async function parcheValidarProntaEntrega(
 
   if (!items?.length || !sesion) return rpc
 
-  const { items: peItems, recalculados } = await validarItemsPeEnCarrito(
+  const { items: stockItems, recalculados } = await validarItemsStockEnCarrito(
     sb,
     idUsuario,
     items,
     sesion,
   )
-  if (!peItems.length) return rpc
 
-  const byDet = new Map<number, ValidarItem>()
-  for (const row of rpc.items ?? []) {
-    byDet.set(Number(row.det_id), { ...row, det_id: Number(row.det_id) })
-  }
-  for (const row of peItems) {
-    byDet.set(row.det_id, row)
-  }
-
-  const mergedItems = items.map((i) => byDet.get(Number(i.det_id))).filter(Boolean) as ValidarItem[]
+  const mergedItems = stockItems
   const allOk = mergedItems.every((i) => i.ok)
-  const estado = allOk ? 'OK' : 'DIFERENCIAS'
 
   if (allOk) {
     const tokenData =

@@ -8,6 +8,7 @@ import { resolveSupabaseUrl } from '@/lib/supabaseEnv'
 import {
   applyMemoryFilters,
   applyNonOrigenSqlFilters,
+  applyPeCommercialSqlFilters,
   applyPeDepositoQuery,
   applySqlFiltersToQuery,
   catalogoStockView,
@@ -41,7 +42,10 @@ async function fetchStockBatchFromView(
 
     query =
       view === 'v_stock_pe_rimec'
-        ? applyPeDepositoQuery(applyNonOrigenSqlFilters(query, filtersForPeSql(filters)), filters)
+        ? applyPeCommercialSqlFilters(
+            applyPeDepositoQuery(applyNonOrigenSqlFilters(query, filtersForPeSql(filters)), filters),
+            filters,
+          )
         : applySqlFiltersToQuery(query, filtersForCpSql(filters))
     query = query.order('det_id').range(rowFrom, rowTo)
 
@@ -64,6 +68,7 @@ function filtersForCpSql(filters: CatalogoFilterStateExtended): CatalogoFilterSt
     origen_tipo: 'TRÁNSITO_PP',
     ramo_tipo: '',
     deposito_codigo: '',
+    cadena_comercial: '',
   }
 }
 

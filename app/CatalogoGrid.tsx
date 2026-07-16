@@ -18,7 +18,9 @@ import { formatearQuincena } from '@/lib/fecha'
 import { estiloBadgeMarca } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
-import { esCasoPromocional } from '@/lib/precioLista'
+import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock } from '@/lib/confeccionesCatalogo'
+import { esLiquidacionPe, esPromoTarjeta } from '@/lib/catalogoComercial'
+import { LiquidacionPeBadge } from '@/components/catalog/LiquidacionPeBadge'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import {
   isTarjetaFusionada,
@@ -27,6 +29,11 @@ import {
   type TarjetaGrilla,
 } from '@/lib/fusionTarjetasCatalogo'
 import { CatalogLotesAcordeon } from '@/components/catalog/CatalogLotesAcordeon'
+import {
+  tonoKeyDeVariante,
+  variantePorTonoKey,
+  indiceVariantePorTonoKey,
+} from '@/lib/catalogoTonoActivo'
 
 export type { RimecVariante, TarjetaCatalogo }
 /** @deprecated Usar TarjetaCatalogo — alias para compatibilidad interna */
@@ -290,12 +297,16 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
   producto: TarjetaCatalogo; initialIdx: number; onClose: () => void
 }) {
   const [idx, setIdx] = useState(initialIdx)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   const v = p.variantes[idx]
   const shell = p.shell
 
-  const listaPrecioId = useSesion(s => s.listaPrecioId)
-  const precioVal = precioCatalogo(v, listaPrecioId, p.descp_caso, p.origen_tipo)
-  const precio = precioVal ? new Intl.NumberFormat('es-PY').format(precioVal) : null
+  // Misma regla que TarjetaProducto: carrito_sesion + cliente_v2 (MIG-080), no LPN suelto.
+  const ventaActivaStore = useSesion(s =>
+    s.hydrated && !s.hydrating && s.activa && (s.cliente?.id_cliente ?? 0) > 0,
+  )
+  const ventaActiva = mounted ? ventaActivaStore : false
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -383,7 +394,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
                     style={estiloBadgeMarca(p.descp_marca)}>
                 {p.descp_marca}
               </span>
-              {esCasoPromocional(p.descp_caso) ? <PromoCasoBadge size="md" /> : null}
+              {esPromoTarjeta(p) ? <PromoCasoBadge size="md" /> : null}
               <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
                 <span style={{ color: AZUL }}>{p.linea_codigo}</span>
                 <span className="text-slate-300">·</span>
@@ -406,18 +417,13 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
             {v.gradas_fmt}
           </p>
 
-          <div className="flex items-end justify-between gap-2">
-            {precio && (
-              <div>
-                <p className="text-[9px] font-semibold uppercase text-slate-400 leading-none mb-0.5">Precio Gs.</p>
-                <div className="text-lg font-extrabold" style={{ color: CELESTE }}>{precio}</div>
-              </div>
-            )}
-            <div className="text-right">
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: '#f0f9ff', color: CELESTE }}>
-                disp: {v.cajas_disponibles} cjs
-              </span>
-            </div>
+          <div className="flex items-end justify-end gap-2">
+            {!ventaActiva ? (
+              <p className="text-[10px] font-semibold text-slate-500 mr-auto">🔒 Activá venta para ver precios</p>
+            ) : null}
+            <span className="text-[9px] font-bold px-1.5 py-1 rounded-md" style={{ backgroundColor: '#f0f9ff', color: CELESTE }}>
+              disp: {v.cajas_disponibles} cjs
+            </span>
           </div>
         </div>
       </div>
@@ -428,23 +434,28 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
 
 function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCatalogo; onNeedSession: () => void }) {
   const variantesConStock = p.variantes.filter(v => v.cajas_disponibles > 0)
-  const [varIdx, setVarIdx] = useState(0)
+  const v0 = variantesConStock[0] || p.variantes[0]
+  const [activeTonoKey, setActiveTonoKey] = useState(() => tonoKeyDeVariante(v0))
   const [lightbox, setLightbox] = useState(false)
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
-  const activaStore = useSesion(s => s.activa)
+  // Misma rigurosidad que Lightbox: sesión + cliente (4.01.04.001)
+  const ventaActivaStore = useSesion(s =>
+    s.hydrated && !s.hydrating && s.activa && (s.cliente?.id_cliente ?? 0) > 0,
+  )
   const listaPrecioId = useSesion(s => s.listaPrecioId)
-  const activa = mounted ? activaStore : false
+  const activa = mounted ? ventaActivaStore : false
 
+  const matchIdx = indiceVariantePorTonoKey(variantesConStock, activeTonoKey)
+  const varIdx = matchIdx >= 0 ? matchIdx : 0
   const v = variantesConStock[varIdx] || p.variantes[0]
-  const precioVal = precioCatalogo(v, listaPrecioId, p.descp_caso, p.origen_tipo)
-  const tienePrecio = precioVal !== null && precioVal > 0
-  const precioTarjeta = activa && tienePrecio ? (precioVal as number) : null
   const paresStock = paresEnTarjeta(p)
+  const esConf = isConfecciones638Lote(p)
   const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
-  const esPromo = esCasoPromocional(p.descp_caso)
-  const shellVariant = esPe ? 'pe' as const : 'cp' as const
+  const esPromo = esPromoTarjeta(p)
+  const esLiquidacion = esLiquidacionPe(p)
+  const shellVariant = esLiquidacion ? 'liquidacion' as const : esPe ? 'pe' as const : 'cp' as const
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -452,6 +463,8 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       activa={activa}
       listaPrecioId={listaPrecioId}
       onNeedSession={onNeedSession}
+      activeTonoKey={activeTonoKey}
+      onSelectTonoKey={setActiveTonoKey}
     />
   )
 
@@ -461,6 +474,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
         marca={p.descp_marca}
         esPromo={esPromo}
         stockPares={paresStock}
+        stockUnidad={esConf ? 'prend' : 'p'}
         hideStockBadge
         shellVariant={shellVariant}
         linea={p.linea_codigo}
@@ -472,14 +486,18 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
         flatSrc={v.imagen_url_flat}
         thumbCandidates={v.imagen_candidates_thumb}
         alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
-        precio={precioTarjeta}
         priority={varIdx === 0}
         compactGrid
         onImageClick={() => setLightbox(true)}
+        imageCornerBadge={esPe && esLiquidacion ? <LiquidacionPeBadge /> : null}
         imageOverlay={
-          variantesConStock.length > 1 ? (
+          esConf && cantidadTallasConStock(p) > 1 ? (
             <span className="pointer-events-none absolute top-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
-              {variantesConStock.length} col.
+              {cantidadTallasConStock(p)} tall.
+            </span>
+          ) : !esConf && variantesConStock.length > 1 ? (
+            <span className="pointer-events-none absolute top-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
+              {coloresUnicosEnLote(p).length} col.
             </span>
           ) : null
         }
@@ -498,6 +516,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
 }
 
 function paresEnTarjeta(p: TarjetaCatalogo): number {
+  if (isConfecciones638Lote(p)) return stockEnLote(p)
   return p.variantes
     .filter(v => v.cajas_disponibles > 0)
     .reduce((s, v) => {
@@ -524,15 +543,24 @@ function TarjetaProductoFusion({
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
-  const activaStore = useSesion(s => s.activa)
+  const ventaActivaStore = useSesion(s =>
+    s.hydrated && !s.hydrating && s.activa && (s.cliente?.id_cliente ?? 0) > 0,
+  )
   const listaPrecioId = useSesion(s => s.listaPrecioId)
-  const activa = mounted ? activaStore : false
+  const activa = mounted ? ventaActivaStore : false
 
-  const { lote: loteHero, variante: vHero } = varianteHeroFusionada(p)
+  const { lote: loteHero0, variante: vHero0 } = varianteHeroFusionada(p)
+  const [activeTonoKey, setActiveTonoKey] = useState(() => tonoKeyDeVariante(vHero0))
+
+  const porTono = variantePorTonoKey(p.lotes, activeTonoKey)
+  const loteHero = porTono?.lote ?? loteHero0
+  const vHero = porTono?.variante ?? vHero0
   const paresStock = p.lotes.reduce((s, l) => s + paresEnTarjeta(l), 0)
-  const precioHero = precioCatalogo(vHero, listaPrecioId, loteHero.descp_caso, loteHero.origen_tipo)
-  const precioTarjeta = activa && precioHero && precioHero > 0 ? precioHero : null
-  const esPromo = p.lotes.some(l => esCasoPromocional(l.descp_caso))
+  const esConf = p.lotes.every(l => isConfecciones638Lote(l))
+  const esPromo = p.lotes.some(l => esPromoTarjeta(l))
+  const esLiquidacion = p.lotes.some(l => esLiquidacionPe(l))
+  const esPeLiq = p.lotes.some(l => l.origen_tipo === 'PRONTA_ENTREGA' && esLiquidacionPe(l))
+  const shellVariant = esLiquidacion ? 'liquidacion' as const : 'fusion' as const
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -540,6 +568,8 @@ function TarjetaProductoFusion({
       activa={activa}
       listaPrecioId={listaPrecioId}
       onNeedSession={onNeedSession}
+      activeTonoKey={activeTonoKey}
+      onSelectTonoKey={setActiveTonoKey}
     />
   )
 
@@ -549,8 +579,9 @@ function TarjetaProductoFusion({
         marca={p.descp_marca}
         esPromo={esPromo}
         stockPares={paresStock}
+        stockUnidad={esConf ? 'prend' : 'p'}
         hideStockBadge
-        shellVariant="fusion"
+        shellVariant={shellVariant}
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
         material={vHero.material_code}
@@ -559,17 +590,25 @@ function TarjetaProductoFusion({
         thumbSrc={vHero.imagen_url_thumb}
         flatSrc={vHero.imagen_url_flat}
         thumbCandidates={vHero.imagen_candidates_thumb}
-        alt={`${p.linea_codigo}-${p.referencia_codigo}`}
-        precio={precioTarjeta}
+        alt={`${p.linea_codigo}-${p.referencia_codigo} ${vHero.descp_color}`}
         priority
         compactGrid
         onImageClick={() => setLightbox(true)}
+        imageCornerBadge={esPeLiq ? <LiquidacionPeBadge /> : null}
         ventaFooter={ventaFooter}
       />
       {lightbox && (
         <Lightbox
-          producto={loteHero}
-          initialIdx={Math.max(0, loteHero.variantes.findIndex(vv => vv.det_id === vHero.det_id))}
+          producto={{
+            ...loteHero,
+            variantes: loteHero.variantes.filter(vv => vv.cajas_disponibles > 0),
+          }}
+          initialIdx={Math.max(
+            0,
+            loteHero.variantes
+              .filter(vv => vv.cajas_disponibles > 0)
+              .findIndex(vv => vv.det_id === vHero.det_id),
+          )}
           onClose={() => setLightbox(false)}
         />
       )}
@@ -649,6 +688,13 @@ export function CatalogoGrid({
     }
     return sum + paresEnTarjeta(p)
   }, 0)
+
+  const grillaStockLabel = filtered.length > 0 && filtered.every(p => {
+    const lotes = isTarjetaFusionada(p) ? p.lotes : [p]
+    return lotes.every(l => isConfecciones638Lote(l))
+  })
+    ? 'prendas'
+    : 'pares'
 
   const handleGenerarPDFCatalogo = async () => {
     if (!activa || !cliente) return
@@ -807,7 +853,7 @@ export function CatalogoGrid({
           <p style={{ fontSize: 18, fontWeight: 700, color: '#94A3B8' }}>Sin resultados</p>
         </div>
       ) : (
-        <CatalogGrillaDeposito totalModelos={filtered.length} totalPares={grillaPares} compactStats>
+        <CatalogGrillaDeposito totalModelos={filtered.length} totalPares={grillaPares} stockLabel={grillaStockLabel} compactStats>
           {filtered.map(p => (
             <TarjetaGrillaItem key={p.cardKey} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
           ))}

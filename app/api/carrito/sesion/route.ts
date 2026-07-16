@@ -32,15 +32,19 @@ export async function GET() {
 
   const items = itemsRes.data ?? []
 
-  // Si hay items, traer precios Y metadata de v_stock_rimec (MIG-083 fix: multi-dispositivo)
+  // Si hay items, enriquecer con vista stock (MIG-083). Fallo no debe bloquear la sesión.
   if (items.length > 0) {
-    const stockMap = await fetchCarritoStockByDetIds(sb, items.map(i => i.det_id))
-    items.forEach(item => {
-      const stock = stockMap.get(item.det_id)
-      if (stock) {
-        item.v_stock_rimec = [stock]
-      }
-    })
+    try {
+      const stockMap = await fetchCarritoStockByDetIds(sb, items.map(i => i.det_id))
+      items.forEach(item => {
+        const stock = stockMap.get(item.det_id)
+        if (stock) {
+          item.v_stock_rimec = [stock]
+        }
+      })
+    } catch (err) {
+      console.warn('[carrito/sesion] enrich stock falló — respuesta degradada:', err)
+    }
   }
 
   return NextResponse.json({

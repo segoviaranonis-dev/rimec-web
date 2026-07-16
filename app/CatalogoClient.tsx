@@ -6,9 +6,9 @@ import { FiltrosCatalogo, type CatalogoFilterState } from './components/FiltrosC
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
 import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
-import { isCatalogoOrigenPe, isCatalogoOrigenTodos } from '@/lib/catalogoFilters'
+import { isCatalogoOrigenPe, isCatalogoOrigenTodos, normalizeFilterItems } from '@/lib/catalogoFilters'
+import { readJsonResponse, requestTarjetasPage } from '@/lib/catalogoFetch'
 import {
-  CARD_PAGE_LIMIT,
   catalogWarmCacheKey,
   CP_DEFAULT_FILTERS,
   TODOS_DEFAULT_FILTERS,
@@ -64,6 +64,7 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   if (filters.sin_tono) params.set('sin_tono', '1')
   else if (filters.tonos?.length) params.set('tonos', filters.tonos.join(','))
   if (filters.buscar?.trim()) params.set('buscar', filters.buscar.trim())
+  if (filters.cadena_comercial?.trim()) params.set('cadena_comercial', filters.cadena_comercial.trim())
   return params
 }
 
@@ -160,10 +161,22 @@ export function CatalogoClient({ initialFilters }: Props) {
         const qs = filterToSearchParams(filters).toString()
         const r = await fetch(`/api/catalogo/filtros${qs ? `?${qs}` : ''}`, { credentials: 'same-origin' })
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        const json = await r.json()
+        const json = await readJsonResponse<{
+          error?: string
+          filtros?: typeof filtrosMeta
+          colores?: string[]
+          quincenas?: QuincenaItem[]
+          tonosDisponibles?: string[]
+        }>(r)
         if (cancelled || json.error) return
         const meta = json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] }
-        setFiltrosMeta(meta)
+        setFiltrosMeta({
+          todasLineas: normalizeFilterItems(meta.todasLineas ?? []),
+          todasMarcas: normalizeFilterItems(meta.todasMarcas ?? []),
+          todosEstilos: normalizeFilterItems(meta.todosEstilos ?? []),
+          todosTipos: normalizeFilterItems(meta.todosTipos ?? []),
+          todosGeneros: meta.todosGeneros ?? [],
+        })
         setColores(json.colores ?? [])
         setQuincenas(json.quincenas ?? [])
         setTonosDisponibles(json.tonosDisponibles ?? [])
@@ -241,14 +254,13 @@ export function CatalogoClient({ initialFilters }: Props) {
   const fetchPage = useCallback(
     async (opts: { fromRow: number; exclude: string[]; currentFilters: CatalogoFilterState }) => {
       const qs = filtersQueryString(opts.currentFilters)
-      const params = new URLSearchParams(qs)
-      params.set('row_from', String(opts.fromRow))
-      params.set('limit', '30')
-      if (opts.exclude.length) params.set('exclude', opts.exclude.join(','))
-
-      const res = await fetch(`/api/catalogo/tarjetas?${params}`)
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error cargando catálogo')
+      const json = await requestTarjetasPage({
+        filtersQuery: qs,
+        filters: opts.currentFilters as unknown as Record<string, unknown>,
+        fromRow: opts.fromRow,
+        limit: 30,
+        exclude: opts.exclude,
+      })
       return json as {
         tarjetas: TarjetaGrilla[]
         nextRowFrom: number
@@ -256,7 +268,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         excludeCardKeys: string[]
       }
     },
-    [],
+    [filtersQueryString],
   )
 
   useEffect(() => {
@@ -274,7 +286,15 @@ export function CatalogoClient({ initialFilters }: Props) {
       setRowFrom(cached.nextRowFrom)
       setExcludeKeys(cached.excludeCardKeys)
       setHasMore(cached.hasMore)
-      if (cached.filtrosMeta) setFiltrosMeta(cached.filtrosMeta)
+      if (cached.filtrosMeta) {
+        setFiltrosMeta({
+          todasLineas: normalizeFilterItems(cached.filtrosMeta.todasLineas ?? []),
+          todasMarcas: normalizeFilterItems(cached.filtrosMeta.todasMarcas ?? []),
+          todosEstilos: normalizeFilterItems(cached.filtrosMeta.todosEstilos ?? []),
+          todosTipos: normalizeFilterItems(cached.filtrosMeta.todosTipos ?? []),
+          todosGeneros: cached.filtrosMeta.todosGeneros ?? [],
+        })
+      }
       if (cached.colores) setColores(cached.colores)
       if (cached.quincenas) setQuincenas(cached.quincenas)
       setError(null)
@@ -376,6 +396,7 @@ export function CatalogoClient({ initialFilters }: Props) {
       setRowFrom(json.nextRowFrom ?? rowFrom)
       setExcludeKeys(json.excludeCardKeys ?? excludeKeys)
       setHasMore(Boolean(json.hasMore))
+      setError(null)
       warmCatalogImages(json.tarjetas ?? [])
       prefetchScrollPageWhenIdle(filters, json.nextRowFrom ?? rowFrom, json.excludeCardKeys ?? excludeKeys)
     } catch (err) {

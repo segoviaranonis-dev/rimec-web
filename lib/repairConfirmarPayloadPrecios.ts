@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
+import { normalizarFilaStockVenta, paresDisponiblesDeFila } from '@/lib/disponibilidad'
 import { getPrecioActivo, getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
-import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
+import { isProntaEntregaStockRow, paresCarritoDesdeCajas } from '@/lib/prontaEntregaVenta'
 
 function calcNeto(precioBase: number, d1: number, d2: number, d3: number, d4: number): number {
   let p = precioBase
@@ -76,33 +77,49 @@ export async function repairConfirmarPayloadPrecios(
         if (!rawIt || typeof rawIt !== 'object') return rawIt
         const it = rawIt as Record<string, unknown>
         const detId = Number(it.det_id)
-        const pares = Number(it.pares) || 0
-        let precioBase = Number(it.precio_base) || 0
+        const cajas = Math.max(0, Number(it.cajas) || 0)
+        let pares = Number(it.pares) || 0
 
-        if (precioBase <= 0) {
-          const snap = snapByDet.get(detId)
-          const stock = stockMap.get(detId)
-          const caso = String(snap?.caso ?? stock?.descp_caso ?? '')
-          const precioRow = {
-            lpn: Number(stock?.lpn) || null,
-            lpc02: Number(stock?.lpc02) || null,
-            lpc03: Number(stock?.lpc03) || null,
-            lpc04: Number(stock?.lpc04) || null,
-            descp_caso: caso,
-          }
-          const esPe =
-            isProntaEntregaStockRow({
-              det_id: detId,
-              origen_tipo: stock?.origen_tipo as string | null | undefined,
-              pp_id: stock?.pp_id as number | null | undefined,
-            }) || Number(lote.pp_id) < 0
-          const fromLista = esPe
-            ? getPrecioActivoPe(precioRow, listaId, caso)
-            : getPrecioActivo(precioRow, listaId, caso)
-          precioBase =
-            (fromLista != null && fromLista > 0 ? fromLista : null) ??
-            (snap && snap.precio > 0 ? snap.precio : 0) ??
-            0
+        const snap = snapByDet.get(detId)
+        const stock = stockMap.get(detId)
+        if (stock && cajas > 0) {
+          const fila = normalizarFilaStockVenta(stock as unknown as Parameters<typeof normalizarFilaStockVenta>[0])
+          const maxPares = paresDisponiblesDeFila(fila)
+          const paresCalc = paresCarritoDesdeCajas(cajas, {
+            cant_caja: fila.pares_por_caja,
+            saldo_pares: fila.saldo_pares,
+            grades_json: fila.grades_json,
+            grada: fila.grada,
+            origen_tipo: fila.origen_tipo,
+            det_id: detId,
+            pp_id: fila.pp_id,
+          })
+          pares = Math.min(pares, paresCalc, maxPares > 0 ? maxPares : paresCalc)
+        }
+        const caso = String(stock?.descp_caso ?? snap?.caso ?? '')
+        let precioBase = Number(it.precio_base) || 0
+        const precioRow = {
+          lpn: Number(stock?.lpn) || null,
+          lpc02: Number(stock?.lpc02) || null,
+          lpc03: Number(stock?.lpc03) || null,
+          lpc04: Number(stock?.lpc04) || null,
+          descp_caso: caso,
+        }
+        const esPe =
+          isProntaEntregaStockRow({
+            det_id: detId,
+            origen_tipo: stock?.origen_tipo as string | null | undefined,
+            pp_id: stock?.pp_id as number | null | undefined,
+          }) || Number(lote.pp_id) < 0
+        const fromLista = esPe
+          ? getPrecioActivoPe(precioRow, listaId, caso)
+          : getPrecioActivo(precioRow, listaId, caso)
+        const precioBd = fromLista != null && fromLista > 0 ? fromLista : null
+
+        if (precioBd != null && precioBd > 0) {
+          precioBase = precioBd
+        } else if (precioBase <= 0) {
+          precioBase = snap && snap.precio > 0 ? snap.precio : 0
         }
 
         const precioNeto = calcNeto(precioBase, d1, d2, d3, d4)

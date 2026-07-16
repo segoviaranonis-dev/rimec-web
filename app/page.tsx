@@ -1,4 +1,5 @@
 import { CatalogoClient } from './CatalogoClient'
+import { fetchPeCatalogoFiltroWeb } from '@/lib/peCatalogoFiltroWeb'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,9 +20,13 @@ export default async function HomePage({
     tonos?: string
     sin_tono?: string
     buscar?: string
+    cadena_comercial?: string
   }>
 }) {
   const params = await searchParams
+  const filtroWeb = await fetchPeCatalogoFiltroWeb('sdrm0849')
+  const cadenaUrl = params.cadena_comercial ?? ''
+  const cadenaComercial = cadenaUrl || filtroWeb?.cadena_comercial || ''
 
   return (
     <CatalogoClient
@@ -49,6 +54,7 @@ export default async function HomePage({
         tonos: params.sin_tono === '1' ? [] : (params.tonos ? params.tonos.split(',').filter(Boolean) : []),
         sin_tono: params.sin_tono === '1',
         buscar: params.buscar ?? '',
+        cadena_comercial: cadenaComercial,
       }}
     />
   )

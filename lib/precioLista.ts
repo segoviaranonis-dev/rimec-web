@@ -1,5 +1,9 @@
-/** Caso comercial con solo LPN — excepción LPC03 = LPN (Director · 2026-07-07). */
+/** Caso comercial PROMOCIONAL — LPN = LPC03 = LPC04 (Director · 2026-07-15). */
 export const CASO_PROMOCIONAL_NOMBRE = 'PROMOCIONAL'
+
+/** Ley general RIMEC Web (CP + PE · post-vincular / stock AM) — no toca motor. */
+export const LEY_LPC03_FACTOR = 1.12
+export const LEY_LPC04_FACTOR = 1.2
 
 export function esCasoPromocional(descpCaso: string | null | undefined): boolean {
   return String(descpCaso ?? '').trim().toUpperCase() === CASO_PROMOCIONAL_NOMBRE
@@ -16,19 +20,49 @@ export type PrecioListaRow = {
 
 export type ListaPrecioId = 1 | 2 | 3 | 4
 
-/** 0 / NaN / null no son precio — evita `0 ?? snapshot` que pisa el carrito. */
 function precioPositivo(v: number | null | undefined): number | null {
   const n = Number(v)
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-/** Precio activo según política cliente (LPN/LPC02/LPC03/LPC04). */
+export function lpcDesdeLpn(lpn: number, factor: number): number {
+  return Math.round(Number(lpn) * factor)
+}
+
+/** LPC03: PROMO = LPN · resto = LPN×1.12 */
+export function resolverLpc03(
+  lpn: number | null,
+  _lpc03: number | null,
+  descpCaso?: string | null,
+): number | null {
+  const base = precioPositivo(lpn)
+  if (base == null) return null
+  if (esCasoPromocional(descpCaso)) return base
+  return lpcDesdeLpn(base, LEY_LPC03_FACTOR)
+}
+
+/** LPC04: PROMO = LPN · resto = LPN×1.20 */
+export function resolverLpc04(
+  lpn: number | null,
+  _lpc04: number | null,
+  descpCaso?: string | null,
+): number | null {
+  const base = precioPositivo(lpn)
+  if (base == null) return null
+  if (esCasoPromocional(descpCaso)) return base
+  return lpcDesdeLpn(base, LEY_LPC04_FACTOR)
+}
+
+/**
+ * Precio de venta según lista de sesión.
+ * Siempre aplica ley aritmética sobre LPN (CP y PE).
+ */
 export function getPrecioActivo(
   row: PrecioListaRow,
   listaId: ListaPrecioId | number,
   descpCaso?: string | null,
 ): number | null {
-  const promocional = esCasoPromocional(descpCaso ?? row.descp_caso)
+  const caso = descpCaso ?? row.descp_caso
   const tier = Number(listaId)
 
   switch (tier) {
@@ -36,23 +70,16 @@ export function getPrecioActivo(
       return precioPositivo(row.precio_web) ?? precioPositivo(row.lpn)
     case 2:
       return precioPositivo(row.lpc02)
-    case 3: {
-      const lpc03 = precioPositivo(row.lpc03)
-      if (lpc03 != null) return lpc03
-      if (promocional) return precioPositivo(row.lpn)
-      return null
-    }
+    case 3:
+      return resolverLpc03(row.lpn, row.lpc03, caso)
     case 4:
-      return precioPositivo(row.lpc04)
+      return resolverLpc04(row.lpn, row.lpc04, caso)
     default:
       return null
   }
 }
 
-/**
- * Pronta entrega — vista casi siempre solo trae LPN (LPC02-04 null).
- * Si el tier de lista queda vacío → fallback LPN (paridad carritoValidarPe).
- */
+/** PE: misma ley; si tier vacío → LPN. */
 export function getPrecioActivoPe(
   row: PrecioListaRow,
   listaId: ListaPrecioId | number,

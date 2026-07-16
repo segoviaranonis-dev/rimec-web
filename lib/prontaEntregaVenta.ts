@@ -57,11 +57,24 @@ export interface ParesPorCajaInput {
   cantidad_cajas?: number | null
   cantidad_pares?: number | null
   saldo_pares?: number | null
+  pares_vendidos?: number | null
   grades_json?: Record<string, number> | null
   grada?: string | null
   origen_tipo?: string | null
   det_id?: number | null
   pp_id?: number | null
+  ramo_tipo?: string | null
+  tipo_v2_id?: number | null
+}
+
+/** Kyly 638 — grada abierta · venta por prenda (no caja cerrada). */
+export function isGradaAbiertaConfecciones(input: {
+  ramo_tipo?: string | null
+  tipo_v2_id?: number | null
+}): boolean {
+  const ramo = String(input.ramo_tipo ?? '').trim().toUpperCase()
+  if (ramo === 'CONFECCIONES') return true
+  return Number(input.tipo_v2_id) === 2
 }
 
 /**
@@ -80,6 +93,8 @@ export function paresPorCajaVistaContaminada(input: ParesPorCajaInput): boolean 
  * grades_json → ratio cantidad_pares/cantidad_cajas → residual → default 12.
  */
 export function resolveParesPorCaja(input: ParesPorCajaInput): number {
+  if (isGradaAbiertaConfecciones(input)) return 1
+
   if (!paresPorCajaVistaContaminada(input)) {
     const ppc = Number(input.pares_por_caja)
     if (Number.isFinite(ppc) && ppc > 0 && ppc <= 48) return Math.round(ppc)
@@ -100,10 +115,32 @@ export function resolveParesPorCaja(input: ParesPorCajaInput): number {
   return PARES_POR_CAJA_DEFAULT
 }
 
-/** Pares = cajas × pares/caja (PE y CP). */
+/** Pares = cajas × pares/caja, topeado al saldo real (última caja abierta). */
 export function paresDesdeCajasCerradas(cajas: number, input: ParesPorCajaInput): number {
+  if (isGradaAbiertaConfecciones(input)) {
+    const n = Math.max(0, Math.floor(Number(cajas) || 0))
+    if (n <= 0) return 0
+    let saldo = Number(input.saldo_pares ?? NaN)
+    if (!Number.isFinite(saldo) || saldo < 0) {
+      const base = Number(input.cantidad_pares ?? 0)
+      const vend = Number(input.pares_vendidos ?? 0)
+      saldo = Math.max(0, base - vend)
+    }
+    return saldo > 0 ? Math.min(n, Math.floor(saldo)) : 0
+  }
+
   const n = Math.max(0, Math.floor(Number(cajas) || 0))
-  return n * resolveParesPorCaja(input)
+  if (n <= 0) return 0
+  const ppc = resolveParesPorCaja(input)
+  const bruto = n * ppc
+  let saldo = Number(input.saldo_pares ?? NaN)
+  if (!Number.isFinite(saldo) || saldo < 0) {
+    const base = Number(input.cantidad_pares ?? 0)
+    const vend = Number(input.pares_vendidos ?? 0)
+    saldo = Math.max(0, base - vend)
+  }
+  if (saldo > 0 && bruto > saldo) return Math.floor(saldo)
+  return bruto
 }
 
 /** @deprecated Usar cajasDisponiblesDeFila — saldo en pares, no unidades carrito. */
@@ -117,4 +154,31 @@ export function paresVendiblesPe(input: {
 
 export function unidadDisponibleLabel(_origenTipo: string | undefined, cajas: number): string {
   return cajas === 1 ? '1 cj' : `${cajas} cjs`
+}
+
+/** Input unificado para pares desde ítem de carrito (store / confirmar). */
+export function paresInputDesdeCarrito(item: ParesPorCajaInput & {
+  cant_caja?: number | null
+  saldo_pares?: number | null
+}): ParesPorCajaInput {
+  return {
+    pares_por_caja: item.cant_caja ?? item.pares_por_caja,
+    cantidad_cajas: item.cantidad_cajas,
+    cantidad_pares: item.cantidad_pares,
+    saldo_pares: item.saldo_pares,
+    pares_vendidos: item.pares_vendidos,
+    grades_json: item.grades_json,
+    grada: item.grada,
+    origen_tipo: item.origen_tipo,
+    det_id: item.det_id,
+    pp_id: item.pp_id,
+  }
+}
+
+/** Pares vendibles para N cajas — siempre topeado al saldo real (última caja abierta). */
+export function paresCarritoDesdeCajas(
+  cajas: number,
+  item: ParesPorCajaInput & { cant_caja?: number | null; saldo_pares?: number | null },
+): number {
+  return paresDesdeCajasCerradas(cajas, paresInputDesdeCarrito(item))
 }

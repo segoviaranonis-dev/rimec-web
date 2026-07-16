@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
 import {
   dedupeFilterItemsByLabel,
+  normalizeFilterItems,
   type CatalogoFilterStateExtended,
   isCatalogoOrigenCp,
   isCatalogoOrigenPe,
@@ -43,10 +44,10 @@ async function fetchMetaRpc(
   }
   const raw = (data ?? {}) as CatalogoMetaRpc
   return {
-    marcas: dedupeFilterItemsByLabel(raw.marcas ?? []),
-    lineas: dedupeFilterItemsByLabel(raw.lineas ?? []),
-    estilos: dedupeFilterItemsByLabel(raw.estilos ?? []),
-    tipos: dedupeFilterItemsByLabel(raw.tipos ?? []),
+    marcas: normalizeFilterItems(raw.marcas ?? []),
+    lineas: normalizeFilterItems(raw.lineas ?? []),
+    estilos: normalizeFilterItems(raw.estilos ?? []),
+    tipos: normalizeFilterItems(raw.tipos ?? []),
     generos: raw.generos ?? [],
     colores: raw.colores ?? [],
     quincenas: raw.quincenas ?? [],
@@ -61,7 +62,7 @@ function mergeItems(a: { id: number; label: string }[], b: { id: number; label: 
     const lbl = String(x.label ?? '').trim()
     if (lbl) m.set(x.id, lbl)
   }
-  return dedupeFilterItemsByLabel([...m.entries()].map(([id, label]) => ({ id, label })))
+  return normalizeFilterItems([...m.entries()].map(([id, label]) => ({ id, label })))
 }
 
 function mergeGeneros(a: CatalogoMetaRpc['generos'], b: CatalogoMetaRpc['generos']) {

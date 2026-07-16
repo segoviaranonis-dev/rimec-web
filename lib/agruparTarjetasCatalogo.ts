@@ -78,6 +78,11 @@ export interface TarjetaCatalogo {
   grupo_estilo_id?: number
   tipo_1_id?: number
   descp_tipo_1?: string | null
+  es_liquidacion?: boolean
+  es_promo?: boolean
+  cadena_comercial?: string | null
+  tipo_v2_id?: number | null
+  ramo_tipo?: string | null
   variantes: RimecVariante[]
 }
 
@@ -120,6 +125,11 @@ export function agruparTarjetasCatalogo(
         grupo_estilo_id: item.grupo_estilo_id,
         tipo_1_id: item.tipo_1_id,
         descp_tipo_1: item.descp_tipo_1,
+        es_liquidacion: item.es_liquidacion === true,
+        es_promo: item.es_promo === true,
+        cadena_comercial: item.cadena_comercial ?? null,
+        tipo_v2_id: item.tipo_v2_id ?? null,
+        ramo_tipo: item.ramo_tipo ?? null,
         variantes: [],
       })
       detIdsPorCard.set(cardKey, new Set())
@@ -129,9 +139,12 @@ export function agruparTarjetasCatalogo(
     if (seen.has(item.det_id)) continue
 
     const card = cardMap.get(cardKey)!
-    const dupColorIdx = card.variantes.findIndex(
-      v => v.color_code === item.color_code && v.descp_color === item.descp_color,
-    )
+    const dupColorIdx =
+      item.tipo_v2_id === 2
+        ? -1
+        : card.variantes.findIndex(
+            v => v.color_code === item.color_code && v.descp_color === item.descp_color,
+          )
     if (dupColorIdx >= 0) {
       card.variantes[dupColorIdx].cajas_disponibles += cajasDisp
       seen.add(item.det_id)
@@ -184,6 +197,8 @@ export function agruparTarjetasCatalogo(
         origen_tipo: item.origen_tipo,
         det_id: item.det_id,
         pp_id: item.pp_id,
+        tipo_v2_id: item.tipo_v2_id,
+        ramo_tipo: item.ramo_tipo,
       }),
       saldo_pares: item.saldo_pares,
       cajas_disponibles: cajasDisp,

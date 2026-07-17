@@ -52,6 +52,7 @@ export default function CarritoPage() {
   const [enviando, setEnviando] = useState(false)
   const confirmLock = useRef(false)
   const [validando, setValidando] = useState(false)
+  const [aviso, setAviso] = useState<string | null>(null)
   const [exito, setExito] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editorFi, setEditorFi] = useState<FacturaConfig | null>(null)
@@ -229,7 +230,7 @@ export default function CarritoPage() {
         const recalc = (data as { items_recalculados?: number }).items_recalculados ?? 0
         if (recalc > 0) {
           setError(null)
-          setExito(`Precios actualizados (${recalc} ítem(s)). Podés confirmar el pedido.`)
+          setAviso(`Precios actualizados (${recalc} ítem(s)). Podés confirmar el pedido.`)
         }
       } else if ((data as { items_recalculados?: number }).items_recalculados) {
         await cargarDesdeBD()
@@ -368,6 +369,8 @@ export default function CarritoPage() {
     } catch (e) {
       const rawMsg = e instanceof Error ? e.message : 'Error al confirmar'
       const esStockCambiado = RE_STOCK_INSUFICIENTE_RPC.test(rawMsg)
+      setExito(null)
+      setAviso(null)
       // Stock insuficiente al confirmar es un resultado de negocio esperado (el RPC
       // revalida atómicamente y puede rechazar si el stock bajó desde la validación),
       // no un bug — usar warn para no disparar el overlay rojo de Next dev en cada venta.
@@ -545,6 +548,15 @@ export default function CarritoPage() {
           <p style={{ fontSize: 12 }}>
             Reintentá VALIDAR. Si persiste, refrescá la página y volvé a iniciar la venta.
           </p>
+        </div>
+      )}
+
+      {aviso && !exito && (
+        <div style={{
+          backgroundColor: '#ECFDF5', border: '1px solid #86EFAC', borderRadius: 12,
+          padding: '14px 18px', marginBottom: 20,
+        }}>
+          <p style={{ color: '#166534', fontWeight: 700, fontSize: 14 }}>✅ {aviso}</p>
         </div>
       )}
 
@@ -865,7 +877,7 @@ export default function CarritoPage() {
               )
               setEditorFi(null)
               setError(null)
-              setExito(`Descuentos guardados (${res.origen}) · ${res.items_actualizados} ítems · Revalidá antes de confirmar.`)
+              setAviso(`Descuentos guardados (${res.origen}) · ${res.items_actualizados} ítems · Revalidá antes de confirmar.`)
             } catch (e) {
               setError(e instanceof Error ? e.message : 'No se pudieron guardar los descuentos')
             } finally {

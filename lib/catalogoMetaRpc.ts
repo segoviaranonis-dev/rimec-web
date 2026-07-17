@@ -7,6 +7,7 @@ import {
   isCatalogoOrigenPe,
   isCatalogoOrigenTodos,
 } from '@/lib/catalogoFilters'
+import { esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
 
 export type CatalogoMetaRpc = {
   marcas: { id: number; label: string }[]
@@ -135,7 +136,7 @@ export function metaRpcToFiltrosResponse(meta: CatalogoMetaRpc) {
   return {
     filtros: {
       todasLineas: meta.lineas,
-      todasMarcas: meta.marcas,
+      todasMarcas: (meta.marcas ?? []).filter((m) => !esMarcaFantasmaFiltro(String(m?.label ?? ''))),
       todosEstilos: meta.estilos,
       todosTipos: meta.tipos,
       todosGeneros: meta.generos,

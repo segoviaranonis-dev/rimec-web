@@ -7,6 +7,11 @@ import { clearSharedCatalogFilters, persistSharedCatalogFilters } from '@/lib/ca
 import { FiltroTonoCabecera } from '@/components/catalog/FiltroTonoCabecera'
 import { CatalogExtenderDatosToggle } from '@/components/catalog/CatalogAcordeonContext'
 import type { ColorEstandar } from '@/lib/pilares/colores-estandar'
+import {
+  TIPO_GRUPO_OPCIONES,
+  type TipoGrupoId,
+} from '@/lib/filtros/filtro-tipo-canonico'
+import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
 
 interface FilterItem {
   id: number
@@ -36,6 +41,9 @@ interface Props {
   tonoCatalog: ColorEstandar[]
   colores: string[]
   quincenas: QuincenaItem[]
+  /** Familias Material / Color (paridad Report) */
+  materialFamilias?: FamiliaPilarItem[]
+  colorFamilias?: FamiliaPilarItem[]
   totalModelos: number
   totalPares:   number
   value?: CatalogoFilterState
@@ -57,6 +65,11 @@ export type CatalogoFilterState = {
   sin_tono?: boolean
   buscar?: string
   cadena_comercial?: string
+  /** Tipo canónico: Normal · Carteras · Promo · Liquidación */
+  tipo_grupos?: TipoGrupoId[]
+  /** Familias Material / Color (claves) */
+  material_familias?: string[]
+  color_familias?: string[]
 }
 
 const GENEROS_FALLBACK: GeneroItem[] = [
@@ -70,9 +83,20 @@ const RIMEC_BLUE    = '#1E40AF'
 const RIMEC_CELESTE = '#0EA5E9'
 const RIMEC_ORANGE  = '#EA580C'
 
+function parseTipoGruposParam(raw: string | null): TipoGrupoId[] {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .filter(Boolean)
+    .filter((x): x is TipoGrupoId =>
+      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
+    )
+}
+
 export function FiltrosCatalogo({
   estilos, marcas, lineas, tipos, generos, tonoCatalog,
-  colores, quincenas, totalModelos, totalPares, value, onChange,
+  colores, quincenas, materialFamilias = [], colorFamilias = [],
+  totalModelos, totalPares, value, onChange,
 }: Props) {
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -91,6 +115,9 @@ export function FiltrosCatalogo({
   const tonosSel = value?.tonos ?? (searchParams.get('tonos') ? searchParams.get('tonos')!.split(',').filter(Boolean) : [])
   const sinTono = value?.sin_tono ?? searchParams.get('sin_tono') === '1'
   const buscarActual = value?.buscar ?? searchParams.get('buscar') ?? ''
+  const tipoGruposSel = value?.tipo_grupos ?? parseTipoGruposParam(searchParams.get('tipo_grupos'))
+  const materialFamSel = value?.material_familias ?? (searchParams.get('material_familias') ? searchParams.get('material_familias')!.split(',').filter(Boolean) : [])
+  const colorFamSel = value?.color_familias ?? (searchParams.get('color_familias') ? searchParams.get('color_familias')!.split(',').filter(Boolean) : [])
   const [buscarLocal, setBuscarLocal] = useState(buscarActual)
   const [encabezadoOculto, setEncabezadoOculto] = useState(false)
   const esProntaEntrega = origenActual.toUpperCase().includes('PRONTA')
@@ -119,6 +146,9 @@ export function FiltrosCatalogo({
     linea_ids: [] as number[],
     tipo_ids: [] as number[],
     grupo_estilo_id: '',
+    tipo_grupos: [] as TipoGrupoId[],
+    material_familias: [] as string[],
+    color_familias: [] as string[],
   }
 
   const cadenaActual =
@@ -139,6 +169,9 @@ export function FiltrosCatalogo({
     sin_tono?: boolean
     buscar?: string
     cadena_comercial?: string
+    tipo_grupos?: TipoGrupoId[]
+    material_familias?: string[]
+    color_familias?: string[]
   }) => {
     const params = new URLSearchParams()
 
@@ -156,8 +189,11 @@ export function FiltrosCatalogo({
     const sinT   = opts.sin_tono        !== undefined ? opts.sin_tono        : sinTono
     const busq   = opts.buscar          !== undefined ? opts.buscar          : buscarActual
     const cadena = opts.cadena_comercial !== undefined ? opts.cadena_comercial : cadenaActual
+    const tGrupos = opts.tipo_grupos !== undefined ? opts.tipo_grupos : tipoGruposSel
+    const matFam = opts.material_familias !== undefined ? opts.material_familias : materialFamSel
+    const colFam = opts.color_familias !== undefined ? opts.color_familias : colorFamSel
 
-    const next = {
+    const next: CatalogoFilterState = {
       grupo_estilo_id: estId,
       marca_id: marId,
       linea_ids: lns,
@@ -172,6 +208,9 @@ export function FiltrosCatalogo({
       sin_tono: sinT,
       buscar: busq,
       cadena_comercial: cadena,
+      tipo_grupos: tGrupos,
+      material_familias: matFam,
+      color_familias: colFam,
     }
 
     if (onChange) {
@@ -196,8 +235,11 @@ export function FiltrosCatalogo({
     else if (ton.length) params.set('tonos',     ton.join(','))
     if (busq.trim()) params.set('buscar',          busq.trim())
     if (cadena.trim()) params.set('cadena_comercial', cadena.trim())
+    if (tGrupos.length) params.set('tipo_grupos', tGrupos.join(','))
+    if (matFam.length) params.set('material_familias', matFam.join(','))
+    if (colFam.length) params.set('color_familias', colFam.join(','))
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, cadenaActual, router, onChange])
+  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, cadenaActual, tipoGruposSel, materialFamSel, colorFamSel, router, onChange])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -210,7 +252,8 @@ export function FiltrosCatalogo({
     estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length ||
     colorsSel.length || quincenasSel.length || generoActual || tonosSel.length || sinTono ||
     buscarActual.trim() || esProntaEntrega || (ramoActual && ramoActual !== 'CALZADO') || depositoActual ||
-    (origenActual && origenActual.toUpperCase() !== 'TODOS' && !esProntaEntrega)
+    (origenActual && origenActual.toUpperCase() !== 'TODOS' && !esProntaEntrega) ||
+    tipoGruposSel.length || materialFamSel.length || colorFamSel.length
   )
 
   const activeEstiloLabel = estilos.find(e => String(e.id) === estiloIdActual)?.label
@@ -259,6 +302,7 @@ export function FiltrosCatalogo({
                 grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
                 origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
                 genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
+                tipo_grupos: [], material_familias: [], color_familias: [],
               }
               if (onChange) {
                 clearSharedCatalogFilters()
@@ -368,31 +412,36 @@ export function FiltrosCatalogo({
 
         <div className="h-px bg-slate-200" />
 
-        {/* Género */}
-        {!esProntaEntrega && (
-          <FilterRow label="Género">
+        {/* Dimensiones: Categoría (arriba PE) → AB-CR → Marca → Tipo → Género */}
+        {tipos.length > 0 && (
+          <FilterRow label="AB-CR">
             <ScrollPillsRow>
-              <CabeceraPill active={!generoActual} onClick={() => aplicar({ genero_codigo: '' })}>
+              <CabeceraPill active={!tiposSelIds.length} onClick={() => aplicar({ tipo_ids: [], material_familias: [], color_familias: [] })}>
                 Todos
               </CabeceraPill>
-              {generosLista.map(g => (
-                <CabeceraPill
-                  key={g.codigo}
-                  active={generoActual === g.codigo}
-                  onClick={() => aplicar({ genero_codigo: generoActual === g.codigo ? '' : g.codigo })}
-                >
-                  {g.label}
-                </CabeceraPill>
-              ))}
+              {tipos.map((t, idx) => {
+                const sel = tiposSelIds.includes(t.id)
+                return (
+                  <CabeceraPill
+                    key={filterItemKey('abcr', t, idx)}
+                    active={sel}
+                    onClick={() => {
+                      const next = sel ? tiposSelIds.filter(x => x !== t.id) : [...tiposSelIds, t.id]
+                      aplicar({ tipo_ids: next, material_familias: [], color_familias: [] })
+                    }}
+                  >
+                    {t.label}
+                  </CabeceraPill>
+                )
+              })}
             </ScrollPillsRow>
           </FilterRow>
         )}
 
-        {/* Marcas */}
         {marcas.length > 0 && (
           <FilterRow label="Marca">
             <ScrollPillsRow>
-              <CabeceraPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '', linea_ids: [], tonos: [], sin_tono: false })}>
+              <CabeceraPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '', linea_ids: [], tonos: [], sin_tono: false, material_familias: [], color_familias: [] })}>
                 Todas
               </CabeceraPill>
               {marcas.map((m, idx) => (
@@ -404,6 +453,8 @@ export function FiltrosCatalogo({
                     linea_ids: [],
                     tonos: [],
                     sin_tono: false,
+                    material_familias: [],
+                    color_familias: [],
                   })}
                 >
                   {m.label.charAt(0) + m.label.slice(1).toLowerCase()}
@@ -413,10 +464,64 @@ export function FiltrosCatalogo({
           </FilterRow>
         )}
 
+        <FilterRow label="Tipo">
+          <ScrollPillsRow>
+            <CabeceraPill active={!tipoGruposSel.length} onClick={() => aplicar({ tipo_grupos: [] })}>
+              Todos
+            </CabeceraPill>
+            {TIPO_GRUPO_OPCIONES.map((t) => {
+              const sel = tipoGruposSel.includes(t.id)
+              return (
+                <CabeceraPill
+                  key={t.id}
+                  active={sel}
+                  onClick={() => {
+                    const next = sel
+                      ? tipoGruposSel.filter((x) => x !== t.id)
+                      : [...tipoGruposSel, t.id]
+                    aplicar({ tipo_grupos: next })
+                  }}
+                >
+                  {t.label}
+                </CabeceraPill>
+              )
+            })}
+          </ScrollPillsRow>
+        </FilterRow>
+
+        <FilterRow label="Género">
+          <ScrollPillsRow>
+            <CabeceraPill active={!generoActual} onClick={() => aplicar({ genero_codigo: '' })}>
+              Todos
+            </CabeceraPill>
+            {generosLista.map(g => (
+              <CabeceraPill
+                key={g.codigo}
+                active={generoActual === g.codigo}
+                onClick={() => aplicar({ genero_codigo: generoActual === g.codigo ? '' : g.codigo })}
+              >
+                {g.label}
+              </CabeceraPill>
+            ))}
+          </ScrollPillsRow>
+        </FilterRow>
+
+        <FilterRow label="Buscar">
+          <input
+            value={buscarLocal}
+            onChange={e => setBuscarLocal(e.target.value)}
+            placeholder="Línea, ref, marca, material, color…"
+            className="flex-1 min-w-0 rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-orange-400"
+          />
+        </FilterRow>
+
+        <div className="h-px bg-slate-200" />
+
+        {/* Molécula cascada: Estilo → Línea → Material → Color */}
         {estilos.length > 0 && (
           <FilterRow label="Estilo">
             <ScrollPillsRow>
-              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '', linea_ids: [], tipo_ids: [] })}>
+              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '', linea_ids: [], tipo_ids: [], material_familias: [], color_familias: [] })}>
                 Todos
               </CabeceraPill>
               {estilos.map((e, idx) => (
@@ -426,7 +531,8 @@ export function FiltrosCatalogo({
                   onClick={() => aplicar({
                     grupo_estilo_id: estiloIdActual === String(e.id) ? '' : String(e.id),
                     linea_ids: [],
-                    tipo_ids: [],
+                    material_familias: [],
+                    color_familias: [],
                   })}
                 >
                   {e.label}
@@ -436,35 +542,10 @@ export function FiltrosCatalogo({
           </FilterRow>
         )}
 
-        {!esProntaEntrega && tipos.length > 0 && (
-          <FilterRow label="Tipo 1">
-            <ScrollPillsRow>
-              <CabeceraPill active={!tiposSelIds.length} onClick={() => aplicar({ tipo_ids: [] })}>
-                Todos
-              </CabeceraPill>
-              {tipos.map((t, idx) => {
-                const sel = tiposSelIds.includes(t.id)
-                return (
-                  <CabeceraPill
-                    key={filterItemKey('tipo', t, idx)}
-                    active={sel}
-                    onClick={() => {
-                      const next = sel ? tiposSelIds.filter(x => x !== t.id) : [...tiposSelIds, t.id]
-                      aplicar({ tipo_ids: next })
-                    }}
-                  >
-                    {t.label}
-                  </CabeceraPill>
-                )
-              })}
-            </ScrollPillsRow>
-          </FilterRow>
-        )}
-
         {lineas.length > 0 && (
           <FilterRow label="Línea">
             <ScrollPillsRow>
-              <CabeceraPill active={!lineasSelIds.length} onClick={() => aplicar({ linea_ids: [] })}>
+              <CabeceraPill active={!lineasSelIds.length} onClick={() => aplicar({ linea_ids: [], material_familias: [], color_familias: [] })}>
                 Todas
               </CabeceraPill>
               {lineas.map((l, idx) => {
@@ -475,7 +556,7 @@ export function FiltrosCatalogo({
                     active={sel}
                     onClick={() => {
                       const next = sel ? lineasSelIds.filter(x => x !== l.id) : [...lineasSelIds, l.id]
-                      aplicar({ linea_ids: next })
+                      aplicar({ linea_ids: next, material_familias: [], color_familias: [] })
                     }}
                   >
                     {l.label}
@@ -486,14 +567,59 @@ export function FiltrosCatalogo({
           </FilterRow>
         )}
 
-        <FilterRow label="Buscar">
-          <input
-            value={buscarLocal}
-            onChange={e => setBuscarLocal(e.target.value)}
-            placeholder="Línea, ref, marca, material, color…"
-            className="flex-1 min-w-0 rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-orange-400"
-          />
-        </FilterRow>
+        {materialFamilias.length > 0 && (
+          <FilterRow label="Material">
+            <ScrollPillsRow>
+              <CabeceraPill active={!materialFamSel.length} onClick={() => aplicar({ material_familias: [], color_familias: [] })}>
+                Todos
+              </CabeceraPill>
+              {materialFamilias.map((f) => {
+                const sel = materialFamSel.includes(f.key)
+                return (
+                  <CabeceraPill
+                    key={`mat-${f.key}`}
+                    active={sel}
+                    onClick={() => {
+                      const next = sel
+                        ? materialFamSel.filter((x) => x !== f.key)
+                        : [...materialFamSel, f.key]
+                      aplicar({ material_familias: next, color_familias: [] })
+                    }}
+                  >
+                    {f.label}
+                  </CabeceraPill>
+                )
+              })}
+            </ScrollPillsRow>
+          </FilterRow>
+        )}
+
+        {colorFamilias.length > 0 && (
+          <FilterRow label="Color">
+            <ScrollPillsRow>
+              <CabeceraPill active={!colorFamSel.length} onClick={() => aplicar({ color_familias: [] })}>
+                Todos
+              </CabeceraPill>
+              {colorFamilias.map((f) => {
+                const sel = colorFamSel.includes(f.key)
+                return (
+                  <CabeceraPill
+                    key={`col-${f.key}`}
+                    active={sel}
+                    onClick={() => {
+                      const next = sel
+                        ? colorFamSel.filter((x) => x !== f.key)
+                        : [...colorFamSel, f.key]
+                      aplicar({ color_familias: next })
+                    }}
+                  >
+                    {f.label}
+                  </CabeceraPill>
+                )
+              })}
+            </ScrollPillsRow>
+          </FilterRow>
+        )}
 
         {tonoCatalog.length > 0 && (
           <FilterRow label="Tono">

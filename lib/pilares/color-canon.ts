@@ -14,6 +14,22 @@ export type TonoCanonPaleta = {
 
 export type TonoCanon = TonoCanonSolido | TonoCanonPaleta
 
+const SEP = /[/,\-–|]+/
+
+/** Primer token antes de separador compuesto (NEGRO/BLANCO → NEGRO). Paridad Report. */
+export function colorPredominante(nombre: string | null | undefined): string {
+  const raw = String(nombre ?? '').trim()
+  if (!raw) return ''
+  const token = raw.split(SEP)[0]?.trim() ?? raw
+  return (token.split(/\s+/)[0] ?? token).trim()
+}
+
+export function normalizarEtiqueta(s: string): string {
+  const t = s.trim()
+  if (!t) return ''
+  return t.length > 1 ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : t.toUpperCase()
+}
+
 function normHex(h: string): string {
   const x = h.trim()
   if (!x) return '#94a3b8'

@@ -21,6 +21,9 @@ export default async function HomePage({
     sin_tono?: string
     buscar?: string
     cadena_comercial?: string
+    tipo_grupos?: string
+    material_familias?: string
+    color_familias?: string
   }>
 }) {
   const params = await searchParams
@@ -28,6 +31,14 @@ export default async function HomePage({
   const cadenaUrl = params.cadena_comercial ?? ''
   // Report puede forzar LIQUIDACIÓN · applyMemoryFilters solo afecta filas PE.
   const cadenaComercial = cadenaUrl || filtroWeb?.cadena_comercial || ''
+
+  const tipoGrupos = (params.tipo_grupos ?? '')
+    .split(',')
+    .filter(Boolean)
+    .filter(
+      (x): x is 'normal' | 'carteras' | 'promo' | 'liquidacion' =>
+        x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
+    )
 
   return (
     <CatalogoClient
@@ -56,6 +67,13 @@ export default async function HomePage({
         sin_tono: params.sin_tono === '1',
         buscar: params.buscar ?? '',
         cadena_comercial: cadenaComercial,
+        tipo_grupos: tipoGrupos,
+        material_familias: params.material_familias
+          ? params.material_familias.split(',').filter(Boolean)
+          : [],
+        color_familias: params.color_familias
+          ? params.color_familias.split(',').filter(Boolean)
+          : [],
       }}
     />
   )

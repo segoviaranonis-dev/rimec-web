@@ -3,6 +3,7 @@
  * Origen, ramo, depósito y quincenas NO se sincronizan (solo catálogo transversal).
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
+import type { TipoGrupoId } from '@/lib/filtros/filtro-tipo-canonico'
 
 export const SHARED_CATALOG_FILTERS_STORAGE_KEY = 'rimec_catalog_shared_filters_v1'
 
@@ -17,10 +18,21 @@ export type SharedCatalogFilterSlice = Pick<
   | 'tonos'
   | 'sin_tono'
   | 'buscar'
+  | 'tipo_grupos'
+  | 'material_familias'
+  | 'color_familias'
 >
 
 function isSharedFieldEmpty(key: keyof SharedCatalogFilterSlice, value: unknown): boolean {
-  if (key === 'linea_ids' || key === 'tipo_ids' || key === 'colores' || key === 'tonos') {
+  if (
+    key === 'linea_ids' ||
+    key === 'tipo_ids' ||
+    key === 'colores' ||
+    key === 'tonos' ||
+    key === 'tipo_grupos' ||
+    key === 'material_familias' ||
+    key === 'color_familias'
+  ) {
     return !Array.isArray(value) || value.length === 0
   }
   if (key === 'sin_tono') return !value
@@ -39,6 +51,9 @@ export function extractSharedCatalogFilters(filters: CatalogoFilterState): Share
     tonos: filters.sin_tono ? [] : [...(filters.tonos ?? [])],
     sin_tono: Boolean(filters.sin_tono),
     buscar: (filters.buscar ?? '').trim(),
+    tipo_grupos: [...(filters.tipo_grupos ?? [])],
+    material_familias: [...(filters.material_familias ?? [])],
+    color_familias: [...(filters.color_familias ?? [])],
   }
 }
 
@@ -51,6 +66,15 @@ export function persistSharedCatalogFilters(filters: CatalogoFilterState): void 
   } catch {
     /* quota / modo privado */
   }
+}
+
+function parseTipoGrupos(raw: unknown): TipoGrupoId[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map(String)
+    .filter((x): x is TipoGrupoId =>
+      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
+    )
 }
 
 export function readSharedCatalogFilters(): SharedCatalogFilterSlice | null {
@@ -73,6 +97,13 @@ export function readSharedCatalogFilters(): SharedCatalogFilterSlice | null {
       tonos: Array.isArray(parsed.tonos) ? parsed.tonos.filter(Boolean).map(String) : [],
       sin_tono: Boolean(parsed.sin_tono),
       buscar: String(parsed.buscar ?? '').trim(),
+      tipo_grupos: parseTipoGrupos(parsed.tipo_grupos),
+      material_familias: Array.isArray(parsed.material_familias)
+        ? parsed.material_familias.filter(Boolean).map(String)
+        : [],
+      color_familias: Array.isArray(parsed.color_familias)
+        ? parsed.color_familias.filter(Boolean).map(String)
+        : [],
     }
   } catch {
     return null
@@ -111,6 +142,9 @@ export function mergeSharedIntoFilters(fromUrl: CatalogoFilterState): CatalogoFi
     tonos: pick('tonos'),
     sin_tono: pick('sin_tono'),
     buscar: pick('buscar'),
+    tipo_grupos: pick('tipo_grupos'),
+    material_familias: pick('material_familias'),
+    color_familias: pick('color_familias'),
   }
 }
 
@@ -131,6 +165,9 @@ export function applySharedSliceToFilters(
     tonos: slice.sin_tono ? [] : [...(slice.tonos ?? [])],
     sin_tono: slice.sin_tono,
     buscar: slice.buscar,
+    tipo_grupos: [...(slice.tipo_grupos ?? [])],
+    material_familias: [...(slice.material_familias ?? [])],
+    color_familias: [...(slice.color_familias ?? [])],
   }
 }
 

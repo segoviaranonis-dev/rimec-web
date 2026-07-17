@@ -7,7 +7,9 @@ import {
   applyNonOrigenSqlFilters,
   applySqlFiltersToQuery,
   buildColoresFromRows,
+  buildColorFamiliasFromRows,
   buildFiltrosFromRows,
+  buildMaterialFamiliasFromRows,
   buildQuincenasFromRows,
   buildTonosDisponiblesFromRows,
   isCatalogoOrigenTodos,
@@ -102,7 +104,7 @@ const cachedMetaRpc = unstable_cache(
   { revalidate: 300 },
 )
 
-/** GET — meta sidebar en cascada (marca → líneas → tonos). */
+/** GET — meta sidebar en cascada (marca → líneas → tonos · familias Material/Color). */
 export async function GET(req: NextRequest) {
   try {
     const filters = parseCatalogoFiltersFromSearchParams(req.nextUrl.searchParams)
@@ -113,18 +115,27 @@ export async function GET(req: NextRequest) {
       const payload = metaRpcToFiltrosResponse(rpcMeta)
       return NextResponse.json({
         ...payload,
+        materialFamilias: [],
+        colorFamilias: [],
         totalFilas: null,
         origen: filters.origen_tipo,
         metaSource: 'rpc',
       })
     }
 
-    const rows = await rowsForFiltrosLegacy(filters)
+    const facetFilters: CatalogoFilterStateExtended = {
+      ...filters,
+      material_familias: [],
+      color_familias: [],
+    }
+    const rows = await rowsForFiltrosLegacy(facetFilters)
     return NextResponse.json({
       filtros: buildFiltrosFromRows(rows),
       colores: buildColoresFromRows(rows),
       quincenas: buildQuincenasFromRows(rows),
       tonosDisponibles: buildTonosDisponiblesFromRows(rows),
+      materialFamilias: buildMaterialFamiliasFromRows(rows),
+      colorFamilias: buildColorFamiliasFromRows(rows),
       totalFilas: rows.length,
       origen: filters.origen_tipo,
       metaSource: 'legacy',

@@ -7,6 +7,9 @@ import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
 import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
 import { isCatalogoOrigenPe, isCatalogoOrigenTodos, normalizeFilterItems } from '@/lib/catalogoFilters'
+import { esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
+import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
+import { buildFamiliaItems, primeraPalabraPilar } from '@/lib/pilares/agrupar-etiqueta-pilar'
 import { readJsonResponse, requestTarjetasPage } from '@/lib/catalogoFetch'
 import {
   catalogWarmCacheKey,
@@ -65,6 +68,9 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   else if (filters.tonos?.length) params.set('tonos', filters.tonos.join(','))
   if (filters.buscar?.trim()) params.set('buscar', filters.buscar.trim())
   if (filters.cadena_comercial?.trim()) params.set('cadena_comercial', filters.cadena_comercial.trim())
+  if (filters.tipo_grupos?.length) params.set('tipo_grupos', filters.tipo_grupos.join(','))
+  if (filters.material_familias?.length) params.set('material_familias', filters.material_familias.join(','))
+  if (filters.color_familias?.length) params.set('color_familias', filters.color_familias.join(','))
   return params
 }
 
@@ -94,7 +100,10 @@ function hasSidebarFilters(f: CatalogoFilterState): boolean {
       f.deposito_codigo ||
       (f.tonos?.length ?? 0) > 0 ||
       f.sin_tono ||
-      f.cadena_comercial?.trim(),
+      f.cadena_comercial?.trim() ||
+      (f.tipo_grupos?.length ?? 0) > 0 ||
+      (f.material_familias?.length ?? 0) > 0 ||
+      (f.color_familias?.length ?? 0) > 0,
   )
 }
 
@@ -112,6 +121,8 @@ export function CatalogoClient({ initialFilters }: Props) {
     todosTipos: FilterItem[]
     todosGeneros: GeneroItem[]
   }>({ todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] })
+  const [materialFamilias, setMaterialFamilias] = useState<FamiliaPilarItem[]>([])
+  const [colorFamilias, setColorFamilias] = useState<FamiliaPilarItem[]>([])
   const [tonoCatalog, setTonoCatalog] = useState<ColorEstandar[]>(COLORES_ESTANDAR_DEFAULT)
   const [colores, setColores] = useState<string[]>([])
   const [quincenas, setQuincenas] = useState<QuincenaItem[]>([])
@@ -148,6 +159,9 @@ export function CatalogoClient({ initialFilters }: Props) {
     initialFilters.tonos?.join(',') ?? '',
     initialFilters.sin_tono ? '1' : '',
     initialFilters.buscar ?? '',
+    initialFilters.tipo_grupos?.join(',') ?? '',
+    initialFilters.material_familias?.join(',') ?? '',
+    initialFilters.color_familias?.join(',') ?? '',
   ])
 
   // Sincronizar URL si sessionStorage aportó filtros que la URL no trae (primera carga).
@@ -185,16 +199,22 @@ export function CatalogoClient({ initialFilters }: Props) {
           colores?: string[]
           quincenas?: QuincenaItem[]
           tonosDisponibles?: string[]
+          materialFamilias?: FamiliaPilarItem[]
+          colorFamilias?: FamiliaPilarItem[]
         }>(r)
         if (cancelled || json.error) return
         const meta = json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] }
         setFiltrosMeta({
           todasLineas: normalizeFilterItems(meta.todasLineas ?? []),
-          todasMarcas: normalizeFilterItems(meta.todasMarcas ?? []),
+          todasMarcas: normalizeFilterItems(
+            (meta.todasMarcas ?? []).filter((m) => !esMarcaFantasmaFiltro(m.label)),
+          ),
           todosEstilos: normalizeFilterItems(meta.todosEstilos ?? []),
           todosTipos: normalizeFilterItems(meta.todosTipos ?? []),
           todosGeneros: meta.todosGeneros ?? [],
         })
+        setMaterialFamilias(json.materialFamilias ?? [])
+        setColorFamilias(json.colorFamilias ?? [])
         setColores(json.colores ?? [])
         setQuincenas(json.quincenas ?? [])
         setTonosDisponibles(json.tonosDisponibles ?? [])
@@ -241,6 +261,9 @@ export function CatalogoClient({ initialFilters }: Props) {
     filters.sin_tono ? '1' : '',
     filters.buscar ?? '',
     filters.cadena_comercial ?? '',
+    filters.tipo_grupos?.join(',') ?? '',
+    filters.material_familias?.join(',') ?? '',
+    filters.color_familias?.join(',') ?? '',
   ])
 
   useEffect(() => {
@@ -487,7 +510,40 @@ export function CatalogoClient({ initialFilters }: Props) {
     sameArray(filters.tonos ?? [], initialFilters.tonos ?? []) &&
     Boolean(filters.sin_tono) === Boolean(initialFilters.sin_tono) &&
     (filters.buscar ?? '') === (initialFilters.buscar ?? '') &&
-    (filters.cadena_comercial ?? '') === (initialFilters.cadena_comercial ?? '')
+    (filters.cadena_comercial ?? '') === (initialFilters.cadena_comercial ?? '') &&
+    sameArray(filters.tipo_grupos ?? [], initialFilters.tipo_grupos ?? []) &&
+    sameArray(filters.material_familias ?? [], initialFilters.material_familias ?? []) &&
+    sameArray(filters.color_familias ?? [], initialFilters.color_familias ?? [])
+
+  const materialFamiliasUi = useMemo(() => {
+    if (materialFamilias.length) return materialFamilias
+    const textos: string[] = []
+    for (const p of productos) {
+      if (isTarjetaFusionada(p)) {
+        const t = primeraPalabraPilar(p.descp_material)
+        if (t) textos.push(t)
+      } else {
+        const t = primeraPalabraPilar(p.descp_material)
+        if (t) textos.push(t)
+      }
+    }
+    return buildFamiliaItems(textos)
+  }, [materialFamilias, productos])
+
+  const colorFamiliasUi = useMemo(() => {
+    if (colorFamilias.length) return colorFamilias
+    const textos: string[] = []
+    for (const p of productos) {
+      const lotes = isTarjetaFusionada(p) ? p.lotes : [p]
+      for (const l of lotes) {
+        for (const v of l.variantes) {
+          const t = primeraPalabraPilar(v.descp_color)
+          if (t) textos.push(t)
+        }
+      }
+    }
+    return buildFamiliaItems(textos)
+  }, [colorFamilias, productos])
 
   const esProntaEntrega = isCatalogoOrigenPe(filters)
 
@@ -510,6 +566,8 @@ export function CatalogoClient({ initialFilters }: Props) {
         tonoCatalog={tonoCatalogFiltrado}
         colores={colores}
         quincenas={quincenas}
+        materialFamilias={materialFamiliasUi}
+        colorFamilias={colorFamiliasUi}
         totalModelos={productos.length}
         totalPares={totalPares}
         value={filters}
@@ -558,6 +616,7 @@ export function CatalogoClient({ initialFilters }: Props) {
                 ramo_tipo: 'CALZADO',
                 deposito_codigo: '',
                 genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
+                tipo_grupos: [], material_familias: [], color_familias: [],
               })
             }
             className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800"

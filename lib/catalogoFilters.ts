@@ -3,6 +3,20 @@ import type { StockRow } from '@/app/catalogo-types'
 import { CATALOGO_SOLO_COMPRA_PREVIA } from '@/lib/catalogoData'
 import { inferPeRamoTipo, type PeDepositoCodigo } from '@/lib/rimecPeDeposito'
 import { etiquetaTonoFromRaw } from '@/lib/pilares/color-canon'
+import {
+  buildFamiliaClusters,
+  buildFamiliaItems,
+  familiaKeyFromDescripcion,
+  primeraPalabraPilar,
+  type FamiliaPilarItem,
+} from '@/lib/pilares/agrupar-etiqueta-pilar'
+import {
+  esMarcaFantasmaFiltro,
+  rowMatchesTipoGrupos,
+  type TipoGrupoId,
+} from '@/lib/filtros/filtro-tipo-canonico'
+
+export type { FamiliaPilarItem, TipoGrupoId }
 
 export type CatalogoFilterStateExtended = CatalogoFilterState & {
   origen_tipo?: string
@@ -14,6 +28,11 @@ export type CatalogoFilterStateExtended = CatalogoFilterState & {
   buscar?: string
   /** Filtro comercial SDRM — gobernado desde Report (pe_catalogo_filtro_web). */
   cadena_comercial?: string
+  /** Tipo canónico Report: Normal · Carteras · Promo · Liquidación */
+  tipo_grupos?: TipoGrupoId[]
+  /** Familias Material / Color (claves · NN · Napa · Verniz) */
+  material_familias?: string[]
+  color_familias?: string[]
 }
 
 export const CATALOGO_ORIGEN_TODOS = 'TODOS'
@@ -196,7 +215,6 @@ export function applyMemoryFilters(rows: StockRow[], filters: CatalogoFilterStat
         ramoRow || (origen === 'PRONTA_ENTREGA' ? inferPeRamoTipo(r) : 'CALZADO')
 
       if (filters.ramo_tipo === 'CONFECCIONES') {
-        // CP (TRÁNSITO_PP) no tiene confecciones — solo lotes PE Kyly (CHUSAR 2.2.1.0.4 §4).
         return origen === 'PRONTA_ENTREGA' && ramoEfectivo === 'CONFECCIONES'
       }
       if (filters.ramo_tipo === 'CALZADO') {
@@ -206,6 +224,48 @@ export function applyMemoryFilters(rows: StockRow[], filters: CatalogoFilterStat
       return ramoEfectivo === filters.ramo_tipo
     })
   }
+
+  const tipoGrupos = filters.tipo_grupos ?? []
+  if (tipoGrupos.length) {
+    out = out.filter((r) =>
+      rowMatchesTipoGrupos(
+        {
+          descp_caso: r.descp_caso,
+          caso_precio: r.descp_caso,
+          linea_codigo: r.linea_codigo,
+          es_liquidacion: r.es_liquidacion,
+          cadena_comercial: r.cadena_comercial,
+        },
+        tipoGrupos,
+      ),
+    )
+  }
+
+  const matFam = filters.material_familias ?? []
+  const colFam = filters.color_familias ?? []
+  if (matFam.length || colFam.length) {
+    const matMap = buildFamiliaClusters(
+      out.map((r) => primeraPalabraPilar(r.descp_material)).filter(Boolean),
+    )
+    const colMap = buildFamiliaClusters(
+      out.map((r) => primeraPalabraPilar(r.descp_color)).filter(Boolean),
+    )
+    if (matFam.length) {
+      const want = new Set(matFam)
+      out = out.filter((r) => {
+        const k = familiaKeyFromDescripcion(r.descp_material, matMap)
+        return k != null && want.has(k)
+      })
+    }
+    if (colFam.length) {
+      const want = new Set(colFam)
+      out = out.filter((r) => {
+        const k = familiaKeyFromDescripcion(r.descp_color, colMap)
+        return k != null && want.has(k)
+      })
+    }
+  }
+
   return out
 }
 
@@ -268,9 +328,9 @@ export function buildFiltrosFromRows(rows: StockRow[]) {
       lineas.set(r.linea_id, String(r.linea_codigo || '').trim() || `Línea ${r.linea_id}`)
     }
     const marLabel = String(r.descp_marca ?? '').trim()
-    if (marLabel) {
+    if (marLabel && !esMarcaFantasmaFiltro(marLabel)) {
       const marId = Number(r.marca_id ?? 0)
-      marcas.set(marId, marLabel)
+      if (marId > 0) marcas.set(marId, marLabel)
     }
     if (r.grupo_estilo_id) {
       const id = Number(r.grupo_estilo_id)
@@ -324,6 +384,14 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
     sin_tono: sinTono,
     buscar: sp.get('buscar') ?? '',
     cadena_comercial: sp.get('cadena_comercial') ?? '',
+    tipo_grupos: (sp.get('tipo_grupos') ?? '')
+      .split(',')
+      .filter(Boolean)
+      .filter((x): x is TipoGrupoId =>
+        x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
+      ),
+    material_familias: (sp.get('material_familias') ?? '').split(',').filter(Boolean),
+    color_familias: (sp.get('color_familias') ?? '').split(',').filter(Boolean),
   }
 }
 
@@ -348,6 +416,20 @@ export function buildColoresFromRows(rows: StockRow[]): string[] {
         .filter((c): c is string => c.length > 0),
     ),
   ).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+}
+
+/** Familias Material · orden recurrencia (paridad Report). */
+export function buildMaterialFamiliasFromRows(rows: StockRow[]): FamiliaPilarItem[] {
+  return buildFamiliaItems(
+    rows.map((r) => primeraPalabraPilar(r.descp_material)).filter((t): t is string => Boolean(t)),
+  )
+}
+
+/** Familias Color · solo descripción · NN si numérico. */
+export function buildColorFamiliasFromRows(rows: StockRow[]): FamiliaPilarItem[] {
+  return buildFamiliaItems(
+    rows.map((r) => primeraPalabraPilar(r.descp_color)).filter((t): t is string => Boolean(t)),
+  )
 }
 
 export function buildQuincenasFromRows(rows: StockRow[]) {

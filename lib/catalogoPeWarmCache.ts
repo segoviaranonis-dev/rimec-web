@@ -47,6 +47,9 @@ export const CP_DEFAULT_FILTERS: CatalogoFilterState = {
   tonos: [],
   sin_tono: false,
   buscar: '',
+  tipo_grupos: [],
+  material_familias: [],
+  color_familias: [],
 }
 
 /** Modo Todos — CP+PE fusionados por SKU (default catálogo · 2026-07-13). */
@@ -103,6 +106,13 @@ function filtersQueryString(filters: CatalogoFilterState) {
   else if (filters.tonos?.length) params.set('tonos', filters.tonos.join(','))
   if (filters.buscar?.trim()) params.set('buscar', filters.buscar.trim())
   if (filters.cadena_comercial?.trim()) params.set('cadena_comercial', filters.cadena_comercial.trim())
+  if (filters.tipo_grupos?.length) params.set('tipo_grupos', filters.tipo_grupos.join(','))
+  if (filters.material_familias?.length) {
+    params.set('material_familias', filters.material_familias.join(','))
+  }
+  if (filters.color_familias?.length) {
+    params.set('color_familias', filters.color_familias.join(','))
+  }
   return params.toString()
 }
 

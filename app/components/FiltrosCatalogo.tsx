@@ -12,6 +12,16 @@ import {
   type TipoGrupoId,
 } from '@/lib/filtros/filtro-tipo-canonico'
 import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
+import {
+  cascadaColor,
+  cascadaEstilo,
+  cascadaLinea,
+  cascadaMaterial,
+  resetCascadaAlCambiarRamo,
+  toggleColorCascada,
+  toggleLineaCascada,
+  toggleMaterialCascada,
+} from '@/lib/catalogoCascadaMolecula'
 
 interface FilterItem {
   id: number
@@ -48,6 +58,8 @@ interface Props {
   totalPares:   number
   value?: CatalogoFilterState
   onChange?: (filters: CatalogoFilterState) => void
+  /** Cabecera + Tono; Dimensiones/Molécula viven en CatalogoFiltrosSidebar */
+  variant?: 'pills' | 'cabecera'
 }
 
 export type CatalogoFilterState = {
@@ -97,7 +109,9 @@ export function FiltrosCatalogo({
   estilos, marcas, lineas, tipos, generos, tonoCatalog,
   colores, quincenas, materialFamilias = [], colorFamilias = [],
   totalModelos, totalPares, value, onChange,
+  variant = 'pills',
 }: Props) {
+  const soloCabecera = variant === 'cabecera'
   const router       = useRouter()
   const searchParams = useSearchParams()
 
@@ -139,16 +153,6 @@ export function FiltrosCatalogo({
       try { localStorage.setItem('rimec-web-filtros-collapsed', next ? '1' : '0') } catch { /* ignore */ }
       return next
     })
-  }
-
-  const resetCascadeAlCambiarRamo = {
-    marca_id: '',
-    linea_ids: [] as number[],
-    tipo_ids: [] as number[],
-    grupo_estilo_id: '',
-    tipo_grupos: [] as TipoGrupoId[],
-    material_familias: [] as string[],
-    color_familias: [] as string[],
   }
 
   const cadenaActual =
@@ -258,10 +262,77 @@ export function FiltrosCatalogo({
 
   const activeEstiloLabel = estilos.find(e => String(e.id) === estiloIdActual)?.label
   const activeMarcaLabel  = marcas.find(m => String(m.id) === marcaIdActual)?.label
+  const tonosActivos = sinTono ? 1 : tonosSel.length
+
+  /* Cabecera minimal — sin título «Catálogo» ni conteo de modelos; Tono en acordeón horizontal. */
+  if (soloCabecera) {
+    return (
+      <div className="mb-2 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500 tabular-nums">
+            {totalModelos.toLocaleString('es-PY')} tarjetas · {totalPares.toLocaleString('es-PY')} pares
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {hayFiltros ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const empty: CatalogoFilterState = {
+                    grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
+                    origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
+                    genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
+                    tipo_grupos: [], material_familias: [], color_familias: [],
+                  }
+                  clearSharedCatalogFilters()
+                  if (onChange) onChange(empty)
+                  else router.push('/?origen_tipo=TODOS&ramo_tipo=CALZADO')
+                }}
+                className="text-xs font-semibold text-red-600 hover:underline"
+              >
+                Limpiar
+              </button>
+            ) : null}
+            {totalModelos > 0 ? <CatalogExtenderDatosToggle /> : null}
+          </div>
+        </div>
+
+        {tonoCatalog.length > 0 ? (
+          <details
+            open
+            className="group border border-slate-200 bg-white"
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600 [&::-webkit-details-marker]:hidden">
+              <span className="text-rimec-azul transition group-open:rotate-90" aria-hidden>
+                ▸
+              </span>
+              <span>Tono</span>
+              {tonosActivos > 0 ? (
+                <span className="rounded bg-rimec-azul px-1.5 py-0.5 text-[9px] font-black tabular-nums text-white">
+                  {tonosActivos}
+                </span>
+              ) : null}
+              <span className="ml-auto text-[10px] font-medium normal-case tracking-normal text-slate-400 group-open:hidden">
+                Abrir swatches →
+              </span>
+            </summary>
+            <div className="overflow-x-auto border-t border-slate-100 px-3 py-2">
+              <FiltroTonoCabecera
+                catalogo={tonoCatalog}
+                tonosSel={tonosSel}
+                sinTono={sinTono}
+                onChange={(tonos, sin) => aplicar({ tonos, sin_tono: sin })}
+                compact
+              />
+            </div>
+          </details>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className="mb-3">
-      {/* ── Encabezado ── */}
+      {/* ── Encabezado (modo pills legacy) ── */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-2">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight" style={{ color: RIMEC_BLUE }}>
@@ -326,8 +397,9 @@ export function FiltrosCatalogo({
       </div>
 
       {!encabezadoOculto ? (
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-3 shadow-md space-y-2.5">
+      <div className="border border-slate-200 bg-white p-3 space-y-2.5">
 
+        <>
         {/* Origen — compra previa vs pronta entrega */}
         <div className="flex items-center gap-3 flex-wrap">
           <FilterLabel>Origen</FilterLabel>
@@ -369,7 +441,7 @@ export function FiltrosCatalogo({
                   dimmed={!!ramoActual && ramoActual !== 'CALZADO'}
                   onClick={() => aplicar({
                     ramo_tipo: ramoActual === 'CALZADO' ? '' : 'CALZADO',
-                    ...(ramoActual === 'CALZADO' ? {} : resetCascadeAlCambiarRamo),
+                    ...(ramoActual === 'CALZADO' ? {} : resetCascadaAlCambiarRamo()),
                   })}
                 >
                   👟 Calzado
@@ -379,7 +451,7 @@ export function FiltrosCatalogo({
                   dimmed={!!ramoActual && ramoActual !== 'CONFECCIONES'}
                   onClick={() => aplicar({
                     ramo_tipo: ramoActual === 'CONFECCIONES' ? '' : 'CONFECCIONES',
-                    ...(ramoActual === 'CONFECCIONES' ? {} : resetCascadeAlCambiarRamo),
+                    ...(ramoActual === 'CONFECCIONES' ? {} : resetCascadaAlCambiarRamo()),
                   })}
                 >
                   👕 Confecciones
@@ -521,19 +593,16 @@ export function FiltrosCatalogo({
         {estilos.length > 0 && (
           <FilterRow label="Estilo">
             <ScrollPillsRow>
-              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar({ grupo_estilo_id: '', linea_ids: [], tipo_ids: [], material_familias: [], color_familias: [] })}>
+              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar(cascadaEstilo(''))}>
                 Todos
               </CabeceraPill>
               {estilos.map((e, idx) => (
                 <CabeceraPill
                   key={filterItemKey('estilo', e, idx)}
                   active={estiloIdActual === String(e.id)}
-                  onClick={() => aplicar({
-                    grupo_estilo_id: estiloIdActual === String(e.id) ? '' : String(e.id),
-                    linea_ids: [],
-                    material_familias: [],
-                    color_familias: [],
-                  })}
+                  onClick={() =>
+                    aplicar(cascadaEstilo(estiloIdActual === String(e.id) ? '' : String(e.id)))
+                  }
                 >
                   {e.label}
                 </CabeceraPill>
@@ -545,7 +614,7 @@ export function FiltrosCatalogo({
         {lineas.length > 0 && (
           <FilterRow label="Línea">
             <ScrollPillsRow>
-              <CabeceraPill active={!lineasSelIds.length} onClick={() => aplicar({ linea_ids: [], material_familias: [], color_familias: [] })}>
+              <CabeceraPill active={!lineasSelIds.length} onClick={() => aplicar(cascadaLinea([]))}>
                 Todas
               </CabeceraPill>
               {lineas.map((l, idx) => {
@@ -554,10 +623,7 @@ export function FiltrosCatalogo({
                   <CabeceraPill
                     key={filterItemKey('linea', l, idx)}
                     active={sel}
-                    onClick={() => {
-                      const next = sel ? lineasSelIds.filter(x => x !== l.id) : [...lineasSelIds, l.id]
-                      aplicar({ linea_ids: next, material_familias: [], color_familias: [] })
-                    }}
+                    onClick={() => aplicar(toggleLineaCascada(lineasSelIds, l.id))}
                   >
                     {l.label}
                   </CabeceraPill>
@@ -570,7 +636,10 @@ export function FiltrosCatalogo({
         {materialFamilias.length > 0 && (
           <FilterRow label="Material">
             <ScrollPillsRow>
-              <CabeceraPill active={!materialFamSel.length} onClick={() => aplicar({ material_familias: [], color_familias: [] })}>
+              <CabeceraPill
+                active={!materialFamSel.length}
+                onClick={() => aplicar(cascadaMaterial([]))}
+              >
                 Todos
               </CabeceraPill>
               {materialFamilias.map((f) => {
@@ -579,12 +648,7 @@ export function FiltrosCatalogo({
                   <CabeceraPill
                     key={`mat-${f.key}`}
                     active={sel}
-                    onClick={() => {
-                      const next = sel
-                        ? materialFamSel.filter((x) => x !== f.key)
-                        : [...materialFamSel, f.key]
-                      aplicar({ material_familias: next, color_familias: [] })
-                    }}
+                    onClick={() => aplicar(toggleMaterialCascada(materialFamSel, f.key))}
                   >
                     {f.label}
                   </CabeceraPill>
@@ -597,7 +661,7 @@ export function FiltrosCatalogo({
         {colorFamilias.length > 0 && (
           <FilterRow label="Color">
             <ScrollPillsRow>
-              <CabeceraPill active={!colorFamSel.length} onClick={() => aplicar({ color_familias: [] })}>
+              <CabeceraPill active={!colorFamSel.length} onClick={() => aplicar(cascadaColor([]))}>
                 Todos
               </CabeceraPill>
               {colorFamilias.map((f) => {
@@ -606,12 +670,7 @@ export function FiltrosCatalogo({
                   <CabeceraPill
                     key={`col-${f.key}`}
                     active={sel}
-                    onClick={() => {
-                      const next = sel
-                        ? colorFamSel.filter((x) => x !== f.key)
-                        : [...colorFamSel, f.key]
-                      aplicar({ color_familias: next })
-                    }}
+                    onClick={() => aplicar(toggleColorCascada(colorFamSel, f.key))}
                   >
                     {f.label}
                   </CabeceraPill>
@@ -620,6 +679,7 @@ export function FiltrosCatalogo({
             </ScrollPillsRow>
           </FilterRow>
         )}
+        </>
 
         {tonoCatalog.length > 0 && (
           <FilterRow label="Tono">

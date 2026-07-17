@@ -11,6 +11,7 @@ import {
   type FamiliaPilarItem,
 } from '@/lib/pilares/agrupar-etiqueta-pilar'
 import {
+  CASOS_TIPO_NORMAL,
   esMarcaFantasmaFiltro,
   rowMatchesTipoGrupos,
   type TipoGrupoId,
@@ -117,7 +118,33 @@ export function applyGeneroRamoBuscarSql(query: any, filters: CatalogoFilterStat
   return q
 }
 
-export function applyNonOrigenSqlFilters(query: any, filters: CatalogoFilterStateExtended): any {
+/** Tipo AM en SQL — reduce scan paginado (paridad memoria). */
+export function applyTipoGruposSqlFilter(
+  query: any,
+  tipoGrupos: TipoGrupoId[] | undefined,
+  opts?: { allowLiquidacion?: boolean },
+): any {
+  const sel = tipoGrupos ?? []
+  if (!sel.length) return query
+  const parts: string[] = []
+  if (sel.includes('normal')) {
+    parts.push(`descp_caso.in.(${CASOS_TIPO_NORMAL.join(',')})`)
+  }
+  if (sel.includes('carteras')) parts.push('descp_caso.eq.CARTERAS')
+  if (sel.includes('promo')) parts.push('descp_caso.eq.PROMOCIONAL')
+  if (opts?.allowLiquidacion !== false && sel.includes('liquidacion')) {
+    parts.push('es_liquidacion.eq.true')
+    parts.push('cadena_comercial.eq.LIQUIDACION')
+  }
+  if (!parts.length) return query
+  return query.or(parts.join(','))
+}
+
+export function applyNonOrigenSqlFilters(
+  query: any,
+  filters: CatalogoFilterStateExtended,
+  opts?: { allowLiquidacion?: boolean },
+): any {
   let q = query
   if (filters.marca_id) q = q.eq('marca_id', Number(filters.marca_id))
   if (filters.linea_ids.length) q = q.in('linea_id', filters.linea_ids)
@@ -128,6 +155,7 @@ export function applyNonOrigenSqlFilters(query: any, filters: CatalogoFilterStat
     const cols = filters.colores.map(c => c.trim()).filter(Boolean)
     if (cols.length) q = q.in('descp_color', cols)
   }
+  q = applyTipoGruposSqlFilter(q, filters.tipo_grupos, opts)
   return applyGeneroRamoBuscarSql(q, filters)
 }
 
@@ -148,7 +176,7 @@ export function applyPeCommercialSqlFilters(
 
 export function applySqlFiltersToQuery(query: any, filters: CatalogoFilterStateExtended): any {
   let q = applyOrigenTipoQuery(query, filters)
-  return applyNonOrigenSqlFilters(q, filters)
+  return applyNonOrigenSqlFilters(q, filters, { allowLiquidacion: false })
 }
 
 /** Vista Supabase — CP en v_stock_rimec · PE en v_stock_pe_rimec (PPD · local). */
@@ -243,27 +271,25 @@ export function applyMemoryFilters(rows: StockRow[], filters: CatalogoFilterStat
 
   const matFam = filters.material_familias ?? []
   const colFam = filters.color_familias ?? []
-  if (matFam.length || colFam.length) {
+  if (matFam.length) {
+    const want = new Set(matFam)
     const matMap = buildFamiliaClusters(
       out.map((r) => primeraPalabraPilar(r.descp_material)).filter(Boolean),
     )
+    out = out.filter((r) => {
+      const k = familiaKeyFromDescripcion(r.descp_material, matMap)
+      return k != null && want.has(k)
+    })
+  }
+  if (colFam.length) {
+    const want = new Set(colFam)
     const colMap = buildFamiliaClusters(
       out.map((r) => primeraPalabraPilar(r.descp_color)).filter(Boolean),
     )
-    if (matFam.length) {
-      const want = new Set(matFam)
-      out = out.filter((r) => {
-        const k = familiaKeyFromDescripcion(r.descp_material, matMap)
-        return k != null && want.has(k)
-      })
-    }
-    if (colFam.length) {
-      const want = new Set(colFam)
-      out = out.filter((r) => {
-        const k = familiaKeyFromDescripcion(r.descp_color, colMap)
-        return k != null && want.has(k)
-      })
-    }
+    out = out.filter((r) => {
+      const k = familiaKeyFromDescripcion(r.descp_color, colMap)
+      return k != null && want.has(k)
+    })
   }
 
   return out

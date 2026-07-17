@@ -27,6 +27,26 @@ const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/stor
 
 type StockView = 'v_stock_rimec' | 'v_stock_pe_rimec'
 
+/** Orden canónico grilla: línea → referencia (numérico natural). */
+export function compareLineaReferencia(
+  a: { linea_codigo?: string | null; referencia_codigo?: string | null },
+  b: { linea_codigo?: string | null; referencia_codigo?: string | null },
+): number {
+  const la = String(a.linea_codigo ?? '').trim()
+  const lb = String(b.linea_codigo ?? '').trim()
+  const c = la.localeCompare(lb, 'es', { numeric: true, sensitivity: 'base' })
+  if (c !== 0) return c
+  const ra = String(a.referencia_codigo ?? '').trim()
+  const rb = String(b.referencia_codigo ?? '').trim()
+  return ra.localeCompare(rb, 'es', { numeric: true, sensitivity: 'base' })
+}
+
+function sortTarjetasLineaRef(tarjetas: TarjetaGrilla[]): TarjetaGrilla[] {
+  return [...tarjetas].sort(compareLineaReferencia)
+}
+
+export { sortTarjetasLineaRef }
+
 async function fetchStockBatchFromView(
   view: StockView,
   filters: CatalogoFilterStateExtended,
@@ -43,11 +63,19 @@ async function fetchStockBatchFromView(
     query =
       view === 'v_stock_pe_rimec'
         ? applyPeCommercialSqlFilters(
-            applyPeDepositoQuery(applyNonOrigenSqlFilters(query, filtersForPeSql(filters)), filters),
+            applyPeDepositoQuery(
+              applyNonOrigenSqlFilters(query, filtersForPeSql(filters), { allowLiquidacion: true }),
+              filters,
+            ),
             filters,
           )
         : applySqlFiltersToQuery(query, filtersForCpSql(filters))
-    query = query.order('det_id').range(rowFrom, rowTo)
+    // Director: grilla por línea + referencia (no det_id).
+    query = query
+      .order('linea_codigo', { ascending: true })
+      .order('referencia_codigo', { ascending: true })
+      .order('det_id', { ascending: true })
+      .range(rowFrom, rowTo)
 
     const { data, error } = await query
     if (!error) return (data ?? []) as unknown as StockRow[]
@@ -112,7 +140,8 @@ async function rowsToGrillaAsync(
     : await enrichCatalogoRows(active)
   const filtered = applyMemoryFilters(enriched, filters)
   const cards = agruparTarjetasCatalogo(filtered, BUCKET, cajasDisponiblesDeFila)
-  return isCatalogoOrigenTodos(filters) ? fusionarTarjetasPorSku(cards) : cards
+  const grilla = isCatalogoOrigenTodos(filters) ? fusionarTarjetasPorSku(cards) : cards
+  return sortTarjetasLineaRef(grilla)
 }
 
 export async function fetchTarjetasPage(opts: {
@@ -162,7 +191,7 @@ export async function fetchTarjetasPage(opts: {
   }
 
   return {
-    tarjetas,
+    tarjetas: sortTarjetasLineaRef(tarjetas),
     nextRowFrom: rowFrom,
     hasMore,
     excludeCardKeys: [...excludeSet],

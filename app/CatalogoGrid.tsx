@@ -780,11 +780,11 @@ export function CatalogoGrid({
       <DialogoActivacion open={mostrarDialogo} onClose={() => setMostrarDialogo(false)} />
       <HeaderSesion />
 
-      <p style={{ fontSize: 14, color: '#64748B', marginBottom: 20 }}>
-        Mostrando <strong style={{ color: AZUL }}>{filtered.length}</strong> modelos
+      <p style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
+        {filtered.length} tarjetas
         {!activa && (
-          <span style={{ marginLeft: 12, color: CELESTE, fontWeight: 600 }}>
-            🔒 Precios visibles tras activar venta (cliente + lista)
+          <span style={{ marginLeft: 10, color: '#64748B' }}>
+            · precios tras activar venta
           </span>
         )}
       </p>

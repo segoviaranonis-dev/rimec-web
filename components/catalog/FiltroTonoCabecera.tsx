@@ -8,10 +8,12 @@ type Props = {
   tonosSel: string[]
   sinTono: boolean
   onChange: (tonos: string[], sinTono: boolean) => void
+  /** Sin scale/ring — cabecera minimal */
+  compact?: boolean
 }
 
-/** Fila TONO — CABECERA DE FILTROS (círculos canónicos + Sin asignar). */
-export function FiltroTonoCabecera({ catalogo, tonosSel, sinTono, onChange }: Props) {
+/** Fila TONO — círculos canónicos + Sin asignar. */
+export function FiltroTonoCabecera({ catalogo, tonosSel, sinTono, onChange, compact = false }: Props) {
   const todos = tonosSel.length === 0 && !sinTono
 
   function toggleEtiqueta(etiqueta: string) {
@@ -25,18 +27,18 @@ export function FiltroTonoCabecera({ catalogo, tonosSel, sinTono, onChange }: Pr
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex min-w-max items-center gap-2">
       <button
         type="button"
         title="Todos los tonos"
         aria-pressed={todos}
         onClick={() => onChange([], false)}
         className={[
-          'shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all',
-          todos ? 'border-orange-600 ring-2 ring-orange-200' : 'border-slate-300 opacity-70 hover:opacity-100',
+          'shrink-0 h-7 w-7 rounded-full border flex items-center justify-center',
+          todos ? 'border-slate-800' : 'border-slate-300 opacity-70 hover:opacity-100',
         ].join(' ')}
       >
-        <span className="w-5 h-5 rounded-full bg-[conic-gradient(red,yellow,lime,cyan,blue,magenta,red)] block" />
+        <span className="block h-4 w-4 rounded-full bg-[conic-gradient(red,yellow,lime,cyan,blue,magenta,red)]" />
       </button>
 
       <button
@@ -44,10 +46,10 @@ export function FiltroTonoCabecera({ catalogo, tonosSel, sinTono, onChange }: Pr
         onClick={() => toggleEtiqueta('__sin__')}
         aria-pressed={sinTono}
         className={[
-          'rounded-full border-2 px-3 py-1 text-[11px] font-bold transition',
+          'shrink-0 rounded border px-2.5 py-1 text-[11px] font-semibold',
           sinTono
-            ? 'border-orange-600 bg-orange-600 text-white'
-            : 'border-slate-300 bg-white text-slate-600 hover:border-orange-300',
+            ? 'border-slate-800 bg-slate-800 text-white'
+            : 'border-slate-300 bg-white text-slate-600 hover:border-slate-500',
         ].join(' ')}
       >
         Sin asignar
@@ -64,8 +66,9 @@ export function FiltroTonoCabecera({ catalogo, tonosSel, sinTono, onChange }: Pr
             aria-pressed={active}
             onClick={() => toggleEtiqueta(c.etiqueta)}
             className={[
-              'shrink-0 w-8 h-8 rounded-full border-2 transition-all',
-              active ? 'border-orange-600 ring-2 ring-orange-200 scale-95' : 'border-slate-300 hover:scale-110',
+              'shrink-0 h-7 w-7 rounded-full border',
+              active ? 'border-slate-800 ring-1 ring-slate-400' : 'border-slate-300',
+              compact ? '' : '',
             ].join(' ')}
             style={style}
           />

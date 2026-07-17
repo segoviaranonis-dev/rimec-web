@@ -36,7 +36,11 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
 
     if (filters.ramo_tipo === 'CONFECCIONES') {
       const peRes = await fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
-        applySql: q => applyPeDepositoQuery(applyNonOrigenSqlFilters(q, peFilters), filters),
+        applySql: q =>
+          applyPeDepositoQuery(
+            applyNonOrigenSqlFilters(q, peFilters, { allowLiquidacion: true }),
+            filters,
+          ),
       })
       if (peRes.error) throw new Error(peRes.error.message)
       const vendibles = (peRes.data ?? []).filter(r => cajasDisponiblesDeFila(r) > 0)
@@ -59,7 +63,10 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
       fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
         applySql: q =>
           applyPeCommercialSqlFilters(
-            applyPeDepositoQuery(applyNonOrigenSqlFilters(q, peFilters), filters),
+            applyPeDepositoQuery(
+              applyNonOrigenSqlFilters(q, peFilters, { allowLiquidacion: true }),
+              filters,
+            ),
             filters,
           ),
       }),
@@ -80,10 +87,13 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
   const { data, error } = await fetchCatalogoMetaRows<StockRow>(supabase, view, {
     applySql: q => {
       if (view === 'v_stock_pe_rimec') {
-        return applyPeCommercialSqlFilters(
-          applyPeDepositoQuery(applyNonOrigenSqlFilters(q, { ...filters, quincenas: [] }), filters),
-          filters,
-        )
+        return           applyPeCommercialSqlFilters(
+            applyPeDepositoQuery(
+              applyNonOrigenSqlFilters(q, { ...filters, quincenas: [] }, { allowLiquidacion: true }),
+              filters,
+            ),
+            filters,
+          )
       }
       return applySqlFiltersToQuery(q, { ...filters, cadena_comercial: '' })
     },

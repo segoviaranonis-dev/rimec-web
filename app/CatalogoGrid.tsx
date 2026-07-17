@@ -99,8 +99,10 @@ function resolverHex(v: { color_hex?: string | null; descp_color?: string | null
 }
 
 function etiquetaOrigenChip(origen: TarjetaCatalogo['origen_tipo'], quincenaDesc: string | null | undefined): string {
+  // PE nunca muestra quincena de pedido proveedor (fuga visual CP bajo Pronta entrega)
+  if (origen === 'PRONTA_ENTREGA') return 'Pronta entrega'
   if (quincenaDesc) return quincenaDesc
-  return origen === 'PRONTA_ENTREGA' ? 'Pronta entrega' : 'Compra previa'
+  return 'Compra previa'
 }
 
 /** Precio catálogo — PE: LPN si el tier de lista está vacío (LPC02-04 null en vista). */
@@ -405,9 +407,9 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
 
           <span
             className="inline-flex items-center gap-1 text-sm font-extrabold leading-none px-3 py-1.5 rounded-lg shadow-sm mb-1"
-            style={origenChipStyle(shell, Boolean(v.quincena_desc))}
+            style={origenChipStyle(shell, p.origen_tipo !== 'PRONTA_ENTREGA' && Boolean(v.quincena_desc))}
           >
-            {v.quincena_desc ? `📦 ${v.quincena_desc}` : 'NULL'}
+            {etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
           </span>
 
           <p className="text-[10px] text-slate-400 truncate mb-2">

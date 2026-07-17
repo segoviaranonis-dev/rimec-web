@@ -8,9 +8,11 @@ import { formatPrecioGs } from '@/lib/formatPrecioGs'
 import {
   agruparTallasPorPrecio,
   coloresUnicosEnLote,
+  prendasDisponiblesVariante,
   type TallaVentaLine,
   variantesPorColor,
 } from '@/lib/confeccionesCatalogo'
+import { etiquetaTalleDesdeGrada } from '@/lib/gradaAbierta638'
 import { syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
 import { resolverLpc03, resolverLpc04 } from '@/lib/precioLista'
 
@@ -156,11 +158,36 @@ export function CatalogConfeccionesTallas({
     return variantesPorColor(lote, tonoKey)
   }, [lote, colores.length, tonoKey])
 
-  // Siempre armar grupos: los botones talla deben verse aunque la venta no esté activa.
+  // Grupos por precio solo para venta activa. Sin sesión: tallas visibles, precio oculto (4.01.04.001).
   const grupos = useMemo(
     () => agruparTallasPorPrecio(variantesTalla, lote, listaPrecioId),
     [variantesTalla, lote, listaPrecioId],
   )
+
+  /** Pre-activación: una sola banda (sin filas por precio = sin fuga por tipología de Gs.). */
+  const gruposUi = useMemo(() => {
+    if (activa) return grupos
+    const tallas = grupos.flatMap((g) => g.tallas)
+    if (tallas.length === 0) {
+      // Aún sin precio en BD: mostrar tallas crudas por stock (sin Gs.)
+      return variantesTalla.length
+        ? [
+            {
+              precio: 0,
+              tallas: variantesTalla.map((v) => ({
+                det_id: v.det_id,
+                talle: etiquetaTalleDesdeGrada(v.gradas_fmt),
+                stock: prendasDisponiblesVariante(v),
+                gradas_fmt: v.gradas_fmt,
+                precio: 0,
+                variante: v,
+              })),
+            },
+          ]
+        : []
+    }
+    return [{ precio: 0, tallas }]
+  }, [activa, grupos, variantesTalla])
 
   const detIdsColor = useMemo(
     () => new Set(variantesTalla.map(v => v.det_id)),
@@ -178,11 +205,15 @@ export function CatalogConfeccionesTallas({
     void agregarCaja(buildCartItem(lote, line, listaPrecioId, esPe))
   }
 
-  if (grupos.length === 0) {
+  if (gruposUi.length === 0) {
     return (
       <div className="space-y-1">
         <p className="text-center text-[9px] font-semibold text-amber-800">
-          {esPe ? 'Precio pendiente PE' : 'Sin tallas con precio'}
+          {activa
+            ? esPe
+              ? 'Precio pendiente PE'
+              : 'Sin tallas con precio'
+            : 'Sin tallas con stock'}
         </p>
         {!activa ? (
           <button
@@ -205,20 +236,22 @@ export function CatalogConfeccionesTallas({
           onClick={onNeedSession}
           className="w-full rounded-lg bg-slate-900 py-1 text-[9px] font-bold text-white"
         >
-          Activar venta para cargar
+          Activar venta para ver precios
         </button>
       ) : null}
-      {grupos.map(grupo => {
+      {gruposUi.map((grupo, idx) => {
         const [fila1, fila2] = splitDosFilas(grupo.tallas)
         return (
           <div
-            key={grupo.precio}
+            key={activa ? `p-${grupo.precio}` : `pre-${idx}`}
             className="rounded-md border border-violet-200/70 bg-violet-50/30 px-1 py-1"
           >
-            <p className="mb-0.5 text-center text-[8px] font-bold tabular-nums leading-tight text-orange-600">
-              {formatPrecioGs(grupo.precio)}
-              <span className="font-normal text-slate-400"> /p</span>
-            </p>
+            {activa && grupo.precio > 0 ? (
+              <p className="mb-0.5 text-center text-[8px] font-bold tabular-nums leading-tight text-orange-600">
+                {formatPrecioGs(grupo.precio)}
+                <span className="font-normal text-slate-400"> /p</span>
+              </p>
+            ) : null}
             <div className="flex flex-col gap-0.5">
               <FilaTallas tallas={fila1} carrito={carrito} onTap={handleTap} />
               <FilaTallas tallas={fila2} carrito={carrito} onTap={handleTap} />

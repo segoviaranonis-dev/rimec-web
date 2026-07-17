@@ -10,7 +10,7 @@ import {
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
 import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
-import { isCatalogoOrigenPe, isCatalogoOrigenTodos, normalizeFilterItems } from '@/lib/catalogoFilters'
+import { isCatalogoOrigenPe, isCatalogoOrigenTodos, normalizeFilterItems, normalizeOrigenCatalogo } from '@/lib/catalogoFilters'
 import { sortTarjetasLineaRef } from '@/lib/catalogoPaginado'
 import { esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
 import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
@@ -110,6 +110,45 @@ function hasSidebarFilters(f: CatalogoFilterState): boolean {
       (f.material_familias?.length ?? 0) > 0 ||
       (f.color_familias?.length ?? 0) > 0,
   )
+}
+
+/** Origen/ramo no se diferirán — evita chrome PE con grilla CP (pedido proveedor). */
+function filtersConOrigenInmediato(
+  deferred: CatalogoFilterState,
+  live: CatalogoFilterState,
+): CatalogoFilterState {
+  return {
+    ...deferred,
+    origen_tipo: live.origen_tipo,
+    ramo_tipo: live.ramo_tipo,
+    deposito_codigo: live.deposito_codigo,
+    quincenas: live.quincenas,
+  }
+}
+
+function origenesEnTarjeta(t: TarjetaGrilla): string[] {
+  if (isTarjetaFusionada(t)) {
+    return t.lotes.map((l) => normalizeOrigenCatalogo(l.origen_tipo))
+  }
+  return [normalizeOrigenCatalogo(t.origen_tipo)]
+}
+
+/** Rechaza warm cache cruzado CP↔PE (p.ej. quincenas PP bajo Pronta entrega). */
+function tarjetasRespetanOrigen(
+  tarjetas: TarjetaGrilla[],
+  origenRaw: string | undefined,
+): boolean {
+  const want = normalizeOrigenCatalogo(origenRaw)
+  if (want === 'TODOS' || tarjetas.length === 0) return true
+  for (const t of tarjetas.slice(0, 16)) {
+    const orgs = origenesEnTarjeta(t)
+    if (want === 'PRONTA_ENTREGA') {
+      if (orgs.some((o) => o !== 'PRONTA_ENTREGA')) return false
+    } else if (want === 'TRÁNSITO_PP') {
+      if (orgs.some((o) => o !== 'TRÁNSITO_PP')) return false
+    }
+  }
+  return true
 }
 
 export function CatalogoClient({ initialFilters }: Props) {
@@ -364,11 +403,16 @@ export function CatalogoClient({ initialFilters }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    const activeFilters = deferredFilters
+    // Origen/ramo/depósito/quincenas = live (no deferred) — chrome PE ≠ grilla CP
+    const activeFilters = filtersConOrigenInmediato(deferredFilters, filters)
     const esPe = isCatalogoOrigenPe(activeFilters)
     const esTodos = isCatalogoOrigenTodos(activeFilters)
     const cacheKey = catalogWarmCacheKey(activeFilters)
-    const cached = getPageWarmCache(cacheKey)
+    const cachedRaw = getPageWarmCache(cacheKey)
+    const cached =
+      cachedRaw && tarjetasRespetanOrigen(cachedRaw.tarjetas, activeFilters.origen_tipo)
+        ? cachedRaw
+        : null
     const cacheReady = isCatalogWarmEnough(cached)
 
     const hasCached = (cached?.tarjetas.length ?? 0) > 0
@@ -391,14 +435,17 @@ export function CatalogoClient({ initialFilters }: Props) {
       if (cached.quincenas) setQuincenas(cached.quincenas)
       setError(null)
       warmCatalogImages(cached.tarjetas)
-    } else if (!cached) {
+    } else {
       setProductos([])
       setRowFrom(0)
       setExcludeKeys([])
       setHasMore(true)
     }
 
-    setLoading(!hasCached || filtrosPendientes || Boolean(cached?.hasMore))
+    const origenPendiente =
+      (filters.origen_tipo ?? '') !== (deferredFilters.origen_tipo ?? '') ||
+      (filters.ramo_tipo ?? '') !== (deferredFilters.ramo_tipo ?? '')
+    setLoading(!hasCached || filtrosPendientes || origenPendiente || Boolean(cached?.hasMore))
     setError(null)
 
     // Cache incompleto (paginado viejo) → siempre completar con fetchAll.
@@ -415,6 +462,11 @@ export function CatalogoClient({ initialFilters }: Props) {
     fetchAllTarjetas(activeFilters, () => cancelled)
       .then(json => {
         if (cancelled) return
+        if (!tarjetasRespetanOrigen(json.tarjetas, activeFilters.origen_tipo)) {
+          setError('Origen de stock inconsistente — reintentá Pronta entrega / Compra previa')
+          setProductos([])
+          return
+        }
         setProductos(json.tarjetas)
         setRowFrom(json.nextRowFrom)
         setExcludeKeys(json.excludeCardKeys)
@@ -446,10 +498,10 @@ export function CatalogoClient({ initialFilters }: Props) {
     deferredFilters.linea_ids.join(','),
     deferredFilters.tipo_ids.join(','),
     deferredFilters.colores.join(','),
-    deferredFilters.quincenas.join(','),
-    deferredFilters.origen_tipo ?? '',
-    deferredFilters.ramo_tipo ?? '',
-    deferredFilters.deposito_codigo ?? '',
+    filters.quincenas.join(','),
+    filters.origen_tipo ?? '',
+    filters.ramo_tipo ?? '',
+    filters.deposito_codigo ?? '',
     deferredFilters.genero_codigo ?? '',
     deferredFilters.tonos?.join(',') ?? '',
     deferredFilters.sin_tono ? '1' : '',

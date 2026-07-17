@@ -191,12 +191,8 @@ async function validarItemsStockEnCarrito(
     } else if (cajasSolicitadas > cajasActuales || paresSolicitados > paresActuales) {
       ok = false
       motivo = 'STOCK_INSUFICIENTE'
-    } else if (precioCarrito > 0 && precioCarrito !== precioEsperado) {
-      ok = false
-      motivo = 'PRECIO_CAMBIO'
-    }
-
-    if (ok && precioEsperado != null && precioCarrito !== precioEsperado) {
+    } else if (precioEsperado != null && precioCarrito !== precioEsperado) {
+      // Auto-sync: precio neto FI/lista en BD (evita loop PRECIO_CAMBIO al revalidar).
       await sb
         .from('carrito_item')
         .update({
@@ -217,14 +213,33 @@ async function validarItemsStockEnCarrito(
       pares_actuales: paresActuales,
       pares_solicitados: paresSolicitados,
       precio_actual: precioEsperado,
-      precio_carrito: precioCarrito,
+      precio_carrito: precioEsperado ?? precioCarrito,
     })
   }
 
   return { items: out, recalculados }
 }
 
-/** Carrito 100% PE — no invocar RPC (pisa snapshots CP). */
+/** Marca FIs pre_autorizado tras validación (paridad RPC MIG-160). */
+async function marcarFacturasPreAutorizado(sb: SupabaseClient, idUsuario: number): Promise<void> {
+  const { data: sesion } = await sb
+    .from('carrito_sesion')
+    .select('descuentos_lote')
+    .eq('id_usuario', idUsuario)
+    .maybeSingle()
+  const lote = sesion?.descuentos_lote as { facturas?: Array<Record<string, unknown>> } | null
+  if (!lote?.facturas?.length) return
+  const facturas = lote.facturas.map((f) => ({ ...f, pre_autorizado: true }))
+  await sb
+    .from('carrito_sesion')
+    .update({
+      descuentos_lote: { ...lote, facturas },
+      actualizada_en: new Date().toISOString(),
+    })
+    .eq('id_usuario', idUsuario)
+}
+
+/** Carrito CP + PE + mixto — validación app (ley LPN×1.12 · no RPC carrito_validar). */
 export async function validarCarritoPeApp(
   sb: SupabaseClient,
   idUsuario: number,
@@ -269,6 +284,7 @@ export async function validarCarritoPeApp(
     }
   }
 
+  await marcarFacturasPreAutorizado(sb, idUsuario)
   const { token, expira_en } = await emitirTokenValidacion(sb, idUsuario)
   return {
     success: true,

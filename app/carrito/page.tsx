@@ -157,6 +157,14 @@ export default function CarritoPage() {
     )
     .map((i) => i.det_id)
 
+  const hayCambioPrecio = itemsConProblema.some(
+    (i) =>
+      i.motivo === 'PRECIO_CAMBIO' ||
+      (i.precio_actual != null &&
+        i.precio_carrito > 0 &&
+        i.precio_carrito !== i.precio_actual),
+  )
+
   function textoMotivoValidacion(item: ValidarItemResult): string {
     if (item.motivo === 'ITEM_OBSOLETO') {
       return 'Debés eliminar este artículo por falta de stock — ya no está disponible en depósito.'
@@ -175,7 +183,10 @@ export default function CarritoPage() {
       return `Stock insuficiente: hay ${ca} caja(s) y pediste ${cs}. Reducí cantidad o eliminá el ítem.`
     }
     if (item.motivo === 'PRECIO_CAMBIO') {
-      return `Precio cambió: ${item.precio_carrito.toLocaleString('es-PY')} → ${item.precio_actual?.toLocaleString('es-PY') ?? '—'}`
+      return (
+        `Precio cambió: ${item.precio_carrito.toLocaleString('es-PY')} → ${item.precio_actual?.toLocaleString('es-PY') ?? '—'}. ` +
+        'Presioná Revalidar (se sincroniza solo). Si persiste: (1) Editar descuentos de la FI → Guardar → VALIDAR, o (2) Quitar el ítem y volver a agregarlo desde el catálogo.'
+      )
     }
     if (item.motivo === 'SIN_PRECIO') {
       return 'El SKU perdió el precio en Nexus Core — eliminá el ítem para continuar.'
@@ -214,6 +225,13 @@ export default function CarritoPage() {
         })),
       })
       if (data.estado === 'OK') {
+        await cargarDesdeBD()
+        const recalc = (data as { items_recalculados?: number }).items_recalculados ?? 0
+        if (recalc > 0) {
+          setError(null)
+          setExito(`Precios actualizados (${recalc} ítem(s)). Podés confirmar el pedido.`)
+        }
+      } else if ((data as { items_recalculados?: number }).items_recalculados) {
         await cargarDesdeBD()
       }
     } catch (e) {
@@ -473,7 +491,9 @@ export default function CarritoPage() {
             })}
           </ul>
           <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, backgroundColor: '#E0F2FE', padding: '8px 12px', borderRadius: 6, border: '1px solid #0EA5E9' }}>
-            💡 Los precios se recalcularán automáticamente al validar según la configuración de cada factura.
+            💡 {hayCambioPrecio
+              ? <>Los precios se recalcularán al presionar <strong>VALIDAR</strong> o <strong>Revalidar</strong>. Si no desbloquea: (1) <strong>Editar descuentos</strong> de la factura interna → Guardar → VALIDAR, o (2) <strong>Quitar</strong> el ítem y volver a agregarlo desde el catálogo.</>
+              : <>Tras importar stock real, usá <strong>VALIDAR</strong> para re-coordinar precios y saldos con la BD.</>}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={validar} disabled={validando}
@@ -502,6 +522,14 @@ export default function CarritoPage() {
                 Quitar {detIdsSinPrecio.length} ítem(s) sin precio
               </button>
             )}
+            <button type="button" onClick={() => { void desactivar(); router.push('/') }}
+              style={{
+                padding: '10px 14px', borderRadius: 10, backgroundColor: 'transparent',
+                color: '#64748B', border: '1px solid #94A3B8', cursor: 'pointer',
+                fontWeight: 700, fontSize: 12,
+              }}>
+              Cerrar venta
+            </button>
           </div>
         </div>
       )}

@@ -559,16 +559,18 @@ body.rimec-sync-body-lock {
 }
 
 .rimec-sync-preview-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
   margin-bottom: 1.25rem;
   animation: rimec-sync-overlay-enter 0.65s ease-out;
 }
 
+@media (max-width: 720px) {
+  .rimec-sync-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .rimec-sync-preview-card {
-  flex: 0 1 auto;
   animation: rimec-sync-card-float 2.4s ease-in-out infinite;
 }
 
@@ -577,6 +579,17 @@ body.rimec-sync-body-lock {
 .rimec-sync-preview-card:nth-child(4) { animation-delay: 0.24s; }
 .rimec-sync-preview-card:nth-child(5) { animation-delay: 0.32s; }
 .rimec-sync-preview-card:nth-child(6) { animation-delay: 0.4s; }
+.rimec-sync-preview-card:nth-child(7) { animation-delay: 0.48s; }
+.rimec-sync-preview-card:nth-child(8) { animation-delay: 0.56s; }
+.rimec-sync-preview-card:nth-child(9) { animation-delay: 0.64s; }
+
+.rimec-sync-preview-grid .rimec-sync-card {
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--sync-accent) 22%, rgba(148, 163, 184, 0.25));
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.55rem;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
 
 @media (max-width: 720px) {
   .rimec-sync-preview-grid { gap: 0.55rem; }

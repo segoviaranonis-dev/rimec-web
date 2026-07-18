@@ -8,8 +8,9 @@ import {
   type CatalogSyncProgress,
   type CatalogSyncStageId,
 } from '@/lib/catalogoSyncStages'
-import { SyncConfeccionesPreview } from '@/components/catalog/SyncConfeccionesPreview'
+import { SyncStagePreview } from '@/components/catalog/SyncStagePreview'
 import { SyncBackgroundMarquee } from '@/components/catalog/SyncBackgroundMarquee'
+import { CATALOG_SYNC_GRID_SLOTS } from '@/lib/catalogoSyncStages'
 
 type Props = {
   progress: CatalogSyncProgress | null
@@ -108,8 +109,8 @@ export function RimecSincronizandoOverlay({
   const glow = stage.glow
   const tint = stage.tint
   const previewTarjetas = progress?.previewTarjetas ?? []
-  const showConfeccionesPreview =
-    stage.id === 'confecciones' && previewTarjetas.length > 0
+  const marqueeTarjetas = progress?.marqueeTarjetas ?? previewTarjetas
+  const ghostSlots = Math.max(0, CATALOG_SYNC_GRID_SLOTS - previewTarjetas.length)
 
   const content = (
     <div
@@ -130,7 +131,7 @@ export function RimecSincronizandoOverlay({
       <div className="rimec-sync-aurora rimec-sync-aurora--b" aria-hidden />
       <div className="rimec-sync-aurora rimec-sync-aurora--c" aria-hidden />
 
-      <SyncBackgroundMarquee tarjetas={previewTarjetas} accent={accent} />
+      <SyncBackgroundMarquee tarjetas={marqueeTarjetas} accent={accent} />
 
       <div className="rimec-sync-shell rimec-sync-shell--deploy">
         <header className="rimec-sync-header">
@@ -191,8 +192,13 @@ export function RimecSincronizandoOverlay({
           })}
         </div>
 
-        {showConfeccionesPreview ? (
-          <SyncConfeccionesPreview tarjetas={previewTarjetas} />
+        {previewTarjetas.length > 0 ? (
+          <SyncStagePreview
+            tarjetas={previewTarjetas}
+            stageId={stage.id}
+            ghostSlots={ghostSlots}
+            accent={accent}
+          />
         ) : (
           <StageCardsSkeleton accent={accent} />
         )}

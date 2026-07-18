@@ -1,33 +1,16 @@
 'use client'
 
 import { ProductImage } from '@/components/ProductImage'
-import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
-import { isConfecciones638Lote } from '@/lib/confeccionesCatalogo'
-import { isTarjetaFusionada, type TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
+import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
+import { heroLoteDeGrilla, tarjetaGrillaKey, tarjetaTieneImagen } from '@/lib/catalogoSyncPreview'
 
 type Props = {
   tarjetas: TarjetaGrilla[]
   accent: string
 }
 
-function heroLote(t: TarjetaGrilla): TarjetaCatalogo | null {
-  if (isTarjetaFusionada(t)) {
-    return t.lotes.find(l => isConfecciones638Lote(l)) ?? t.lotes[0] ?? null
-  }
-  return t
-}
-
-function GhostCard({ accent }: { accent: string }) {
-  return (
-    <div
-      className="rimec-sync-marquee-card rimec-sync-marquee-card--ghost"
-      style={{ '--sync-accent': accent } as React.CSSProperties}
-    >
-      <div className="rimec-sync-marquee-img" />
-      <div className="rimec-sync-marquee-line rimec-sync-marquee-line--wide" />
-      <div className="rimec-sync-marquee-line" />
-    </div>
-  )
+function heroLote(t: TarjetaGrilla) {
+  return heroLoteDeGrilla(t)
 }
 
 function MiniCard({ tarjeta }: { tarjeta: TarjetaGrilla }) {
@@ -55,6 +38,19 @@ function MiniCard({ tarjeta }: { tarjeta: TarjetaGrilla }) {
       <p className="rimec-sync-marquee-ref">
         {p.linea_codigo} · {p.referencia_codigo}
       </p>
+    </div>
+  )
+}
+
+function GhostCard({ accent }: { accent: string }) {
+  return (
+    <div
+      className="rimec-sync-marquee-card rimec-sync-marquee-card--ghost"
+      style={{ '--sync-accent': accent } as React.CSSProperties}
+    >
+      <div className="rimec-sync-marquee-img" />
+      <div className="rimec-sync-marquee-line rimec-sync-marquee-line--wide" />
+      <div className="rimec-sync-marquee-line" />
     </div>
   )
 }
@@ -91,12 +87,13 @@ function MarqueeRow({
 }
 
 export function SyncBackgroundMarquee({ tarjetas, accent }: Props) {
-  const hasReal = tarjetas.length > 0
-  const pool = hasReal ? tarjetas : Array.from({ length: 8 })
+  const withImages = tarjetas.filter(tarjetaTieneImagen)
+  const hasReal = withImages.length > 0
+  const pool = hasReal ? withImages : Array.from({ length: 10 })
 
   const rowA = pool.map((t, i) =>
     hasReal ? (
-      <MiniCard key={`a-${i}`} tarjeta={t as TarjetaGrilla} />
+      <MiniCard key={`a-${tarjetaGrillaKey(t as TarjetaGrilla)}-${i}`} tarjeta={t as TarjetaGrilla} />
     ) : (
       <GhostCard key={`a-${i}`} accent={accent} />
     ),
@@ -104,7 +101,7 @@ export function SyncBackgroundMarquee({ tarjetas, accent }: Props) {
 
   const rowB = [...pool].reverse().map((t, i) =>
     hasReal ? (
-      <MiniCard key={`b-${i}`} tarjeta={t as TarjetaGrilla} />
+      <MiniCard key={`b-${tarjetaGrillaKey(t as TarjetaGrilla)}-${i}`} tarjeta={t as TarjetaGrilla} />
     ) : (
       <GhostCard key={`b-${i}`} accent={accent} />
     ),

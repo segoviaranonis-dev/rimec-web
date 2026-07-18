@@ -2,7 +2,10 @@
  * Etapas visibles «RIMEC sincronizando» — warm secuencial CP → PE → Confecciones.
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
-import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
+import {
+  mergeMarqueeTarjetas,
+  priorizarTarjetasConImagen,
+} from '@/lib/catalogoSyncPreview'
 import {
   CP_DEFAULT_FILTERS,
   PE_DEFAULT_FILTERS,
@@ -13,7 +16,9 @@ import {
   getPageWarmCache,
   isCatalogWarmEnough,
   prefetchCatalogPage,
+  warmCatalogImages,
 } from '@/lib/catalogoPeWarmCache'
+import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
 
 export type CatalogSyncStageId = 'cp' | 'pe' | 'confecciones'
 
@@ -76,16 +81,18 @@ export type CatalogSyncProgress = {
   stage: CatalogSyncStageDef
   phase: 'start' | 'done'
   completedIds: CatalogSyncStageId[]
-  /** Tarjetas reales confecciones (etapa 3) desde warm cache. */
+  /** Tarjetas reales de la etapa activa (con foto priorizada). */
   previewTarjetas?: TarjetaGrilla[]
+  /** Acumulado CP + PE + confecciones para el marquee de fondo. */
+  marqueeTarjetas?: TarjetaGrilla[]
 }
 
-export const CATALOG_SYNC_PREVIEW_LIMIT = 6
+export const CATALOG_SYNC_PREVIEW_LIMIT = 12
+export const CATALOG_SYNC_GRID_SLOTS = 9
 
 function stagePreviewTarjetas(stage: CatalogSyncStageDef): TarjetaGrilla[] {
-  if (stage.id !== 'confecciones') return []
   const cache = getPageWarmCache(catalogWarmCacheKey(stage.filters()))
-  return (cache?.tarjetas ?? []).slice(0, CATALOG_SYNC_PREVIEW_LIMIT)
+  return priorizarTarjetasConImagen(cache?.tarjetas ?? [], CATALOG_SYNC_GRID_SLOTS)
 }
 
 export const CATALOG_SYNC_MIN_TOTAL_MS = 30_000
@@ -113,11 +120,18 @@ export async function runCatalogSyncStages(
 ): Promise<void> {
   const completedIds: CatalogSyncStageId[] = []
   const runStartMs = Date.now()
+  let marqueeTarjetas: TarjetaGrilla[] = []
 
   for (let i = 0; i < CATALOG_SYNC_STAGES.length; i++) {
     const stageStartMs = Date.now()
     const stage = CATALOG_SYNC_STAGES[i]
-    onProgress({ stageIndex: i, stage, phase: 'start', completedIds: [...completedIds] })
+    onProgress({
+      stageIndex: i,
+      stage,
+      phase: 'start',
+      completedIds: [...completedIds],
+      marqueeTarjetas: [...marqueeTarjetas],
+    })
 
     if (!isStageWarm(stage)) {
       await prefetchCatalogPage(stage.filters(), { withFiltros: stage.withFiltros }).catch(() => undefined)
@@ -125,24 +139,33 @@ export async function runCatalogSyncStages(
 
     const preview = stagePreviewTarjetas(stage)
     if (preview.length > 0) {
+      warmCatalogImages(preview, CATALOG_SYNC_GRID_SLOTS)
+      marqueeTarjetas = mergeMarqueeTarjetas(marqueeTarjetas, preview)
       onProgress({
         stageIndex: i,
         stage,
         phase: 'start',
         completedIds: [...completedIds],
         previewTarjetas: preview,
+        marqueeTarjetas: [...marqueeTarjetas],
       })
     }
 
     await waitStageMin(stageStartMs)
 
     completedIds.push(stage.id)
+    const previewDone = stagePreviewTarjetas(stage)
+    if (previewDone.length > 0) {
+      warmCatalogImages(previewDone, CATALOG_SYNC_GRID_SLOTS)
+      marqueeTarjetas = mergeMarqueeTarjetas(marqueeTarjetas, previewDone)
+    }
     onProgress({
       stageIndex: i,
       stage,
       phase: 'done',
       completedIds: [...completedIds],
-      previewTarjetas: stagePreviewTarjetas(stage),
+      previewTarjetas: previewDone,
+      marqueeTarjetas: [...marqueeTarjetas],
     })
   }
 

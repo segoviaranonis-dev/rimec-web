@@ -29,6 +29,559 @@
   animation: catalog-liquidacion-pulse 1.35s ease-in-out infinite;
 }
 
+/* RIMEC sincronizando — pantalla completa · claro · 30s mínimo */
+@keyframes rimec-sync-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rimec-sync-aurora-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.45; }
+  50% { transform: translate(3%, -2%) scale(1.06); opacity: 0.75; }
+}
+
+@keyframes rimec-sync-orbit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rimec-sync-orbit-pulse {
+  0%, 100% { opacity: 0.65; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes rimec-sync-text-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes rimec-sync-card-float {
+  0%, 100% {
+    opacity: 0.5;
+    transform: translateY(8px) scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-6px) scale(1);
+  }
+}
+
+@keyframes rimec-sync-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes rimec-sync-bar-head-pulse {
+  0%, 100% { box-shadow: 0 0 10px var(--sync-glow), 0 0 20px color-mix(in srgb, var(--sync-glow) 50%, transparent); }
+  50% { box-shadow: 0 0 16px var(--sync-glow), 0 0 32px color-mix(in srgb, var(--sync-glow) 70%, transparent); }
+}
+
+.rimec-sync-overlay {
+  --sync-accent: #0ea5e9;
+  --sync-glow: rgba(14, 165, 233, 0.22);
+  --sync-tint: rgba(255, 255, 255, 0.92);
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: clamp(1rem, 4vh, 2.5rem);
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    color-mix(in srgb, var(--sync-tint) 90%, white) 48%,
+    rgba(248, 250, 252, 0.94) 100%
+  );
+  backdrop-filter: blur(24px) saturate(1.1);
+  transition: background 1.4s ease;
+}
+
+body.rimec-sync-body-lock {
+  overflow: hidden;
+}
+
+.rimec-sync-overlay--enter {
+  animation: rimec-sync-overlay-enter 0.55s ease-out;
+}
+
+.rimec-sync-bg-wash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 42%, var(--sync-glow) 0%, transparent 62%);
+  opacity: 0.22;
+  pointer-events: none;
+  transition: opacity 1.2s ease;
+}
+
+.rimec-sync-aurora {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(56px);
+  pointer-events: none;
+  animation: rimec-sync-aurora-drift 8s ease-in-out infinite;
+  opacity: 0.55;
+}
+
+.rimec-sync-aurora--a {
+  top: 18%;
+  left: 14%;
+  width: min(38vw, 20rem);
+  height: min(38vw, 20rem);
+  background: rgba(186, 230, 253, 0.55);
+}
+
+.rimec-sync-aurora--b {
+  top: 36%;
+  right: 10%;
+  width: min(34vw, 17rem);
+  height: min(34vw, 17rem);
+  background: rgba(167, 243, 208, 0.45);
+  animation-delay: -2.5s;
+}
+
+.rimec-sync-aurora--c {
+  bottom: 16%;
+  left: 34%;
+  width: min(36vw, 18rem);
+  height: min(36vw, 18rem);
+  background: rgba(254, 215, 170, 0.45);
+  animation-delay: -4.5s;
+}
+
+@keyframes rimec-sync-shell-deploy {
+  0% { opacity: 0; transform: translateY(18px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes rimec-sync-marquee-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes rimec-sync-marquee-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+.rimec-sync-shell {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 56rem);
+  max-height: min(92vh, 920px);
+  overflow-y: auto;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  padding: clamp(1.35rem, 3.5vh, 2.1rem);
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.82) 100%
+  );
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.03) inset,
+    0 24px 64px rgba(15, 23, 42, 0.08),
+    0 0 40px color-mix(in srgb, var(--sync-glow) 35%, transparent);
+  backdrop-filter: blur(16px);
+  transition: box-shadow 1.2s ease, border-color 1.2s ease;
+}
+
+.rimec-sync-shell--deploy {
+  animation: rimec-sync-shell-deploy 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rimec-sync-marquee-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(1.25rem, 4vh, 2.5rem);
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 12%,
+    black 88%,
+    transparent 100%
+  );
+}
+
+.rimec-sync-marquee-row {
+  overflow: hidden;
+  opacity: 0.42;
+  filter: blur(0.4px);
+}
+
+.rimec-sync-marquee-row--reverse .rimec-sync-marquee-track {
+  animation-name: rimec-sync-marquee-right;
+}
+
+.rimec-sync-marquee-track {
+  display: flex;
+  width: max-content;
+  gap: 1rem;
+  animation: rimec-sync-marquee-left 38s linear infinite;
+  will-change: transform;
+}
+
+.rimec-sync-marquee-row:nth-child(2) .rimec-sync-marquee-track {
+  animation-duration: 46s;
+}
+
+.rimec-sync-marquee-row:nth-child(3) .rimec-sync-marquee-track {
+  animation-duration: 52s;
+  opacity: 0.32;
+}
+
+.rimec-sync-marquee-item {
+  flex-shrink: 0;
+}
+
+.rimec-sync-marquee-card {
+  width: clamp(7rem, 14vw, 9.5rem);
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 0.45rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.rimec-sync-marquee-card--real {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: color-mix(in srgb, var(--sync-accent, #0ea5e9) 18%, white);
+}
+
+.rimec-sync-marquee-img {
+  aspect-ratio: 1;
+  border-radius: 0.55rem;
+  margin-bottom: 0.35rem;
+  background: linear-gradient(
+    110deg,
+    #f1f5f9 0%,
+    color-mix(in srgb, var(--sync-accent, #0ea5e9) 16%, #f8fafc) 50%,
+    #f1f5f9 100%
+  );
+  background-size: 220% 100%;
+  animation: rimec-sync-shimmer 2.2s linear infinite;
+}
+
+.rimec-sync-marquee-img--photo {
+  overflow: hidden;
+  background: white;
+  animation: none;
+}
+
+.rimec-sync-marquee-line {
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.28);
+  margin-bottom: 0.25rem;
+  width: 62%;
+}
+
+.rimec-sync-marquee-line--wide { width: 88%; }
+
+.rimec-sync-marquee-ref {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #64748b;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rimec-sync-header {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.85rem, 2vw, 1.35rem);
+  margin-bottom: 1.35rem;
+}
+
+.rimec-sync-orbit {
+  position: relative;
+  width: clamp(4.5rem, 10vw, 6rem);
+  height: clamp(4.5rem, 10vw, 6rem);
+  flex-shrink: 0;
+}
+
+.rimec-sync-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1.5px solid color-mix(in srgb, var(--orbit-accent, #0ea5e9) 45%, transparent);
+}
+
+.rimec-sync-orbit-ring--outer {
+  animation: rimec-sync-orbit-spin 7s linear infinite;
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.rimec-sync-orbit-ring--mid {
+  inset: 0.65rem;
+  animation: rimec-sync-orbit-spin 3.6s linear infinite reverse;
+  opacity: 0.75;
+}
+
+.rimec-sync-orbit-core {
+  position: absolute;
+  inset: 1.45rem;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 28%, #fff 0%, var(--orbit-accent, #0ea5e9) 42%, #e2e8f0 100%);
+  box-shadow: 0 0 24px var(--orbit-glow, rgba(14, 165, 233, 0.35));
+  animation: rimec-sync-orbit-pulse 1.8s ease-in-out infinite;
+}
+
+.rimec-sync-title-wrap { min-width: 0; flex: 1; }
+
+.rimec-sync-brand {
+  margin: 0;
+  font-family: var(--font-serif), serif;
+  font-size: clamp(1.35rem, 3.5vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.1;
+}
+
+.rimec-sync-brand-r { color: #0f172a; }
+
+.rimec-sync-brand-action {
+  background: linear-gradient(
+    90deg,
+    var(--sync-accent) 0%,
+    #64748b 40%,
+    var(--sync-accent) 75%,
+    #0f172a 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rimec-sync-text-shimmer 2.4s linear infinite;
+}
+
+.rimec-sync-sub {
+  margin: 0.45rem 0 0;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.01em;
+  transition: color 0.6s ease;
+}
+
+.rimec-sync-pct {
+  margin-top: 0.55rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.12rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rimec-sync-pct-num {
+  font-size: clamp(1.75rem, 4vw, 2.35rem);
+  font-weight: 800;
+  color: var(--sync-accent);
+  line-height: 1;
+  transition: color 0.8s ease;
+}
+
+.rimec-sync-pct-sym {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.rimec-sync-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 720px) {
+  .rimec-sync-rail { grid-template-columns: 1fr; }
+}
+
+.rimec-sync-rail-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.45rem;
+  padding: 0.65rem 0.45rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.55);
+  transition: border-color 0.5s ease, box-shadow 0.5s ease, transform 0.5s ease, background 0.5s ease;
+}
+
+.rimec-sync-rail-node--active {
+  border-color: color-mix(in srgb, var(--node-accent) 55%, white);
+  background: color-mix(in srgb, var(--node-accent) 8%, white);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--node-glow) 45%, transparent);
+  transform: translateY(-2px);
+}
+
+.rimec-sync-rail-node--done {
+  border-color: color-mix(in srgb, var(--node-accent) 40%, white);
+  background: color-mix(in srgb, var(--node-accent) 6%, white);
+}
+
+.rimec-sync-rail-node--pending { opacity: 0.62; }
+
+.rimec-sync-rail-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(148, 163, 184, 0.35);
+  color: var(--node-accent, #0ea5e9);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.rimec-sync-rail-node--active .rimec-sync-rail-icon {
+  border-color: var(--node-accent);
+  box-shadow: 0 0 16px var(--node-glow);
+}
+
+.rimec-sync-rail-icon svg { width: 0.9rem; height: 0.9rem; }
+
+.rimec-sync-rail-pulse {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  background: var(--node-accent);
+  box-shadow: 0 0 10px var(--node-glow);
+  animation: rimec-sync-orbit-pulse 1s ease-in-out infinite;
+}
+
+.rimec-sync-rail-idle {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: #cbd5e1;
+}
+
+.rimec-sync-rail-label {
+  font-size: clamp(0.68rem, 1.8vw, 0.78rem);
+  line-height: 1.25;
+  font-weight: 600;
+  color: #334155;
+}
+
+.rimec-sync-rail-node--active .rimec-sync-rail-label { color: #0f172a; }
+
+.rimec-sync-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 720px) {
+  .rimec-sync-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.rimec-sync-card {
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--sync-accent) 22%, rgba(148, 163, 184, 0.25));
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.55rem;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  animation: rimec-sync-card-float 2.2s ease-in-out infinite;
+}
+
+.rimec-sync-card-img {
+  aspect-ratio: 1;
+  border-radius: 0.55rem;
+  margin-bottom: 0.45rem;
+  background: linear-gradient(
+    110deg,
+    rgba(241, 245, 249, 0.95) 0%,
+    color-mix(in srgb, var(--sync-accent) 22%, #f8fafc) 50%,
+    rgba(241, 245, 249, 0.95) 100%
+  );
+  background-size: 220% 100%;
+  animation: rimec-sync-shimmer 2s linear infinite;
+}
+
+.rimec-sync-card-line {
+  height: 0.42rem;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.28);
+  margin-bottom: 0.32rem;
+  width: 68%;
+}
+
+.rimec-sync-card-line--wide { width: 90%; }
+
+.rimec-sync-bar-wrap { position: relative; }
+
+.rimec-sync-bar-track {
+  position: relative;
+  height: 0.48rem;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: visible;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.rimec-sync-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sync-accent) 75%, white), var(--sync-accent));
+  box-shadow: 0 0 18px var(--sync-glow);
+  transition: width 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rimec-sync-bar-head {
+  position: absolute;
+  top: 50%;
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-left: -0.325rem;
+  border-radius: 9999px;
+  background: white;
+  border: 2px solid var(--sync-accent);
+  transform: translateY(-50%);
+  transition: left 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: rimec-sync-bar-head-pulse 1.4s ease-in-out infinite;
+}
+
+.rimec-sync-preview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  animation: rimec-sync-overlay-enter 0.65s ease-out;
+}
+
+.rimec-sync-preview-card {
+  flex: 0 1 auto;
+  animation: rimec-sync-card-float 2.4s ease-in-out infinite;
+}
+
+.rimec-sync-preview-card:nth-child(2) { animation-delay: 0.08s; }
+.rimec-sync-preview-card:nth-child(3) { animation-delay: 0.16s; }
+.rimec-sync-preview-card:nth-child(4) { animation-delay: 0.24s; }
+.rimec-sync-preview-card:nth-child(5) { animation-delay: 0.32s; }
+.rimec-sync-preview-card:nth-child(6) { animation-delay: 0.4s; }
+
+@media (max-width: 720px) {
+  .rimec-sync-preview-grid { gap: 0.55rem; }
+}
+
 body {
   color: #0F172A;
   background: #FAFAFA;

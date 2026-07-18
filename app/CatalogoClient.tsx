@@ -44,6 +44,12 @@ import {
   CatalogAcordeonProvider,
   collectLoteKeysFromGrilla,
 } from '@/components/catalog/CatalogAcordeonContext'
+import { RimecSincronizandoOverlay } from '@/components/catalog/RimecSincronizandoOverlay'
+import {
+  areAllSyncStagesWarm,
+  runCatalogSyncStages,
+  type CatalogSyncProgress,
+} from '@/lib/catalogoSyncStages'
 
 type FilterItem = { id: number; label: string }
 type GeneroItem = { codigo: string; label: string }
@@ -181,11 +187,34 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [syncProgress, setSyncProgress] = useState<CatalogSyncProgress | null>(null)
+  const [syncRunning, setSyncRunning] = useState(false)
+  const [syncOverlayVisible, setSyncOverlayVisible] = useState(false)
+  const [syncStartedAt, setSyncStartedAt] = useState<number | null>(null)
+  const syncStartedRef = useRef(false)
 
-  // Dual warm CP+PE al montar — PE detrás del telón mientras CP es home.
+  // Warm secuencial CP → PE → Confecciones con overlay «RIMEC sincronizando».
   useEffect(() => {
-    ensureDualCatalogWarm(initialFilters)
-  }, [])
+    if (syncStartedRef.current) return
+    syncStartedRef.current = true
+
+    const merged = mergeSharedIntoFilters(initialFilters)
+    if (hasSidebarFilters(merged) || areAllSyncStagesWarm()) {
+      ensureDualCatalogWarm(merged)
+      return
+    }
+
+    setSyncOverlayVisible(true)
+    setSyncStartedAt(Date.now())
+    setSyncRunning(true)
+    void runCatalogSyncStages((p) => setSyncProgress(p))
+      .finally(() => {
+        setSyncRunning(false)
+        setSyncOverlayVisible(false)
+        setSyncProgress(null)
+        ensureDualCatalogWarm(merged)
+      })
+  }, [initialFilters])
 
   useEffect(() => {
     const merged = mergeSharedIntoFilters(initialFilters)
@@ -349,7 +378,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         filtersQuery: qs,
         filters: opts.currentFilters as unknown as Record<string, unknown>,
         fromRow: opts.fromRow,
-        limit: opts.limit ?? 100,
+        limit: opts.limit ?? 30,
         exclude: opts.exclude,
       })
       return json as {
@@ -360,45 +389,6 @@ export function CatalogoClient({ initialFilters }: Props) {
       }
     },
     [filtersQueryString],
-  )
-
-  /** Carga todas las tarjetas del filtro — cantidad del resultado = tarjetas impresas. */
-  const fetchAllTarjetas = useCallback(
-    async (
-      currentFilters: CatalogoFilterState,
-      isCancelled: () => boolean,
-    ) => {
-      const MAX_CARDS = 2500
-      let all: TarjetaGrilla[] = []
-      let fromRow = 0
-      let exclude: string[] = []
-      let hasMore = true
-      let guard = 0
-
-      while (hasMore && all.length < MAX_CARDS && guard < 40) {
-        if (isCancelled()) break
-        guard += 1
-        const json = await fetchPage({
-          fromRow,
-          exclude,
-          currentFilters,
-          limit: 120,
-        })
-        all = sortTarjetasLineaRef([...all, ...(json.tarjetas ?? [])])
-        fromRow = json.nextRowFrom ?? fromRow
-        exclude = json.excludeCardKeys ?? exclude
-        hasMore = Boolean(json.hasMore)
-        if (!(json.tarjetas?.length)) break
-      }
-
-      return {
-        tarjetas: sortTarjetasLineaRef(all),
-        nextRowFrom: fromRow,
-        hasMore: false,
-        excludeCardKeys: exclude,
-      }
-    },
-    [fetchPage],
   )
 
   useEffect(() => {
@@ -435,7 +425,7 @@ export function CatalogoClient({ initialFilters }: Props) {
       if (cached.quincenas) setQuincenas(cached.quincenas)
       setError(null)
       warmCatalogImages(cached.tarjetas)
-    } else {
+    } else if (!cached) {
       setProductos([])
       setRowFrom(0)
       setExcludeKeys([])
@@ -445,39 +435,36 @@ export function CatalogoClient({ initialFilters }: Props) {
     const origenPendiente =
       (filters.origen_tipo ?? '') !== (deferredFilters.origen_tipo ?? '') ||
       (filters.ramo_tipo ?? '') !== (deferredFilters.ramo_tipo ?? '')
-    setLoading(!hasCached || filtrosPendientes || origenPendiente || Boolean(cached?.hasMore))
+    setLoading(!hasCached || filtrosPendientes || origenPendiente)
     setError(null)
 
-    // Cache incompleto (paginado viejo) → siempre completar con fetchAll.
-    if (cacheReady && !hasSidebarFilters(activeFilters) && cached && !cached.hasMore) {
+    if (cacheReady && !hasSidebarFilters(activeFilters)) {
       ensureDualCatalogWarm(activeFilters)
-      setHasMore(false)
-      setLoading(false)
       return () => { cancelled = true }
     }
 
     if (esTodos) ensureTodosCatalogWarm()
     else if (esPe) ensurePeCatalogWarm()
 
-    fetchAllTarjetas(activeFilters, () => cancelled)
+    fetchPage({ fromRow: 0, exclude: [], currentFilters: activeFilters, limit: 30 })
       .then(json => {
         if (cancelled) return
-        if (!tarjetasRespetanOrigen(json.tarjetas, activeFilters.origen_tipo)) {
+        if (!tarjetasRespetanOrigen(json.tarjetas ?? [], activeFilters.origen_tipo)) {
           setError('Origen de stock inconsistente — reintentá Pronta entrega / Compra previa')
           setProductos([])
           return
         }
-        setProductos(json.tarjetas)
-        setRowFrom(json.nextRowFrom)
-        setExcludeKeys(json.excludeCardKeys)
-        setHasMore(false)
-        warmCatalogImages(json.tarjetas)
+        setProductos(sortTarjetasLineaRef(json.tarjetas ?? []))
+        setRowFrom(json.nextRowFrom ?? 0)
+        setExcludeKeys(json.excludeCardKeys ?? [])
+        setHasMore(Boolean(json.hasMore))
+        warmCatalogImages(json.tarjetas ?? [])
         if (isTodosDefault(activeFilters) || isCpDefault(activeFilters) || esPe) {
           storePageWarmCache(cacheKey, {
-            tarjetas: json.tarjetas,
-            nextRowFrom: json.nextRowFrom,
-            hasMore: false,
-            excludeCardKeys: json.excludeCardKeys,
+            tarjetas: json.tarjetas ?? [],
+            nextRowFrom: json.nextRowFrom ?? 0,
+            hasMore: Boolean(json.hasMore),
+            excludeCardKeys: json.excludeCardKeys ?? [],
             fetchedAt: Date.now(),
           })
         }
@@ -490,6 +477,8 @@ export function CatalogoClient({ initialFilters }: Props) {
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+
+    ensureDualCatalogWarm(activeFilters)
 
     return () => { cancelled = true }
   }, [
@@ -510,20 +499,52 @@ export function CatalogoClient({ initialFilters }: Props) {
     deferredFilters.tipo_grupos?.join(',') ?? '',
     deferredFilters.material_familias?.join(',') ?? '',
     deferredFilters.color_familias?.join(',') ?? '',
-    fetchAllTarjetas,
+    fetchPage,
     filtrosPendientes,
   ])
 
-  // Dual warm en idle (sin scroll infinito — todas las tarjetas ya cargadas)
+  // Mantener dual warm + scroll page 2 en idle
   useEffect(() => {
-    if (loading || productos.length === 0) return
+    if (loading || productos.length === 0 || !hasMore) return
     ensureDualCatalogWarm(filters)
-  }, [loading, productos.length, filters.origen_tipo ?? ''])
+    prefetchScrollPageWhenIdle(filters, rowFrom, excludeKeys)
+  }, [loading, productos.length, hasMore, rowFrom, excludeKeys.join(','), filters.origen_tipo ?? ''])
 
   const loadMore = useCallback(async () => {
-    // Grilla completa: no hay más páginas (todas impresas).
-    return
-  }, [])
+    if (loadingMore || !hasMore) return
+
+    const scrollHit = getScrollWarmCache(filters, rowFrom, excludeKeys)
+    if (scrollHit) {
+      setProductos(prev => sortTarjetasLineaRef([...prev, ...scrollHit.tarjetas]))
+      setRowFrom(scrollHit.nextRowFrom)
+      setExcludeKeys(scrollHit.excludeCardKeys)
+      setHasMore(scrollHit.hasMore)
+      warmCatalogImages(scrollHit.tarjetas)
+      prefetchScrollPageWhenIdle(filters, scrollHit.nextRowFrom, scrollHit.excludeCardKeys)
+      return
+    }
+
+    setLoadingMore(true)
+    try {
+      const json = await fetchPage({
+        fromRow: rowFrom,
+        exclude: excludeKeys,
+        currentFilters: filters,
+        limit: 30,
+      })
+      setProductos(prev => sortTarjetasLineaRef([...prev, ...(json.tarjetas ?? [])]))
+      setRowFrom(json.nextRowFrom ?? rowFrom)
+      setExcludeKeys(json.excludeCardKeys ?? excludeKeys)
+      setHasMore(Boolean(json.hasMore))
+      setError(null)
+      warmCatalogImages(json.tarjetas ?? [])
+      prefetchScrollPageWhenIdle(filters, json.nextRowFrom ?? rowFrom, json.excludeCardKeys ?? excludeKeys)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error cargando más modelos')
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, hasMore, rowFrom, excludeKeys, filters, fetchPage])
 
   const updateFilters = (next: CatalogoFilterState) => {
     persistSharedCatalogFilters(next)
@@ -534,6 +555,8 @@ export function CatalogoClient({ initialFilters }: Props) {
       window.history.replaceState(null, '', url)
     })
   }
+
+  const showSyncOverlay = syncOverlayVisible && !error
 
   const pps = useMemo(() => {
     const lotes = productos.flatMap(p => (isTarjetaFusionada(p) ? p.lotes : [p]))
@@ -624,6 +647,13 @@ export function CatalogoClient({ initialFilters }: Props) {
   return (
     <CatalogAcordeonProvider allKeys={allLoteKeys}>
     <>
+      {showSyncOverlay && (
+        <RimecSincronizandoOverlay
+          progress={syncProgress}
+          startedAt={syncStartedAt}
+          waitingGrid={!syncRunning && loading && productos.length === 0}
+        />
+      )}
       {esProntaEntrega && (
         <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-sm font-semibold text-emerald-900">
           📦 Catálogo · Pronta entrega (local)
@@ -691,7 +721,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         </div>
 
         <div className="relative min-h-[12rem] min-w-0 flex-1 pr-2 sm:pr-3">
-      {loading && productos.length === 0 && (
+      {loading && productos.length === 0 && !showSyncOverlay && (
         <div className="mb-6 flex justify-center py-16">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
         </div>

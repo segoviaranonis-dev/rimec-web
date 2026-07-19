@@ -16,6 +16,7 @@ import {
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
 import { enrichCatalogoRows, loteEnriquecidoDesdeVista } from '@/lib/catalogoEnrich'
+import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 
 export const CATALOGO_CARD_PAGE = 30
 const ROW_BATCH = 80
@@ -64,7 +65,10 @@ async function fetchStockBatchFromView(
       view === 'v_stock_pe_rimec'
         ? applyPeCommercialSqlFilters(
             applyPeDepositoQuery(
-              applyNonOrigenSqlFilters(query, filtersForPeSql(filters), { allowLiquidacion: true }),
+              applyNonOrigenSqlFilters(query, filtersForPeSql(filters), {
+                allowLiquidacion: true,
+                skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
+              }),
               filters,
             ),
             filters,
@@ -138,7 +142,9 @@ async function rowsToGrillaAsync(
   const enriched = loteEnriquecidoDesdeVista(active)
     ? active
     : await enrichCatalogoRows(active)
-  const filtered = applyMemoryFilters(enriched, filters)
+  const lineaCasoMap =
+    filters.tipo_grupos?.length ? await getLineaCasoMapCached() : null
+  const filtered = applyMemoryFilters(enriched, filters, lineaCasoMap)
   const cards = agruparTarjetasCatalogo(filtered, BUCKET, cajasDisponiblesDeFila)
   const grilla = isCatalogoOrigenTodos(filters) ? fusionarTarjetasPorSku(cards) : cards
   return sortTarjetasLineaRef(grilla)

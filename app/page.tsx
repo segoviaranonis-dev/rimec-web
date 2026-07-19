@@ -1,5 +1,4 @@
 import { CatalogoClient } from './CatalogoClient'
-import { fetchPeCatalogoFiltroWeb } from '@/lib/peCatalogoFiltroWeb'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,10 +26,9 @@ export default async function HomePage({
   }>
 }) {
   const params = await searchParams
-  const filtroWeb = await fetchPeCatalogoFiltroWeb('sdrm0849')
   const cadenaUrl = params.cadena_comercial ?? ''
-  // Report puede forzar LIQUIDACIÓN · applyMemoryFilters solo afecta filas PE.
-  const cadenaComercial = cadenaUrl || filtroWeb?.cadena_comercial || ''
+  // Solo URL explícita — no auto-filtrar desde pe_catalogo_filtro_web al abrir catálogo.
+  const cadenaComercial = cadenaUrl
 
   const tipoGrupos = (params.tipo_grupos ?? '')
     .split(',')

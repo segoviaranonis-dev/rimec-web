@@ -35,7 +35,7 @@ type Props = {
   imageOverlay?: ReactNode
   ventaFooter?: ReactNode
   hideStockBadge?: boolean
-  shellVariant?: 'cp' | 'pe' | 'fusion' | 'liquidacion'
+  shellVariant?: 'cp' | 'pe' | 'fusion' | 'liquidacion' | 'promo'
   /** Badge esquina imagen (ej. Liq. PE). */
   imageCornerBadge?: ReactNode
 }
@@ -73,9 +73,11 @@ export function CatalogTarjetaDeposito({
         ? 'border-emerald-200/90 bg-gradient-to-b from-emerald-50/95 via-white to-white'
         : shellVariant === 'liquidacion'
           ? 'catalog-card-liquidacion-pulse border-emerald-400/90 bg-gradient-to-b from-emerald-100/70 via-white to-white'
-          : shellVariant === 'fusion'
-            ? 'catalog-card-fusion-pulse border-violet-200/80 bg-gradient-to-b from-violet-50/40 via-white to-white'
-            : 'border-slate-300 bg-white'
+          : shellVariant === 'promo'
+            ? 'catalog-card-promo-pulse border-amber-400/90 bg-gradient-to-b from-amber-50/80 via-white to-white'
+            : shellVariant === 'fusion'
+              ? 'border-violet-200/80 bg-gradient-to-b from-violet-50/40 via-white to-white'
+              : 'border-slate-300 bg-white'
 
   const footerShellClass =
     shellVariant === 'cp'
@@ -84,9 +86,11 @@ export function CatalogTarjetaDeposito({
         ? 'border-emerald-100/80 bg-emerald-50/30'
         : shellVariant === 'liquidacion'
           ? 'border-emerald-200/90 bg-emerald-50/40'
-          : shellVariant === 'fusion'
-            ? 'border-violet-100/80 bg-white/80'
-            : 'border-slate-200 bg-white'
+          : shellVariant === 'promo'
+            ? 'border-amber-200/90 bg-amber-50/40'
+            : shellVariant === 'fusion'
+              ? 'border-violet-100/80 bg-white/80'
+              : 'border-slate-200 bg-white'
 
   const image = (
     <ProductImage

@@ -19,7 +19,7 @@ import { estiloBadgeMarca } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
 import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock } from '@/lib/confeccionesCatalogo'
-import { esLiquidacionPe, esPromoTarjeta } from '@/lib/catalogoComercial'
+import { esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
 import { LiquidacionPeBadge } from '@/components/catalog/LiquidacionPeBadge'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import {
@@ -457,7 +457,11 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
   const esPromo = esPromoTarjeta(p)
   const esLiquidacion = esLiquidacionPe(p)
-  const shellVariant = esLiquidacion ? 'liquidacion' as const : esPe ? 'pe' as const : 'cp' as const
+  const shellVariant = resolveCatalogShellVariant({
+    esLiquidacion,
+    esPromo,
+    esPe,
+  })
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -562,7 +566,11 @@ function TarjetaProductoFusion({
   const esPromo = p.lotes.some(l => esPromoTarjeta(l))
   const esLiquidacion = p.lotes.some(l => esLiquidacionPe(l))
   const esPeLiq = p.lotes.some(l => l.origen_tipo === 'PRONTA_ENTREGA' && esLiquidacionPe(l))
-  const shellVariant = esLiquidacion ? 'liquidacion' as const : 'fusion' as const
+  const shellVariant = resolveCatalogShellVariant({
+    esLiquidacion,
+    esPromo,
+    esFusion: true,
+  })
 
   const ventaFooter = (
     <CatalogLotesAcordeon

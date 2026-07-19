@@ -121,9 +121,13 @@ export function clearSharedCatalogFilters(): void {
 }
 
 /** URL gana si trae valor; sessionStorage rellena huecos. Origen/ramo/depósito/quincenas intactos. */
+import { isColdWideOpenCatalogEntry } from '@/lib/catalogoFiltrosEntrada'
+
 export function mergeSharedIntoFilters(fromUrl: CatalogoFilterState): CatalogoFilterState {
   const shared = readSharedCatalogFilters()
   if (!shared) return fromUrl
+  // Entrada fría: grilla Todos completa — el usuario achica; no restaurar filtros estrechos.
+  if (isColdWideOpenCatalogEntry(fromUrl)) return fromUrl
 
   const pick = <K extends keyof SharedCatalogFilterSlice>(key: K): SharedCatalogFilterSlice[K] => {
     const urlVal = fromUrl[key as keyof CatalogoFilterState]

@@ -7,6 +7,7 @@ import { useCatalogAcordeon } from '@/components/catalog/CatalogAcordeonContext'
 import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
 import { formatPrecioGs } from '@/lib/formatPrecioGs'
 import { precioDeLoteCatalogo } from '@/lib/precioLoteCatalogo'
+import { indiceVariantePorTonoKey } from '@/lib/catalogoTonoActivo'
 import {
   isConfecciones638Lote,
   stockEnLote,
@@ -24,17 +25,44 @@ export function paresEnLoteCatalogo(lote: TarjetaCatalogo): number {
   if (isConfecciones638Lote(lote)) return stockEnLote(lote)
   return lote.variantes
     .filter(v => v.cajas_disponibles > 0)
-    .reduce((s, v) => {
-      const ppc = resolveParesPorCaja({
-        pares_por_caja: v.pares_por_caja,
-        cantidad_cajas: v.cantidad_cajas,
-        saldo_pares: v.saldo_pares,
-        origen_tipo: lote.origen_tipo,
-        det_id: v.det_id,
-        pp_id: v.pp_id,
-      })
-      return s + Math.max(0, v.cajas_disponibles * ppc)
-    }, 0)
+    .reduce((s, v) => s + paresEnVarianteCatalogo(lote, v), 0)
+}
+
+/** Pares de una variante (color) — precisión bancaria por tono activo. */
+export function paresEnVarianteCatalogo(
+  lote: TarjetaCatalogo,
+  v: TarjetaCatalogo['variantes'][number],
+): number {
+  if (v.cajas_disponibles <= 0) return 0
+  if (isConfecciones638Lote(lote)) {
+    return Math.max(0, Number(v.saldo_pares ?? v.cajas_disponibles) || 0)
+  }
+  const ppc = resolveParesPorCaja({
+    pares_por_caja: v.pares_por_caja,
+    cantidad_cajas: v.cantidad_cajas,
+    saldo_pares: v.saldo_pares,
+    origen_tipo: lote.origen_tipo,
+    det_id: v.det_id,
+    pp_id: v.pp_id,
+  })
+  return Math.max(0, v.cajas_disponibles * ppc)
+}
+
+/**
+ * Badge acordeón: contraído = total lote · desplegado = color/tono seleccionado.
+ * (4.02.04.002 — confusión multi-color si siempre muestra total)
+ */
+export function stockBadgeAcordeonLote(
+  lote: TarjetaCatalogo,
+  opts: { open: boolean; activeTonoKey: string },
+): number {
+  if (!opts.open || isConfecciones638Lote(lote)) {
+    return paresEnLoteCatalogo(lote)
+  }
+  const variantesConStock = lote.variantes.filter(v => v.cajas_disponibles > 0)
+  const matchIdx = indiceVariantePorTonoKey(variantesConStock, opts.activeTonoKey)
+  const v = variantesConStock[matchIdx >= 0 ? matchIdx : 0]
+  return v ? paresEnVarianteCatalogo(lote, v) : paresEnLoteCatalogo(lote)
 }
 
 type Props = {
@@ -64,7 +92,10 @@ export function CatalogLotesAcordeon({
         const open = esConf || isOpen(lote.cardKey)
         const label = etiquetaDatoDuroLote(lote)
         const uCorta = unidadStockCorta(lote)
-        const stockUds = paresEnLoteCatalogo(lote)
+        const stockUds = stockBadgeAcordeonLote(lote, { open, activeTonoKey })
+        const stockBadgeTitle = open
+          ? 'Stock del color seleccionado'
+          : 'Stock total del lote (todos los colores)'
         const esPe = lote.origen_tipo === 'PRONTA_ENTREGA'
         const accent = esPe ? 'border-l-emerald-500' : 'border-l-sky-600'
         // Protocolo: precio solo con venta activa (4.01.04.001) — confecciones: precio en sub-tarjetas por talla
@@ -93,7 +124,10 @@ export function CatalogLotesAcordeon({
                 </span>
                 <span className="ml-0.5 flex shrink-0 flex-col items-end gap-0.5">
                   {stockUds > 0 ? (
-                    <span className="rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm">
+                    <span
+                      className="rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm"
+                      title={stockBadgeTitle}
+                    >
                       {Math.round(stockUds)}
                       <span className="text-[8px] font-bold opacity-90"> {uCorta}</span>
                     </span>

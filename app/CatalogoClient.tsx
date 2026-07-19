@@ -45,6 +45,7 @@ import {
   collectLoteKeysFromGrilla,
 } from '@/components/catalog/CatalogAcordeonContext'
 import { RimecSincronizandoOverlay } from '@/components/catalog/RimecSincronizandoOverlay'
+import { hasSidebarFilters } from '@/lib/catalogoFiltrosEntrada'
 import {
   areAllSyncStagesWarm,
   runCatalogSyncStages,
@@ -95,27 +96,6 @@ function isTodosDefault(filters: CatalogoFilterState) {
 
 function isCpDefault(filters: CatalogoFilterState) {
   return filtersMatchDefault(filters, CP_DEFAULT_FILTERS)
-}
-
-/** Filtros de sidebar — no short-circuit warm cache (evita grilla “sorda”). */
-function hasSidebarFilters(f: CatalogoFilterState): boolean {
-  return Boolean(
-    f.marca_id ||
-      f.grupo_estilo_id ||
-      f.genero_codigo ||
-      f.buscar?.trim() ||
-      f.linea_ids.length ||
-      f.tipo_ids.length ||
-      f.colores.length ||
-      f.quincenas.length ||
-      f.deposito_codigo ||
-      (f.tonos?.length ?? 0) > 0 ||
-      f.sin_tono ||
-      f.cadena_comercial?.trim() ||
-      (f.tipo_grupos?.length ?? 0) > 0 ||
-      (f.material_familias?.length ?? 0) > 0 ||
-      (f.color_familias?.length ?? 0) > 0,
-  )
 }
 
 /** Origen/ramo no se diferirán — evita chrome PE con grilla CP (pedido proveedor). */
@@ -765,7 +745,8 @@ export function CatalogoClient({ initialFilters }: Props) {
           <ul className="list-disc pl-5 space-y-1">
             <li>Tarjetas cargadas: <strong>{productos.length}</strong></li>
             <li>Quincenas en BD: <strong>{quincenas.length}</strong></li>
-            <li>App catálogo: <strong>http://localhost:3000</strong></li>
+            <li>Filtros estrechos activos: <strong>{hasSidebarFilters(filters) ? 'SÍ — limpiar' : 'no'}</strong></li>
+            <li>App catálogo: <strong>http://localhost:3001</strong></li>
           </ul>
         </div>
       )}

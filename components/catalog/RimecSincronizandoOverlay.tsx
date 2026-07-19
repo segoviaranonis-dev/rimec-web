@@ -209,6 +209,16 @@ export function RimecSincronizandoOverlay({
             <div className="rimec-sync-bar-head" style={{ left: `${progressPct}%` }} />
           </div>
         </div>
+
+        {progress?.audit ? (
+          <div className="rimec-sync-audit" aria-label="Control integridad catálogo">
+            <span className={progress.audit.allPass ? 'rimec-sync-audit-ok' : 'rimec-sync-audit-warn'}>
+              {progress.audit.allPass ? '✓ Control PASS' : '⚠ Verificando…'}
+            </span>
+            <span>Todos: {progress.audit.todosTarjetas} tarjetas</span>
+            <span>Acum: {progress.audit.acumuladoTarjetas}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   )

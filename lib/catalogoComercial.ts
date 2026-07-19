@@ -20,3 +20,19 @@ export function esPromoTarjeta(item: ComercialPe): boolean {
   if (item.es_promo === true) return true
   return String(item.cadena_comercial ?? '').trim().toUpperCase() === 'PROMOCIONAL'
 }
+
+/** Resuelve borde/latido tarjeta — solo PROMO y LIQUIDACIÓN laten. */
+export type CatalogShellVariant = 'cp' | 'pe' | 'fusion' | 'liquidacion' | 'promo'
+
+export function resolveCatalogShellVariant(opts: {
+  esLiquidacion: boolean
+  esPromo: boolean
+  esPe?: boolean
+  esFusion?: boolean
+}): CatalogShellVariant {
+  if (opts.esLiquidacion) return 'liquidacion'
+  if (opts.esPromo) return 'promo'
+  if (opts.esFusion) return 'fusion'
+  if (opts.esPe) return 'pe'
+  return 'cp'
+}

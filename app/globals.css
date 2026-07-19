@@ -9,7 +9,31 @@
   --color-bazzar-naranja: #EA580C; /* Tablet depósito — stock p */
 }
 
-/* Tarjeta CP+PE fusionada — latido sutil */
+/* Caso PROMOCIONAL — latido ámbar (paridad Report reposición) */
+@keyframes catalog-promo-pulse {
+  0%, 100% {
+    border-color: rgba(245, 158, 11, 0.4);
+    box-shadow:
+      0 0 0 0 rgba(245, 158, 11, 0.28),
+      0 0 0 0 rgba(217, 119, 6, 0.12);
+  }
+  50% {
+    border-color: rgba(217, 119, 6, 0.85);
+    box-shadow:
+      0 0 0 3px rgba(245, 158, 11, 0.28),
+      0 0 14px 1px rgba(217, 119, 6, 0.25);
+  }
+}
+
+.catalog-card-promo-pulse {
+  animation: catalog-promo-pulse 2s ease-in-out infinite;
+}
+
+/* Tarjeta CP+PE fusionada — sin latido (solo promo/LIQ laten) */
+.catalog-card-fusion-shell {
+  /* estilo estático — ver shellVariant fusion en CatalogTarjetaDeposito */
+}
+
 @keyframes catalog-fusion-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.12); }
   50% { box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.18); }
@@ -557,6 +581,24 @@ body.rimec-sync-body-lock {
   transition: left 0.65s cubic-bezier(0.22, 1, 0.36, 1);
   animation: rimec-sync-bar-head-pulse 1.4s ease-in-out infinite;
 }
+
+.rimec-sync-audit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin-top: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(15, 23, 42, 0.72);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.rimec-sync-audit-ok { color: #047857; }
+.rimec-sync-audit-warn { color: #b45309; }
 
 .rimec-sync-preview-grid {
   display: grid;

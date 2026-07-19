@@ -143,7 +143,7 @@ export function applyTipoGruposSqlFilter(
 export function applyNonOrigenSqlFilters(
   query: any,
   filters: CatalogoFilterStateExtended,
-  opts?: { allowLiquidacion?: boolean },
+  opts?: { allowLiquidacion?: boolean; skipTipoGruposSql?: boolean },
 ): any {
   let q = query
   if (filters.marca_id) q = q.eq('marca_id', Number(filters.marca_id))
@@ -155,7 +155,9 @@ export function applyNonOrigenSqlFilters(
     const cols = filters.colores.map(c => c.trim()).filter(Boolean)
     if (cols.length) q = q.in('descp_color', cols)
   }
-  q = applyTipoGruposSqlFilter(q, filters.tipo_grupos, opts)
+  if (!opts?.skipTipoGruposSql) {
+    q = applyTipoGruposSqlFilter(q, filters.tipo_grupos, opts)
+  }
   return applyGeneroRamoBuscarSql(q, filters)
 }
 
@@ -176,7 +178,10 @@ export function applyPeCommercialSqlFilters(
 
 export function applySqlFiltersToQuery(query: any, filters: CatalogoFilterStateExtended): any {
   let q = applyOrigenTipoQuery(query, filters)
-  return applyNonOrigenSqlFilters(q, filters, { allowLiquidacion: false })
+  return applyNonOrigenSqlFilters(q, filters, {
+    allowLiquidacion: false,
+    skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
+  })
 }
 
 /** Vista Supabase — CP en v_stock_rimec · PE en v_stock_pe_rimec (PPD · local). */
@@ -188,8 +193,12 @@ export function catalogoStockView(
     : 'v_stock_rimec'
 }
 
-/** Filtros solo memoria — tono JSON · origen Todos · quincenas/depósito cruzados. */
-export function applyMemoryFilters(rows: StockRow[], filters: CatalogoFilterStateExtended): StockRow[] {
+/** Filtros solo memoria — tono JSON · origen Todos · quincenas/depósito cruzados · Tipo+BCL. */
+export function applyMemoryFilters(
+  rows: StockRow[],
+  filters: CatalogoFilterStateExtended,
+  lineaCasoMap?: Map<string, string> | null,
+): StockRow[] {
   let out = rows
   if (filters.sin_tono) {
     out = out.filter(r => !etiquetaTonoFromRaw(r.color_tono_canon))
@@ -265,6 +274,7 @@ export function applyMemoryFilters(rows: StockRow[], filters: CatalogoFilterStat
           cadena_comercial: r.cadena_comercial,
         },
         tipoGrupos,
+        lineaCasoMap,
       ),
     )
   }

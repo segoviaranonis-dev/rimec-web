@@ -1,6 +1,7 @@
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
 import type { StockRow } from '@/app/catalogo-types'
 import { CATALOGO_SOLO_COMPRA_PREVIA } from '@/lib/catalogoData'
+import { formatQuincenaCorta, formatNumeroPreventaCarlos } from '@/lib/datoDuroCabecera'
 import { inferPeRamoTipo, type PeDepositoCodigo } from '@/lib/rimecPeDeposito'
 import { etiquetaTonoFromRaw } from '@/lib/pilares/color-canon'
 import {
@@ -34,6 +35,8 @@ export type CatalogoFilterStateExtended = CatalogoFilterState & {
   /** Familias Material / Color (claves · NN · Napa · Verniz) */
   material_familias?: string[]
   color_familias?: string[]
+  /** Nº preventa Carlos (CP) */
+  preventas?: string[]
 }
 
 export const CATALOGO_ORIGEN_TODOS = 'TODOS'
@@ -153,10 +156,16 @@ export function applyNonOrigenSqlFilters(
   opts?: { allowLiquidacion?: boolean; skipTipoGruposSql?: boolean },
 ): any {
   let q = query
-  if (filters.marca_id) q = q.eq('marca_id', Number(filters.marca_id))
+  const marcaIds = filters.marca_ids?.length
+    ? filters.marca_ids
+    : filters.marca_id ? [Number(filters.marca_id)] : []
+  const estiloIds = filters.grupo_estilo_ids?.length
+    ? filters.grupo_estilo_ids
+    : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
+  if (marcaIds.length) q = q.in('marca_id', marcaIds)
   if (filters.linea_ids.length) q = q.in('linea_id', filters.linea_ids)
   if (filters.quincenas.length) q = q.in('quincena_arribo_id', filters.quincenas)
-  if (filters.grupo_estilo_id) q = q.eq('grupo_estilo_id', Number(filters.grupo_estilo_id))
+  if (estiloIds.length) q = q.in('grupo_estilo_id', estiloIds)
   if (filters.tipo_ids.length) q = q.in('tipo_1_id', filters.tipo_ids)
   if (filters.colores.length) {
     const cols = filters.colores.map(c => c.trim()).filter(Boolean)
@@ -234,6 +243,15 @@ export function applyMemoryFilters(
     out = out.filter(r => {
       if (normalizeOrigenCatalogo(r.origen_tipo) !== 'TRÁNSITO_PP') return true
       return r.quincena_arribo_id != null && qSet.has(r.quincena_arribo_id)
+    })
+  }
+  const preventas = filters.preventas ?? []
+  if (preventas.length) {
+    const pSet = new Set(preventas.map(p => p.trim()).filter(Boolean))
+    out = out.filter(r => {
+      if (normalizeOrigenCatalogo(r.origen_tipo) !== 'TRÁNSITO_PP') return true
+      const pv = String(r.numero_preventa ?? '').trim()
+      return pv && pSet.has(pv)
     })
   }
   const cadena = String(filters.cadena_comercial ?? '').trim().toUpperCase()
@@ -410,10 +428,16 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
   const depRaw = String(sp.get('deposito_codigo') ?? '').trim().toUpperCase()
   const sinTono = sp.get('sin_tono') === '1'
   const tonosRaw = (sp.get('tonos') ?? '').split(',').filter(Boolean)
+  const legacyEstilo = sp.get('grupo_estilo_id') ?? ''
+  const legacyMarca = sp.get('marca_id') ?? ''
 
   return {
-    grupo_estilo_id: sp.get('grupo_estilo_id') ?? '',
-    marca_id: sp.get('marca_id') ?? '',
+    grupo_estilo_id: legacyEstilo,
+    marca_id: legacyMarca,
+    grupo_estilo_ids: (sp.get('grupo_estilo_ids') ?? legacyEstilo)
+      .split(',').filter(Boolean).map(Number),
+    marca_ids: (sp.get('marca_ids') ?? legacyMarca)
+      .split(',').filter(Boolean).map(Number),
     linea_ids: (sp.get('linea_ids') ?? '').split(',').filter(Boolean).map(Number),
     tipo_ids: (sp.get('tipo_ids') ?? '').split(',').filter(Boolean).map(Number),
     colores: (sp.get('colores') ?? '').split(',').filter(Boolean),
@@ -436,6 +460,7 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
       ),
     material_familias: (sp.get('material_familias') ?? '').split(',').filter(Boolean),
     color_familias: (sp.get('color_familias') ?? '').split(',').filter(Boolean),
+    preventas: (sp.get('preventas') ?? '').split(',').filter(Boolean),
   }
 }
 
@@ -481,7 +506,20 @@ export function buildQuincenasFromRows(rows: StockRow[]) {
     new Map(
       rows
         .filter(r => r.quincena_arribo_id && r.quincena_desc)
-        .map(r => [r.quincena_arribo_id, { id: r.quincena_arribo_id!, label: r.quincena_desc! }]),
+        .map(r => [
+          r.quincena_arribo_id,
+          { id: r.quincena_arribo_id!, label: formatQuincenaCorta(r.quincena_desc!) },
+        ]),
     ).values(),
   ).sort((a, b) => a.id - b.id)
+}
+
+export function buildPreventasFromRows(rows: StockRow[]) {
+  return Array.from(
+    new Set(
+      rows
+        .map(r => formatNumeroPreventaCarlos(r.numero_preventa))
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))
 }

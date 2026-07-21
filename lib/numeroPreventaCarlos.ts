@@ -1,0 +1,1 @@
+export { formatNumeroPreventaCarlos } from './datoDuroCabecera'

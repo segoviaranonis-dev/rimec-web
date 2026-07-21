@@ -12,10 +12,11 @@ export function toggleId(list: number[], id: number): number[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
 }
 
-/** Estilo set → limpia Línea + Material + Color. */
-export function cascadaEstilo(grupo_estilo_id: string): CascadaPatch {
+/** Estilos set (multi) → limpia Línea + Material + Color. */
+export function cascadaEstilo(grupo_estilo_ids: number[]): CascadaPatch {
   return {
-    grupo_estilo_id,
+    grupo_estilo_id: '',
+    grupo_estilo_ids,
     linea_ids: [],
     material_familias: [],
     color_familias: [],
@@ -23,9 +24,9 @@ export function cascadaEstilo(grupo_estilo_id: string): CascadaPatch {
   }
 }
 
-/** Toggle Estilo (single-select) → limpia descendientes. */
-export function toggleEstiloCascada(actual: string, id: string): CascadaPatch {
-  return cascadaEstilo(actual === id ? '' : id)
+/** Toggle Estilo multi-select → limpia descendientes. */
+export function toggleEstiloCascada(actual: number[], id: number): CascadaPatch {
+  return cascadaEstilo(toggleId(actual, id))
 }
 
 /** Línea set → limpia Material + Color. */
@@ -73,9 +74,9 @@ export function toggleColorCascada(color_familias: string[], key: string): Casca
 /** Alias usados por FiltrosCatalogo (full-state). */
 export function setEstiloCascade(
   prev: CatalogoFilterState,
-  grupo_estilo_id: string,
+  grupo_estilo_ids: number[],
 ): CatalogoFilterState {
-  return { ...prev, ...cascadaEstilo(grupo_estilo_id) }
+  return { ...prev, ...cascadaEstilo(grupo_estilo_ids) }
 }
 
 export function setLineasCascade(
@@ -103,9 +104,11 @@ export function setColorFamiliasCascade(
 export function resetCascadaAlCambiarRamo(): CascadaPatch {
   return {
     marca_id: '',
+    marca_ids: [],
     linea_ids: [],
     tipo_ids: [],
     grupo_estilo_id: '',
+    grupo_estilo_ids: [],
     tipo_grupos: [],
     material_familias: [],
     color_familias: [],

@@ -21,11 +21,18 @@ export type CatalogoMetaRpc = {
 }
 
 function rpcParams(filters: CatalogoFilterStateExtended, esPe: boolean) {
+  const marcas = filters.marca_ids?.length
+    ? filters.marca_ids
+    : filters.marca_id ? [Number(filters.marca_id)] : []
+  const estilos = filters.grupo_estilo_ids?.length
+    ? filters.grupo_estilo_ids
+    : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
   return {
     p_es_pe: esPe,
-    p_marca_id: filters.marca_id ? Number(filters.marca_id) : null,
+    // RPC legacy es single; con multi no estrechar metadata (grilla sí filtra por .in).
+    p_marca_id: marcas.length === 1 ? marcas[0] : null,
     p_linea_ids: filters.linea_ids?.length ? filters.linea_ids : null,
-    p_grupo_estilo_id: filters.grupo_estilo_id ? Number(filters.grupo_estilo_id) : null,
+    p_grupo_estilo_id: estilos.length === 1 ? estilos[0] : null,
     p_tipo_ids: filters.tipo_ids?.length ? filters.tipo_ids : null,
     p_genero_codigo: filters.genero_codigo?.trim() || null,
     p_ramo_tipo: filters.ramo_tipo || null,

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ProductImage } from '@/components/ProductImage'
 import { PromoCasoBadge } from '@/components/catalog/PromoCasoBadge'
+import { productImagePrimaryStem } from '@/lib/productImageProtocol'
 
 export const CATALOG_CARD_WIDTH_CLASS =
   'w-[calc(50%-0.375rem)] max-w-[220px] sm:w-[180px] md:w-[200px]'
@@ -31,6 +32,8 @@ type Props = {
   priority?: boolean
   compactGrid?: boolean
   esPromo?: boolean
+  /** Confecciones 638 → Linea_color; calzado 654 → Linea-Ref-mat-color */
+  esConfecciones?: boolean
   onImageClick?: () => void
   imageOverlay?: ReactNode
   ventaFooter?: ReactNode
@@ -57,6 +60,7 @@ export function CatalogTarjetaDeposito({
   priority = false,
   compactGrid = true,
   esPromo = false,
+  esConfecciones = false,
   onImageClick,
   imageOverlay,
   ventaFooter,
@@ -65,6 +69,19 @@ export function CatalogTarjetaDeposito({
   imageCornerBadge,
 }: Props) {
   const widthClass = compactGrid ? CATALOG_CARD_COMPACT_CLASS : CATALOG_CARD_WIDTH_CLASS
+
+  const nombreImagen =
+    productImagePrimaryStem({
+      linea,
+      referencia,
+      material,
+      color,
+      imagenNombre,
+      tipoV2Id: esConfecciones ? 2 : 1,
+    }) ??
+    (esConfecciones
+      ? `${linea}_${color}`
+      : [linea, referencia, material, color].filter(Boolean).join('-'))
 
   const shellClass =
     shellVariant === 'cp'
@@ -140,8 +157,11 @@ export function CatalogTarjetaDeposito({
         )}
 
         <div className="flex items-baseline px-2 pb-2 pt-0.5">
-          <p className="min-w-0 truncate font-mono text-[10px] text-slate-800 sm:text-[11px]">
-            {linea}.{referencia}
+          <p
+            className="min-w-0 truncate font-mono text-[10px] text-slate-800 sm:text-[11px]"
+            title={nombreImagen}
+          >
+            {nombreImagen}
           </p>
         </div>
       </article>

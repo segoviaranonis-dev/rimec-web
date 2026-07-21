@@ -10,6 +10,8 @@ import {
   fmtEtaCorta,
   normalizarFilasMolecula,
 } from './buildTree'
+import { formatNumeroPreventaCarlos } from '../numeroPreventaCarlos'
+import { etiquetaDatoDuroCp } from '../datoDuroCabecera'
 
 function normCodigo(v: unknown): string {
   if (v == null) return ''
@@ -77,11 +79,16 @@ export async function fetchControlStock(opts: {
 }): Promise<ControlStockResponse> {
   const { data: ppsRaw, error: errPp } = await supabase
     .from('pedido_proveedor')
-    .select('id, numero_registro, numero_proforma, estado, estado_transito, fecha_arribo_estimada, categoria_id')
+    .select('id, numero_registro, numero_proforma, nro_pedido_externo, quincena_arribo_id, estado, estado_transito, fecha_arribo_estimada, categoria_id')
     .eq('estado_transito', 'EN_TRANSITO')
     .order('id', { ascending: false })
 
   if (errPp) throw new Error(errPp.message)
+
+  const { data: quincenasDb } = await supabase.from('quincena_arribo').select('id, descripcion')
+  const quincenaMap = new Map<number, string>(
+    (quincenasDb ?? []).map(q => [Number(q.id), String(q.descripcion ?? '')]),
+  )
 
   // Ley: RIMEC Web ↔ PROGRAMADO = error de concepto. Solo Compra previa (2) o sin categoría legacy.
   const ppsFiltrados = (ppsRaw ?? []).filter(p => {
@@ -95,12 +102,17 @@ export async function fetchControlStock(opts: {
     const eta = p.fecha_arribo_estimada ? String(p.fecha_arribo_estimada).slice(0, 10) : null
     const nro = String(p.numero_registro ?? p.id)
     const proforma = String(p.numero_proforma ?? '')
+    const preventa = formatNumeroPreventaCarlos(p.nro_pedido_externo)
+    const qid = p.quincena_arribo_id != null ? Number(p.quincena_arribo_id) : null
+    const quincenaDesc = qid != null ? quincenaMap.get(qid) ?? null : null
     return {
       id: p.id,
       nro,
       proforma,
+      preventa,
       estado: String(p.estado ?? ''),
       eta,
+      quincena_desc: quincenaDesc,
       label: labelPpChip(proforma, nro, eta),
     }
   })
@@ -257,7 +269,9 @@ export async function fetchControlStock(opts: {
       pp_id: pp.id,
       pp_nro: pp.nro,
       pp_proforma: pp.proforma,
+      pp_preventa: pp.preventa,
       pp_eta: pp.eta,
+      pp_quincena_desc: pp.quincena_desc,
       genero,
       marca,
       estilo,

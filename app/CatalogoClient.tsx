@@ -45,6 +45,7 @@ import {
   collectLoteKeysFromGrilla,
 } from '@/components/catalog/CatalogAcordeonContext'
 import { RimecSincronizandoOverlay } from '@/components/catalog/RimecSincronizandoOverlay'
+import { FiltroAplicandoOverlay } from '@/components/catalog/FiltroAplicandoOverlay'
 import { hasSidebarFilters } from '@/lib/catalogoFiltrosEntrada'
 import {
   areAllSyncStagesWarm,
@@ -60,6 +61,45 @@ type Props = {
   initialFilters: CatalogoFilterState
 }
 
+function etiquetaCambioFiltro(prev: CatalogoFilterState, next: CatalogoFilterState): string {
+  const cambio = (key: keyof CatalogoFilterState) =>
+    JSON.stringify(prev[key] ?? null) !== JSON.stringify(next[key] ?? null)
+  const cantidad = (value: unknown) =>
+    Array.isArray(value) && value.length > 1 ? ` · ${value.length} seleccionados` : ''
+
+  if (cambio('origen_tipo')) {
+    const origen = next.origen_tipo === 'PRONTA_ENTREGA'
+      ? 'Pronta entrega'
+      : next.origen_tipo === 'TODOS' ? 'Todos' : 'Compra previa'
+    return `Stock · ${origen}`
+  }
+  if (cambio('ramo_tipo')) return `Categoría · ${next.ramo_tipo || 'Todas'}`
+  if (cambio('deposito_codigo')) return `Depósito · ${next.deposito_codigo || 'Todos'}`
+  if (cambio('tipo_grupos')) {
+    const nombres = (next.tipo_grupos ?? []).map((x) => ({
+      normal: 'Normal',
+      carteras: 'Carteras',
+      promo: 'Promo',
+      liquidacion: 'Liquidación',
+    })[x])
+    return `Tipo · ${nombres.join(', ') || 'Todos'}`
+  }
+  if (cambio('marca_ids') || cambio('marca_id')) return `Marca${cantidad(next.marca_ids)}`
+  if (cambio('grupo_estilo_ids') || cambio('grupo_estilo_id')) return `Estilo${cantidad(next.grupo_estilo_ids)}`
+  if (cambio('genero_codigo')) return `Género · ${next.genero_codigo || 'Todos'}`
+  if (cambio('linea_ids')) return `Línea${cantidad(next.linea_ids)}`
+  if (cambio('tipo_ids')) return `AB - CR${cantidad(next.tipo_ids)}`
+  if (cambio('material_familias')) return `Material${cantidad(next.material_familias)}`
+  if (cambio('color_familias') || cambio('colores')) {
+    return `Color${cantidad(next.color_familias?.length ? next.color_familias : next.colores)}`
+  }
+  if (cambio('tonos') || cambio('sin_tono')) return 'Tono'
+  if (cambio('quincenas')) return `Quincena${cantidad(next.quincenas)}`
+  if (cambio('preventas')) return `Preventa${cantidad(next.preventas)}`
+  if (cambio('buscar')) return `Búsqueda · ${next.buscar?.trim() || 'limpia'}`
+  return 'Filtros del catálogo'
+}
+
 function sameArray(a: unknown[], b: unknown[]) {
   return a.length === b.length && a.every((v, i) => v === b[i])
 }
@@ -68,6 +108,8 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   const params = new URLSearchParams()
   if (filters.grupo_estilo_id) params.set('grupo_estilo_id', filters.grupo_estilo_id)
   if (filters.marca_id) params.set('marca_id', filters.marca_id)
+  if (filters.grupo_estilo_ids?.length) params.set('grupo_estilo_ids', filters.grupo_estilo_ids.join(','))
+  if (filters.marca_ids?.length) params.set('marca_ids', filters.marca_ids.join(','))
   if (filters.linea_ids.length) params.set('linea_ids', filters.linea_ids.join(','))
   if (filters.tipo_ids.length) params.set('tipo_ids', filters.tipo_ids.join(','))
   if (filters.colores.length) params.set('colores', filters.colores.join(','))
@@ -83,6 +125,7 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   if (filters.tipo_grupos?.length) params.set('tipo_grupos', filters.tipo_grupos.join(','))
   if (filters.material_familias?.length) params.set('material_familias', filters.material_familias.join(','))
   if (filters.color_familias?.length) params.set('color_familias', filters.color_familias.join(','))
+  if (filters.preventas?.length) params.set('preventas', filters.preventas.join(','))
   return params
 }
 
@@ -109,6 +152,7 @@ function filtersConOrigenInmediato(
     ramo_tipo: live.ramo_tipo,
     deposito_codigo: live.deposito_codigo,
     quincenas: live.quincenas,
+    preventas: live.preventas,
   }
 }
 
@@ -141,6 +185,7 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [filters, setFilters] = useState<CatalogoFilterState>(() =>
     mergeSharedIntoFilters(initialFilters),
   )
+  const [filtroFeedback, setFiltroFeedback] = useState<{ id: number; filtro: string } | null>(null)
   const [, startTransition] = useTransition()
   const deferredFilters = useDeferredValue(filters)
   const filtrosPendientes = deferredFilters !== filters
@@ -158,6 +203,7 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [tonoCatalog, setTonoCatalog] = useState<ColorEstandar[]>(COLORES_ESTANDAR_DEFAULT)
   const [colores, setColores] = useState<string[]>([])
   const [quincenas, setQuincenas] = useState<QuincenaItem[]>([])
+  const [preventasOpciones, setPreventasOpciones] = useState<string[]>([])
   const [tonosDisponibles, setTonosDisponibles] = useState<string[]>([])
 
   const [productos, setProductos] = useState<TarjetaGrilla[]>([])
@@ -203,6 +249,8 @@ export function CatalogoClient({ initialFilters }: Props) {
   }, [
     initialFilters.grupo_estilo_id,
     initialFilters.marca_id,
+    initialFilters.grupo_estilo_ids?.join(',') ?? '',
+    initialFilters.marca_ids?.join(',') ?? '',
     initialFilters.linea_ids.join(','),
     initialFilters.tipo_ids.join(','),
     initialFilters.colores.join(','),
@@ -253,6 +301,7 @@ export function CatalogoClient({ initialFilters }: Props) {
           filtros?: typeof filtrosMeta
           colores?: string[]
           quincenas?: QuincenaItem[]
+          preventas?: string[]
           tonosDisponibles?: string[]
           materialFamilias?: FamiliaPilarItem[]
           colorFamilias?: FamiliaPilarItem[]
@@ -272,6 +321,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         setColorFamilias(json.colorFamilias ?? [])
         setColores(json.colores ?? [])
         setQuincenas(json.quincenas ?? [])
+        setPreventasOpciones(json.preventas ?? [])
         setTonosDisponibles(json.tonosDisponibles ?? [])
 
         const lineaIdsValid = new Set((meta.todasLineas as FilterItem[]).map(l => l.id))
@@ -307,6 +357,8 @@ export function CatalogoClient({ initialFilters }: Props) {
     filters.deposito_codigo ?? '',
     filters.marca_id ?? '',
     filters.grupo_estilo_id ?? '',
+    filters.marca_ids?.join(',') ?? '',
+    filters.grupo_estilo_ids?.join(',') ?? '',
     filters.genero_codigo ?? '',
     filters.linea_ids.join(','),
     filters.tipo_ids.join(','),
@@ -464,6 +516,8 @@ export function CatalogoClient({ initialFilters }: Props) {
   }, [
     deferredFilters.grupo_estilo_id,
     deferredFilters.marca_id,
+    deferredFilters.grupo_estilo_ids?.join(',') ?? '',
+    deferredFilters.marca_ids?.join(',') ?? '',
     deferredFilters.linea_ids.join(','),
     deferredFilters.tipo_ids.join(','),
     deferredFilters.colores.join(','),
@@ -527,6 +581,10 @@ export function CatalogoClient({ initialFilters }: Props) {
   }, [loadingMore, hasMore, rowFrom, excludeKeys, filters, fetchPage])
 
   const updateFilters = (next: CatalogoFilterState) => {
+    setFiltroFeedback({
+      id: Date.now(),
+      filtro: etiquetaCambioFiltro(filters, next),
+    })
     persistSharedCatalogFilters(next)
     startTransition(() => {
       setFilters(next)
@@ -535,6 +593,10 @@ export function CatalogoClient({ initialFilters }: Props) {
       window.history.replaceState(null, '', url)
     })
   }
+
+  const cerrarFiltroFeedback = useCallback((eventoId: number) => {
+    setFiltroFeedback((actual) => actual?.id === eventoId ? null : actual)
+  }, [])
 
   const showSyncOverlay = syncOverlayVisible && !error
 
@@ -574,6 +636,8 @@ export function CatalogoClient({ initialFilters }: Props) {
   const isInitial =
     filters.grupo_estilo_id === initialFilters.grupo_estilo_id &&
     filters.marca_id === initialFilters.marca_id &&
+    sameArray(filters.grupo_estilo_ids ?? [], initialFilters.grupo_estilo_ids ?? []) &&
+    sameArray(filters.marca_ids ?? [], initialFilters.marca_ids ?? []) &&
     sameArray(filters.linea_ids, initialFilters.linea_ids) &&
     sameArray(filters.tipo_ids, initialFilters.tipo_ids) &&
     sameArray(filters.colores, initialFilters.colores) &&
@@ -627,6 +691,14 @@ export function CatalogoClient({ initialFilters }: Props) {
   return (
     <CatalogAcordeonProvider allKeys={allLoteKeys}>
     <>
+      {filtroFeedback && (
+        <FiltroAplicandoOverlay
+          key={filtroFeedback.id}
+          eventoId={filtroFeedback.id}
+          filtro={filtroFeedback.filtro}
+          onDone={cerrarFiltroFeedback}
+        />
+      )}
       {showSyncOverlay && (
         <RimecSincronizandoOverlay
           progress={syncProgress}
@@ -676,6 +748,7 @@ export function CatalogoClient({ initialFilters }: Props) {
                   materialFamilias: materialFamiliasUi,
                   colorFamilias: colorFamiliasUi,
                   quincenas,
+                  preventas: preventasOpciones,
                 }}
                 emptyFilters={CATALOGO_FILTROS_VACIOS}
               />
@@ -694,6 +767,7 @@ export function CatalogoClient({ initialFilters }: Props) {
                 materialFamilias: materialFamiliasUi,
                 colorFamilias: colorFamiliasUi,
                 quincenas,
+                preventas: preventasOpciones,
               }}
               emptyFilters={CATALOGO_FILTROS_VACIOS}
             />

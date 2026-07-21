@@ -4,7 +4,10 @@ import { useSesion, type ListaId } from '@/store/sesionVenta'
 import { CatalogTonosFila } from '@/components/catalog/CatalogTonosFila'
 import { CatalogConfeccionesTallas } from '@/components/catalog/CatalogConfeccionesTallas'
 import { origenChipStyle } from '@/lib/catalogCardChrome'
-import { resolveParesPorCaja, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
+import { resolveParesPorCaja, syntheticPpIdForPe, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
+import { etiquetaDatoDuroCp, partesDatoDuroCp } from '@/lib/datoDuroCabecera'
+import { esLiquidacionPe } from '@/lib/catalogoComercial'
+import { DatoDuroCpFilas } from '@/components/catalog/DatoDuroCpFilas'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { formatPrecioGs } from '@/lib/formatPrecioGs'
 import {
@@ -38,11 +41,6 @@ function paresEnLote(lote: TarjetaCatalogo): number {
       })
       return s + Math.max(0, v.cajas_disponibles * ppc)
     }, 0)
-}
-
-function etiquetaOrigenChip(origen: TarjetaCatalogo['origen_tipo'], quincenaDesc: string | null | undefined): string {
-  if (quincenaDesc) return quincenaDesc
-  return origen === 'PRONTA_ENTREGA' ? 'Pronta entrega' : 'Compra previa'
 }
 
 function precioCatalogo(
@@ -159,6 +157,9 @@ export function CatalogPanelOrigen({
   const botonPlusColor = !activa ? '#CBD5E1' : !tienePrecio ? '#F1F5F9' : cajas >= maxCajas ? '#E2E8F0' : AZUL
   const botonPlusTxt = !activa ? 'white' : !tienePrecio ? '#CBD5E1' : cajas >= maxCajas ? '#94A3B8' : 'white'
   const paresLote = paresEnLote(p)
+  const peLabel = etiquetaProntaEntregaCatalogo(p.linea_codigo, p.referencia_codigo, {
+    liquidacion: esLiquidacionPe(p),
+  })
   const panelBg = esPe
     ? 'rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2'
     : 'rounded-xl border border-blue-200/80 bg-blue-50/45 p-2'
@@ -167,13 +168,26 @@ export function CatalogPanelOrigen({
     <div className={stacked && !hideOrigenChip ? panelBg : undefined}>
       {!hideOrigenChip ? (
         <div className="mb-1.5 flex items-center justify-between gap-1">
-          <span
-            className="inline-flex max-w-[75%] items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
-            style={origenChipStyle(shell)}
-            title={esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-          >
-            {esPe ? 'Pronta entrega' : etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
-          </span>
+          {esPe ? (
+            <span
+              className="inline-flex max-w-[75%] items-center gap-1 truncate rounded-lg border px-2 py-0.5 text-[10px] font-bold leading-tight"
+              style={origenChipStyle(shell)}
+              title={peLabel}
+            >
+              {peLabel}
+            </span>
+          ) : (
+            <span
+              className="inline-flex max-w-[75%] rounded-lg border border-blue-200/80 bg-white px-2 py-1"
+              title={etiquetaDatoDuroCp(v.numero_preventa, v.quincena_desc)}
+            >
+              <DatoDuroCpFilas
+                preventa={partesDatoDuroCp(v.numero_preventa, v.quincena_desc).preventa}
+                quincena={partesDatoDuroCp(v.numero_preventa, v.quincena_desc).quincena}
+                fallbackLabel="Compra previa"
+              />
+            </span>
+          )}
           {stacked && paresLote > 0 ? (
             <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white">
               {Math.round(paresLote)} {uCorta}

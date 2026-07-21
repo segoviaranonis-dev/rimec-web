@@ -2,8 +2,12 @@ export interface DetalleStockRow {
   pp_id: number
   pp_nro: string
   pp_proforma: string
+  /** Nº preventa Carlos · pedido_proveedor.nro_pedido_externo */
+  pp_preventa: string
   /** Dato duro arribo (YYYY-MM-DD) — orden Compra previa. */
   pp_eta: string | null
+  /** Quincena legible (dato duro 1–24). */
+  pp_quincena_desc?: string | null
   genero: string
   marca: string
   estilo: string
@@ -23,8 +27,11 @@ export interface PpOption {
   id: number
   nro: string
   proforma: string
+  /** Nº preventa Carlos */
+  preventa: string
   estado: string
   eta: string | null
+  quincena_desc: string | null
   /** Chip filtro: proforma + ETA (PP secundario). */
   label: string
 }
@@ -47,6 +54,8 @@ export interface NodoControl {
   nombre: string
   /** Línea secundaria (ej. PP). */
   meta?: string
+  /** Nº preventa Carlos — nivel PP. */
+  preventa?: string
   /** Orden arribo (ISO date o vacío). */
   sortEta?: string
   count: number

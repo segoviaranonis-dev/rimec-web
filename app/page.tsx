@@ -8,6 +8,8 @@ export default async function HomePage({
   searchParams: Promise<{
     grupo_estilo_id?: string
     marca_id?: string
+    grupo_estilo_ids?: string
+    marca_ids?: string
     linea_ids?: string
     tipo_ids?: string
     colores?: string
@@ -43,6 +45,10 @@ export default async function HomePage({
       initialFilters={{
         grupo_estilo_id: params.grupo_estilo_id ?? '',
         marca_id: params.marca_id ?? '',
+        grupo_estilo_ids: (params.grupo_estilo_ids ?? params.grupo_estilo_id ?? '')
+          .split(',').filter(Boolean).map(Number),
+        marca_ids: (params.marca_ids ?? params.marca_id ?? '')
+          .split(',').filter(Boolean).map(Number),
         linea_ids: params.linea_ids ? params.linea_ids.split(',').filter(Boolean).map(Number) : [],
         tipo_ids: params.tipo_ids ? params.tipo_ids.split(',').filter(Boolean).map(Number) : [],
         colores: params.colores ? params.colores.split(',').filter(Boolean) : [],

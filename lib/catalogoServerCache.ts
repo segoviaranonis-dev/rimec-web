@@ -18,6 +18,8 @@ export function isWarmTarjetasRequest(
   const hasExtraFilters =
     Boolean(filters.marca_id) ||
     Boolean(filters.grupo_estilo_id) ||
+    (filters.marca_ids?.length ?? 0) > 0 ||
+    (filters.grupo_estilo_ids?.length ?? 0) > 0 ||
     Boolean(filters.buscar?.trim()) ||
     filters.linea_ids.length > 0 ||
     filters.tipo_ids.length > 0 ||
@@ -37,7 +39,12 @@ export function isWarmTarjetasRequest(
   const o = normalizeOrigenCatalogo(filters.origen_tipo)
   if (o === 'TODOS' && filters.ramo_tipo === 'CALZADO') return true
   if (o === 'PRONTA_ENTREGA' && filters.ramo_tipo === 'CALZADO') return true
-  if ((o === 'TRÁNSITO_PP' || o === '') && !filters.marca_id && !filters.buscar?.trim()) return true
+  if (
+    (o === 'TRÁNSITO_PP' || o === '') &&
+    !filters.marca_id &&
+    !(filters.marca_ids?.length) &&
+    !filters.buscar?.trim()
+  ) return true
   return false
 }
 
@@ -54,7 +61,7 @@ const fetchWarmTarjetasInner = unstable_cache(
       limit,
     })
   },
-  ['catalogo-tarjetas-warm-v2'],
+  ['catalogo-tarjetas-warm-v5'],
   { revalidate: WARM_TTL_SEC },
 )
 

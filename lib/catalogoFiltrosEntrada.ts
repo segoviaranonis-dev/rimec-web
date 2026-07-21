@@ -5,6 +5,8 @@ export function hasSidebarFilters(f: CatalogoFilterState): boolean {
   return Boolean(
     f.marca_id ||
       f.grupo_estilo_id ||
+      (f.marca_ids?.length ?? 0) > 0 ||
+      (f.grupo_estilo_ids?.length ?? 0) > 0 ||
       f.genero_codigo ||
       f.buscar?.trim() ||
       f.linea_ids.length ||

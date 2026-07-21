@@ -98,6 +98,8 @@ export default function Header({ data: _data }: { data: HeaderData }) {
 const FILTROS_COMPARTIDOS_URL = [
   'marca_id',
   'grupo_estilo_id',
+  'marca_ids',
+  'grupo_estilo_ids',
   'linea_ids',
   'tipo_ids',
   'genero_codigo',

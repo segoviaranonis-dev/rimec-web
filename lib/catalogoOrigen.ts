@@ -5,6 +5,8 @@
  * Mismo SKU con distinto origen → dos instancias DOM independientes (saldos desacoplados).
  */
 
+import { etiquetaDatoDuroCp } from '@/lib/datoDuroCabecera'
+
 export type OrigenTipo =
   | 'TRÁNSITO_PP'
   | 'PRONTA_ENTREGA'
@@ -128,6 +130,7 @@ type StockOrigenRow = {
   pp_id?: number | null
   pp_nro?: string | null
   proforma?: string | null                 // Matrimonio con pp_nro
+  numero_preventa?: string | null          // Nº preventa Carlos
   quincena_arribo_id?: number | null       // Dato duro (FK)
   quincena_desc?: string | null            // Descripción legible
   /** Futuro: id depósito / flag stock físico en vista */
@@ -184,12 +187,13 @@ export function deriveOrigenFromStockRow(row: StockOrigenRow): OrigenMetadatos {
   const quincenaDesc = row.quincena_desc
   const ppId = row.pp_id != null ? Number(row.pp_id) : 0
 
-  // Si hay quincena definida, usarla como referencia (dato duro)
+  // Si hay quincena definida, usarla como referencia (dato duro siamese)
   if (quincenaId && quincenaDesc) {
+    const label = etiquetaDatoDuroCp(row.numero_preventa, quincenaDesc)
     return {
       tipo: 'TRÁNSITO_PP',
-      referenciaId: `q:${quincenaId}`,
-      label: `${quincenaDesc}`,
+      referenciaId: `q:${quincenaId}:${(String(row.numero_preventa ?? '').trim() || row.pp_id) ?? ''}`,
+      label,
       shell: paletaQuincena(`${quincenaId}`),
     }
   }

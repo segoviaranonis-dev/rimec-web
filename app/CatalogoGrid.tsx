@@ -15,9 +15,11 @@ import {
   origenChipStyle,
 } from '@/lib/catalogCardChrome'
 import { formatearQuincena } from '@/lib/fecha'
+import { etiquetaDatoDuroCp } from '@/lib/datoDuroCabecera'
 import { estiloBadgeMarca } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
-import { resolveParesPorCaja, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
+import { resolveParesPorCaja, syntheticPpIdForPe, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
+import { productImagePrimaryStem } from '@/lib/productImageProtocol'
 import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock } from '@/lib/confeccionesCatalogo'
 import { esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
 import { LiquidacionPeBadge } from '@/components/catalog/LiquidacionPeBadge'
@@ -98,9 +100,17 @@ function resolverHex(v: { color_hex?: string | null; descp_color?: string | null
   return '#CBD5E1'
 }
 
-function etiquetaOrigenChip(origen: TarjetaCatalogo['origen_tipo'], quincenaDesc: string | null | undefined): string {
+function etiquetaOrigenChip(
+  origen: TarjetaCatalogo['origen_tipo'],
+  quincenaDesc: string | null | undefined,
+  linea?: string,
+  referencia?: string,
+  liquidacion?: boolean,
+): string {
   // PE nunca muestra quincena de pedido proveedor (fuga visual CP bajo Pronta entrega)
-  if (origen === 'PRONTA_ENTREGA') return 'Pronta entrega'
+  if (origen === 'PRONTA_ENTREGA') {
+    return etiquetaProntaEntregaCatalogo(linea, referencia, { liquidacion })
+  }
   if (quincenaDesc) return quincenaDesc
   return 'Compra previa'
 }
@@ -303,6 +313,19 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
   useEffect(() => { setMounted(true) }, [])
   const v = p.variantes[idx]
   const shell = p.shell
+  const esConf = isConfecciones638Lote(p)
+  const nombreImagen =
+    productImagePrimaryStem({
+      linea: p.linea_codigo,
+      referencia: p.referencia_codigo,
+      material: v.material_code,
+      color: v.color_code,
+      imagenNombre: v.imagen_nombre,
+      tipoV2Id: esConf ? 2 : 1,
+    }) ??
+    (esConf
+      ? `${p.linea_codigo}_${v.color_code}`
+      : [p.linea_codigo, p.referencia_codigo, v.material_code, v.color_code].filter(Boolean).join('-'))
 
   // Misma regla que TarjetaProducto: carrito_sesion + cliente_v2 (MIG-080), no LPN suelto.
   const ventaActivaStore = useSesion(s =>
@@ -397,10 +420,8 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
                 {p.descp_marca}
               </span>
               {esPromoTarjeta(p) ? <PromoCasoBadge size="md" /> : null}
-              <div className="flex items-center gap-1 text-[11px] font-extrabold truncate">
-                <span style={{ color: AZUL }}>{p.linea_codigo}</span>
-                <span className="text-slate-300">·</span>
-                <span className="text-slate-700">{p.referencia_codigo}</span>
+              <div className="min-w-0 truncate font-mono text-[11px] font-extrabold text-slate-800" title={nombreImagen}>
+                {nombreImagen}
               </div>
             </div>
           </div>
@@ -409,7 +430,13 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
             className="inline-flex items-center gap-1 text-sm font-extrabold leading-none px-3 py-1.5 rounded-lg shadow-sm mb-1"
             style={origenChipStyle(shell, p.origen_tipo !== 'PRONTA_ENTREGA' && Boolean(v.quincena_desc))}
           >
-            {etiquetaOrigenChip(p.origen_tipo, v.quincena_desc)}
+            {etiquetaOrigenChip(
+              p.origen_tipo,
+              v.quincena_desc,
+              p.linea_codigo,
+              p.referencia_codigo,
+              esLiquidacionPe(p),
+            )}
           </span>
 
           <p className="text-[10px] text-slate-400 truncate mb-2">
@@ -494,6 +521,7 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
         alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
         priority={varIdx === 0}
         compactGrid
+        esConfecciones={esConf}
         onImageClick={() => setLightbox(true)}
         imageCornerBadge={esPe && esLiquidacion ? <LiquidacionPeBadge /> : null}
         imageOverlay={
@@ -603,6 +631,7 @@ function TarjetaProductoFusion({
         alt={`${p.linea_codigo}-${p.referencia_codigo} ${vHero.descp_color}`}
         priority
         compactGrid
+        esConfecciones={esConf}
         onImageClick={() => setLightbox(true)}
         imageCornerBadge={esPeLiq ? <LiquidacionPeBadge /> : null}
         ventaFooter={ventaFooter}
@@ -720,6 +749,11 @@ export function CatalogoGrid({
           descp_material: lote.descp_material,
           descp_marca: lote.descp_marca,
           quincena_desc: lote.variantes[0]?.quincena_desc || null,
+          numero_preventa: lote.variantes[0]?.numero_preventa || null,
+          dato_duro_label: etiquetaDatoDuroCp(
+            lote.variantes[0]?.numero_preventa,
+            lote.variantes[0]?.quincena_desc,
+          ),
           variantes: lote.variantes
             .filter(v => v.cajas_disponibles > 0)
             .map(v => ({

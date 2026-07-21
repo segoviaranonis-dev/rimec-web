@@ -63,8 +63,11 @@ interface Props {
 }
 
 export type CatalogoFilterState = {
+  /** Legacy single-select; plural manda cuando trae valores. */
   grupo_estilo_id: string
   marca_id: string
+  grupo_estilo_ids?: number[]
+  marca_ids?: number[]
   linea_ids: number[]
   tipo_ids: number[]
   colores: string[]
@@ -82,6 +85,8 @@ export type CatalogoFilterState = {
   /** Familias Material / Color (claves) */
   material_familias?: string[]
   color_familias?: string[]
+  /** Nº preventa Carlos (CP) */
+  preventas?: string[]
 }
 
 const GENEROS_FALLBACK: GeneroItem[] = [
@@ -117,6 +122,14 @@ export function FiltrosCatalogo({
 
   const estiloIdActual = value?.grupo_estilo_id ?? searchParams.get('grupo_estilo_id') ?? ''
   const marcaIdActual  = value?.marca_id        ?? searchParams.get('marca_id')        ?? ''
+  const estiloIdsActual = value?.grupo_estilo_ids ??
+    (searchParams.get('grupo_estilo_ids')
+      ? searchParams.get('grupo_estilo_ids')!.split(',').filter(Boolean).map(Number)
+      : estiloIdActual ? [Number(estiloIdActual)] : [])
+  const marcaIdsActual = value?.marca_ids ??
+    (searchParams.get('marca_ids')
+      ? searchParams.get('marca_ids')!.split(',').filter(Boolean).map(Number)
+      : marcaIdActual ? [Number(marcaIdActual)] : [])
 
   const lineasSelIds = value?.linea_ids ?? (searchParams.get('linea_ids') ? searchParams.get('linea_ids')!.split(',').filter(Boolean).map(Number) : [])
   const tiposSelIds  = value?.tipo_ids ?? (searchParams.get('tipo_ids') ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : [])
@@ -161,6 +174,8 @@ export function FiltrosCatalogo({
   const aplicar = useCallback((opts: {
     grupo_estilo_id?: string
     marca_id?: string
+    grupo_estilo_ids?: number[]
+    marca_ids?: number[]
     linea_ids?: number[]
     tipo_ids?: number[]
     cols?: string[]
@@ -181,6 +196,8 @@ export function FiltrosCatalogo({
 
     const estId = opts.grupo_estilo_id !== undefined ? opts.grupo_estilo_id : estiloIdActual
     const marId = opts.marca_id        !== undefined ? opts.marca_id        : marcaIdActual
+    const estIds = opts.grupo_estilo_ids !== undefined ? opts.grupo_estilo_ids : estiloIdsActual
+    const marIds = opts.marca_ids !== undefined ? opts.marca_ids : marcaIdsActual
     const lns   = opts.linea_ids       !== undefined ? opts.linea_ids       : lineasSelIds
     const tps   = opts.tipo_ids        !== undefined ? opts.tipo_ids        : tiposSelIds
     const cls   = opts.cols            !== undefined ? opts.cols            : colorsSel
@@ -200,6 +217,8 @@ export function FiltrosCatalogo({
     const next: CatalogoFilterState = {
       grupo_estilo_id: estId,
       marca_id: marId,
+      grupo_estilo_ids: estIds,
+      marca_ids: marIds,
       linea_ids: lns,
       tipo_ids: tps,
       colores: cls,
@@ -227,6 +246,8 @@ export function FiltrosCatalogo({
 
     if (estId)       params.set('grupo_estilo_id', estId)
     if (marId)       params.set('marca_id',        marId)
+    if (estIds.length) params.set('grupo_estilo_ids', estIds.join(','))
+    if (marIds.length) params.set('marca_ids', marIds.join(','))
     if (lns.length)  params.set('linea_ids',       lns.join(','))
     if (tps.length)  params.set('tipo_ids',        tps.join(','))
     if (cls.length)  params.set('colores',         cls.join(','))
@@ -243,7 +264,7 @@ export function FiltrosCatalogo({
     if (matFam.length) params.set('material_familias', matFam.join(','))
     if (colFam.length) params.set('color_familias', colFam.join(','))
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, cadenaActual, tipoGruposSel, materialFamSel, colorFamSel, router, onChange])
+  }, [estiloIdActual, marcaIdActual, estiloIdsActual, marcaIdsActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, cadenaActual, tipoGruposSel, materialFamSel, colorFamSel, router, onChange])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -253,7 +274,7 @@ export function FiltrosCatalogo({
   }, [buscarLocal, buscarActual, aplicar])
 
   const hayFiltros = !!(
-    estiloIdActual || marcaIdActual || lineasSelIds.length || tiposSelIds.length ||
+    estiloIdsActual.length || marcaIdsActual.length || lineasSelIds.length || tiposSelIds.length ||
     colorsSel.length || quincenasSel.length || generoActual || tonosSel.length || sinTono ||
     buscarActual.trim() || esProntaEntrega || (ramoActual && ramoActual !== 'CALZADO') || depositoActual ||
     (origenActual && origenActual.toUpperCase() !== 'TODOS' && !esProntaEntrega) ||
@@ -278,7 +299,7 @@ export function FiltrosCatalogo({
                 type="button"
                 onClick={() => {
                   const empty: CatalogoFilterState = {
-                    grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
+                    grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
                     origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
                     genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
                     tipo_grupos: [], material_familias: [], color_familias: [],
@@ -370,7 +391,7 @@ export function FiltrosCatalogo({
           <button
             onClick={() => {
               const empty: CatalogoFilterState = {
-                grupo_estilo_id: '', marca_id: '', linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
+                grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
                 origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
                 genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
                 tipo_grupos: [], material_familias: [], color_familias: [],
@@ -513,25 +534,31 @@ export function FiltrosCatalogo({
         {marcas.length > 0 && (
           <FilterRow label="Marca">
             <ScrollPillsRow>
-              <CabeceraPill active={!marcaIdActual} onClick={() => aplicar({ marca_id: '', linea_ids: [], tonos: [], sin_tono: false, material_familias: [], color_familias: [] })}>
+              <CabeceraPill active={!marcaIdsActual.length} onClick={() => aplicar({ marca_id: '', marca_ids: [], linea_ids: [], tonos: [], sin_tono: false, material_familias: [], color_familias: [] })}>
                 Todas
               </CabeceraPill>
-              {marcas.map((m, idx) => (
-                <CabeceraPill
-                  key={filterItemKey('marca', m, idx)}
-                  active={marcaIdActual === String(m.id)}
-                  onClick={() => aplicar({
-                    marca_id: marcaIdActual === String(m.id) ? '' : String(m.id),
-                    linea_ids: [],
-                    tonos: [],
-                    sin_tono: false,
-                    material_familias: [],
-                    color_familias: [],
-                  })}
-                >
-                  {m.label.charAt(0) + m.label.slice(1).toLowerCase()}
-                </CabeceraPill>
-              ))}
+              {marcas.map((m, idx) => {
+                const selected = marcaIdsActual.includes(m.id)
+                return (
+                  <CabeceraPill
+                    key={filterItemKey('marca', m, idx)}
+                    active={selected}
+                    onClick={() => aplicar({
+                      marca_id: '',
+                      marca_ids: selected
+                        ? marcaIdsActual.filter((id) => id !== m.id)
+                        : [...marcaIdsActual, m.id],
+                      linea_ids: [],
+                      tonos: [],
+                      sin_tono: false,
+                      material_familias: [],
+                      color_familias: [],
+                    })}
+                  >
+                    {m.label.charAt(0) + m.label.slice(1).toLowerCase()}
+                  </CabeceraPill>
+                )
+              })}
             </ScrollPillsRow>
           </FilterRow>
         )}
@@ -593,20 +620,25 @@ export function FiltrosCatalogo({
         {estilos.length > 0 && (
           <FilterRow label="Estilo">
             <ScrollPillsRow>
-              <CabeceraPill active={!estiloIdActual} onClick={() => aplicar(cascadaEstilo(''))}>
+              <CabeceraPill active={!estiloIdsActual.length} onClick={() => aplicar(cascadaEstilo([]))}>
                 Todos
               </CabeceraPill>
-              {estilos.map((e, idx) => (
-                <CabeceraPill
-                  key={filterItemKey('estilo', e, idx)}
-                  active={estiloIdActual === String(e.id)}
-                  onClick={() =>
-                    aplicar(cascadaEstilo(estiloIdActual === String(e.id) ? '' : String(e.id)))
-                  }
-                >
-                  {e.label}
-                </CabeceraPill>
-              ))}
+              {estilos.map((e, idx) => {
+                const selected = estiloIdsActual.includes(e.id)
+                return (
+                  <CabeceraPill
+                    key={filterItemKey('estilo', e, idx)}
+                    active={selected}
+                    onClick={() => aplicar(cascadaEstilo(
+                      selected
+                        ? estiloIdsActual.filter((id) => id !== e.id)
+                        : [...estiloIdsActual, e.id],
+                    ))}
+                  >
+                    {e.label}
+                  </CabeceraPill>
+                )
+              })}
             </ScrollPillsRow>
           </FilterRow>
         )}

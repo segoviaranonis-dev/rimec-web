@@ -1,4 +1,5 @@
 import type { DetalleStockRow, NodoControl, ControlKpis, PeDetalleStockRow } from './types'
+import { etiquetaDatoDuroCp } from '../datoDuroCabecera'
 
 /** 5 pilares dentro del PP (módulo 500): linea + ref + material + color + grada */
 export function molKeyFila(r: DetalleStockRow): string {
@@ -48,7 +49,7 @@ function nodo(
   nombre: string,
   rows: DetalleStockRow[],
   hijos?: NodoControl[],
-  extra?: Pick<NodoControl, 'meta' | 'sortEta'>,
+  extra?: Pick<NodoControl, 'meta' | 'sortEta' | 'preventa'>,
 ): NodoControl {
   const { inicial, vendido, saldo } = sumRows(rows)
   return {
@@ -56,6 +57,7 @@ function nodo(
     nivel,
     nombre,
     meta: extra?.meta,
+    preventa: extra?.preventa,
     sortEta: extra?.sortEta,
     count: hijos?.length ?? rows.length,
     inicial,
@@ -86,13 +88,23 @@ export function fmtEtaCorta(eta: string | null | undefined): string {
   return d.toLocaleDateString('es-PY', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-/** Etiqueta nivel PP: proforma primero · ETA · PP secundario. */
-export function labelNodoCompraPrevia(proforma: string, ppNro: string, eta: string | null): {
+/** Etiqueta nivel PP: preventa + quincena corta · PP secundario en meta. */
+export function labelNodoCompraPrevia(
+  proforma: string,
+  ppNro: string,
+  eta: string | null,
+  preventa?: string,
+  quincenaDesc?: string | null,
+): {
   nombre: string
   meta: string
 } {
   const pf = (proforma || '').trim() || 'Sin proforma'
   const etaTxt = fmtEtaCorta(eta)
+  const datoDuro = etiquetaDatoDuroCp(preventa, quincenaDesc)
+  if (datoDuro && datoDuro !== 'Compra previa') {
+    return { nombre: datoDuro, meta: ppNro }
+  }
   return {
     nombre: `${pf} · llega ${etaTxt}`,
     meta: ppNro,
@@ -112,7 +124,9 @@ export function construirArbolControl(filas: DetalleStockRow[]): NodoControl[] {
     const ppNro = rowsPp[0]?.pp_nro ?? String(ppId)
     const proforma = rowsPp[0]?.pp_proforma ?? ''
     const eta = rowsPp[0]?.pp_eta ?? null
-    const { nombre, meta } = labelNodoCompraPrevia(proforma, ppNro, eta)
+    const preventa = (rowsPp[0]?.pp_preventa ?? '').trim() || undefined
+    const quincenaDesc = rowsPp[0]?.pp_quincena_desc ?? null
+    const { nombre, meta } = labelNodoCompraPrevia(proforma, ppNro, eta, preventa, quincenaDesc)
 
     const byGen = new Map<string, DetalleStockRow[]>()
     for (const r of rowsPp) {
@@ -158,6 +172,7 @@ export function construirArbolControl(filas: DetalleStockRow[]): NodoControl[] {
       nodo(`pp:${ppId}`, 1, nombre, rowsPp, hijosGen, {
         meta,
         sortEta: eta ?? '',
+        preventa,
       }),
     )
   }
@@ -200,7 +215,9 @@ function peRowsAsDetalle(rows: PeDetalleStockRow[]): DetalleStockRow[] {
     pp_id: 0,
     pp_nro: r.deposito,
     pp_proforma: '',
+    pp_preventa: '',
     pp_eta: null,
+    pp_quincena_desc: null,
     genero: '',
     marca: r.marca,
     estilo: r.estilo,

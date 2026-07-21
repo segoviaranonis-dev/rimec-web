@@ -36,6 +36,8 @@ export type PageWarmPayload = {
 export const CP_DEFAULT_FILTERS: CatalogoFilterState = {
   grupo_estilo_id: '',
   marca_id: '',
+  grupo_estilo_ids: [],
+  marca_ids: [],
   linea_ids: [],
   tipo_ids: [],
   colores: [],
@@ -94,6 +96,8 @@ function filtersQueryString(filters: CatalogoFilterState) {
   const params = new URLSearchParams()
   if (filters.grupo_estilo_id) params.set('grupo_estilo_id', filters.grupo_estilo_id)
   if (filters.marca_id) params.set('marca_id', filters.marca_id)
+  if (filters.grupo_estilo_ids?.length) params.set('grupo_estilo_ids', filters.grupo_estilo_ids.join(','))
+  if (filters.marca_ids?.length) params.set('marca_ids', filters.marca_ids.join(','))
   if (filters.linea_ids.length) params.set('linea_ids', filters.linea_ids.join(','))
   if (filters.tipo_ids.length) params.set('tipo_ids', filters.tipo_ids.join(','))
   if (filters.colores.length) params.set('colores', filters.colores.join(','))
@@ -112,6 +116,9 @@ function filtersQueryString(filters: CatalogoFilterState) {
   }
   if (filters.color_familias?.length) {
     params.set('color_familias', filters.color_familias.join(','))
+  }
+  if (filters.preventas?.length) {
+    params.set('preventas', filters.preventas.join(','))
   }
   return params.toString()
 }

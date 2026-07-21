@@ -11,6 +11,8 @@ export type SharedCatalogFilterSlice = Pick<
   CatalogoFilterState,
   | 'grupo_estilo_id'
   | 'marca_id'
+  | 'grupo_estilo_ids'
+  | 'marca_ids'
   | 'linea_ids'
   | 'tipo_ids'
   | 'colores'
@@ -26,6 +28,8 @@ export type SharedCatalogFilterSlice = Pick<
 function isSharedFieldEmpty(key: keyof SharedCatalogFilterSlice, value: unknown): boolean {
   if (
     key === 'linea_ids' ||
+    key === 'grupo_estilo_ids' ||
+    key === 'marca_ids' ||
     key === 'tipo_ids' ||
     key === 'colores' ||
     key === 'tonos' ||
@@ -44,6 +48,8 @@ export function extractSharedCatalogFilters(filters: CatalogoFilterState): Share
   return {
     grupo_estilo_id: filters.grupo_estilo_id ?? '',
     marca_id: filters.marca_id ?? '',
+    grupo_estilo_ids: [...(filters.grupo_estilo_ids ?? [])],
+    marca_ids: [...(filters.marca_ids ?? [])],
     linea_ids: [...(filters.linea_ids ?? [])],
     tipo_ids: [...(filters.tipo_ids ?? [])],
     colores: [...(filters.colores ?? [])],
@@ -86,6 +92,12 @@ export function readSharedCatalogFilters(): SharedCatalogFilterSlice | null {
     return {
       grupo_estilo_id: String(parsed.grupo_estilo_id ?? ''),
       marca_id: String(parsed.marca_id ?? ''),
+      grupo_estilo_ids: Array.isArray(parsed.grupo_estilo_ids)
+        ? parsed.grupo_estilo_ids.map(Number).filter(Number.isFinite)
+        : [],
+      marca_ids: Array.isArray(parsed.marca_ids)
+        ? parsed.marca_ids.map(Number).filter(Number.isFinite)
+        : [],
       linea_ids: Array.isArray(parsed.linea_ids)
         ? parsed.linea_ids.map(Number).filter((n) => !Number.isNaN(n))
         : [],
@@ -139,6 +151,8 @@ export function mergeSharedIntoFilters(fromUrl: CatalogoFilterState): CatalogoFi
     ...fromUrl,
     grupo_estilo_id: pick('grupo_estilo_id'),
     marca_id: pick('marca_id'),
+    grupo_estilo_ids: pick('grupo_estilo_ids'),
+    marca_ids: pick('marca_ids'),
     linea_ids: pick('linea_ids'),
     tipo_ids: pick('tipo_ids'),
     colores: pick('colores'),
@@ -162,6 +176,8 @@ export function applySharedSliceToFilters(
     ...current,
     grupo_estilo_id: slice.grupo_estilo_id,
     marca_id: slice.marca_id,
+    grupo_estilo_ids: [...(slice.grupo_estilo_ids ?? [])],
+    marca_ids: [...(slice.marca_ids ?? [])],
     linea_ids: [...slice.linea_ids],
     tipo_ids: [...slice.tipo_ids],
     colores: [...slice.colores],

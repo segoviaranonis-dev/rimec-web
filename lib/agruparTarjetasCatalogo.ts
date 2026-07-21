@@ -48,6 +48,7 @@ export interface RimecVariante {
   pp_id: number | null
   pp_nro: string
   proforma: string                      // Matrimonio con pp_nro
+  numero_preventa: string | null        // Nº preventa Carlos
   quincena_desc: string | null          // Dato duro - mostrar en tarjeta
   quincena_arribo_id?: number | null
   deposito_id?: number | null
@@ -194,6 +195,7 @@ export function agruparTarjetasCatalogo(
       pp_id: item.pp_id,
       pp_nro: item.pp_nro,
       proforma: item.proforma,
+      numero_preventa: item.numero_preventa ?? null,
       quincena_desc: item.quincena_desc,  // Dato duro
       quincena_arribo_id: item.quincena_arribo_id,
       deposito_id: item.deposito_id ?? null,

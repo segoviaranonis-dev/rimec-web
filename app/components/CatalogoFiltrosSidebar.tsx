@@ -36,6 +36,8 @@ export type CatalogoFiltrosOpciones = {
   colorFamilias: FamiliaPilarItem[]
   /** Fechas de llegada CP (ex slider / quincenas) */
   quincenas?: { id: number; label: string }[]
+  /** Nº preventa Carlos */
+  preventas?: string[]
 }
 
 type Props = {
@@ -50,6 +52,8 @@ type Props = {
 export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
   grupo_estilo_id: '',
   marca_id: '',
+  grupo_estilo_ids: [],
+  marca_ids: [],
   linea_ids: [],
   tipo_ids: [],
   colores: [],
@@ -64,6 +68,7 @@ export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
   tipo_grupos: [],
   material_familias: [],
   color_familias: [],
+  preventas: [],
 }
 
 function cap(s: string) {
@@ -71,8 +76,14 @@ function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
 }
 
+function toggleStr(arr: string[], val: string): string[] {
+  return arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]
+}
+
 function hayFiltrosActivos(f: CatalogoFilterState, empty: CatalogoFilterState): boolean {
   return (
+    (f.grupo_estilo_ids?.length ?? 0) > 0 ||
+    (f.marca_ids?.length ?? 0) > 0 ||
     Boolean(f.grupo_estilo_id) ||
     Boolean(f.marca_id) ||
     f.linea_ids.length > 0 ||
@@ -81,6 +92,8 @@ function hayFiltrosActivos(f: CatalogoFilterState, empty: CatalogoFilterState): 
     Boolean(f.genero_codigo) ||
     (f.material_familias?.length ?? 0) > 0 ||
     (f.color_familias?.length ?? 0) > 0 ||
+    (f.quincenas?.length ?? 0) > 0 ||
+    (f.preventas?.length ?? 0) > 0 ||
     Boolean(f.buscar?.trim()) ||
     Boolean(f.deposito_codigo) ||
     (f.origen_tipo ?? '') !== (empty.origen_tipo ?? 'TODOS') ||
@@ -469,6 +482,10 @@ export function CatalogoFiltrosSidebar({
   const ramo = (filtros.ramo_tipo ?? '') as '' | PeRamoTipo
   const deposito = (filtros.deposito_codigo ?? '') as '' | PeDepositoCodigo
   const tipoGrupos = filtros.tipo_grupos ?? []
+  const marcaIds = filtros.marca_ids ??
+    (filtros.marca_id ? [Number(filtros.marca_id)] : [])
+  const estiloIds = filtros.grupo_estilo_ids ??
+    (filtros.grupo_estilo_id ? [Number(filtros.grupo_estilo_id)] : [])
   const materialFam = filtros.material_familias ?? []
   const colorFam = filtros.color_familias ?? []
 
@@ -476,7 +493,7 @@ export function CatalogoFiltrosSidebar({
 
   const badgeDim =
     (filtros.tipo_ids?.length ?? 0) +
-    (filtros.marca_id ? 1 : 0) +
+    marcaIds.length +
     tipoGrupos.length +
     (filtros.genero_codigo ? 1 : 0) +
     (filtros.deposito_codigo ? 1 : 0) +
@@ -485,7 +502,7 @@ export function CatalogoFiltrosSidebar({
     (filtros.quincenas?.length ?? 0)
 
   const badgeMol =
-    (filtros.grupo_estilo_id ? 1 : 0) +
+    estiloIds.length +
     filtros.linea_ids.length +
     materialFam.length +
     colorFam.length
@@ -526,6 +543,8 @@ export function CatalogoFiltrosSidebar({
 
   const quincenasOpts = opciones.quincenas ?? []
   const quincenasSel = filtros.quincenas ?? []
+  const preventasOpts = opciones.preventas ?? []
+  const preventasSel = filtros.preventas ?? []
 
   return (
     <div
@@ -573,6 +592,9 @@ export function CatalogoFiltrosSidebar({
               🚢 Compra previa
               {esCp && quincenasSel.length > 0
                 ? ` · ${quincenasSel.length} fecha${quincenasSel.length === 1 ? '' : 's'}`
+                : ''}
+              {esCp && preventasSel.length > 0
+                ? ` · ${preventasSel.length} preventa${preventasSel.length === 1 ? '' : 's'}`
                 : ''}
             </button>
 
@@ -648,6 +670,67 @@ export function CatalogoFiltrosSidebar({
                       )
                     })
                   )}
+                </div>
+              </details>
+            ) : null}
+
+            {esCp && preventasOpts.length > 0 ? (
+              <details className="group rounded-lg border border-slate-200 bg-white">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 [&::-webkit-details-marker]:hidden">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-rimec-azul transition group-open:rotate-90" aria-hidden>
+                      ▸
+                    </span>
+                    Nº preventa
+                    {preventasSel.length > 0 ? (
+                      <span className="rounded-full bg-rimec-azul px-1.5 py-0.5 text-[9px] font-black text-white">
+                        {preventasSel.length}
+                      </span>
+                    ) : null}
+                  </span>
+                  {preventasSel.length > 0 ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="text-[10px] font-semibold normal-case tracking-normal text-red-600 hover:underline"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        patch({ preventas: [] })
+                      }}
+                    >
+                      Limpiar
+                    </span>
+                  ) : null}
+                </summary>
+                <div className="max-h-48 space-y-1 overflow-y-auto border-t border-slate-100 p-2">
+                  {preventasOpts.map((pv) => {
+                    const on = preventasSel.includes(pv)
+                    return (
+                      <button
+                        key={pv}
+                        type="button"
+                        onClick={() => patch({ preventas: toggleStr(preventasSel, pv) })}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-xs ${
+                          on
+                            ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] ${
+                            on
+                              ? 'border-rimec-azul bg-rimec-azul text-white'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                          aria-hidden
+                        >
+                          {on ? '✓' : ''}
+                        </span>
+                        {pv}
+                      </button>
+                    )
+                  })}
                 </div>
               </details>
             ) : null}
@@ -754,13 +837,14 @@ export function CatalogoFiltrosSidebar({
           onClear={() => patch({ tipo_ids: [], material_familias: [], color_familias: [] })}
         />
 
-        <SingleSelectGroup
+        <MultiSelectGroup
           title="Marca"
           items={opciones.marcas.map((m) => ({ ...m, label: cap(m.label) }))}
-          selectedId={filtros.marca_id}
-          onSelect={(id) =>
+          selected={marcaIds}
+          onToggle={(id) =>
             patch({
-              marca_id: filtros.marca_id === id ? '' : id,
+              marca_id: '',
+              marca_ids: toggleId(marcaIds, id),
               linea_ids: [],
               tonos: [],
               sin_tono: false,
@@ -771,6 +855,7 @@ export function CatalogoFiltrosSidebar({
           onClear={() =>
             patch({
               marca_id: '',
+              marca_ids: [],
               linea_ids: [],
               tonos: [],
               sin_tono: false,
@@ -838,12 +923,12 @@ export function CatalogoFiltrosSidebar({
           Cascada: Estilo → Línea → Material → Color · familias texto
         </p>
 
-        <SingleSelectGroup
+        <MultiSelectGroup
           title="Estilo"
           items={opciones.estilos}
-          selectedId={filtros.grupo_estilo_id}
-          onSelect={(id) => patch(toggleEstiloCascada(filtros.grupo_estilo_id, id))}
-          onClear={() => patch(cascadaEstilo(''))}
+          selected={estiloIds}
+          onToggle={(id) => patch(toggleEstiloCascada(estiloIds, id))}
+          onClear={() => patch(cascadaEstilo([]))}
           defaultOpen
         />
 

@@ -92,7 +92,7 @@ export function fetchCatalogoMetaRows<T>(
       tipo_1_id, descp_tipo_1,
       descp_color, nombre, material_code, color_code,
       color_tono_canon, genero_codigo, descp_genero,
-      origen_tipo, quincena_desc, quincena_arribo_id,
+      origen_tipo, quincena_desc, quincena_arribo_id, pp_id,
       deposito_nombre,
       cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
     `,

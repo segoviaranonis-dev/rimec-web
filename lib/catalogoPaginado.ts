@@ -15,7 +15,7 @@ import {
   isCatalogoOrigenTodos,
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
-import { enrichCatalogoRows, loteEnriquecidoDesdeVista } from '@/lib/catalogoEnrich'
+import { enrichCatalogoRows, enrichPreventaCatalogoRows, loteEnriquecidoDesdeVista } from '@/lib/catalogoEnrich'
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 
 export const CATALOGO_CARD_PAGE = 30
@@ -158,9 +158,11 @@ async function rowsToGrillaAsync(
   filters: CatalogoFilterStateExtended,
 ): Promise<TarjetaGrilla[]> {
   const active = rows.filter(r => cajasDisponiblesDeFila(r) > 0)
-  const enriched = loteEnriquecidoDesdeVista(active)
-    ? active
-    : await enrichCatalogoRows(active)
+  // Preventa Carlos siempre — la vista puede traer género/tono sin nro_pedido_externo (MIG-151).
+  let enriched = await enrichPreventaCatalogoRows(active)
+  if (!loteEnriquecidoDesdeVista(enriched)) {
+    enriched = await enrichCatalogoRows(enriched)
+  }
   const lineaCasoMap =
     filters.tipo_grupos?.length ? await getLineaCasoMapCached() : null
   const filtered = applyMemoryFilters(enriched, filters, lineaCasoMap)

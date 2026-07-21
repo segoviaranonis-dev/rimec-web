@@ -6,6 +6,8 @@ export interface StockRow {
   proforma: string
   quincena_arribo_id: number | null
   quincena_desc: string | null
+  /** Nº preventa Carlos · pedido_proveedor.nro_pedido_externo */
+  numero_preventa?: string | null
   marca_id: number
   descp_marca: string
   caso_id: number | null

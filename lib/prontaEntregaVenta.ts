@@ -182,3 +182,18 @@ export function paresCarritoDesdeCajas(
 ): number {
   return paresDesdeCajasCerradas(cajas, paresInputDesdeCarrito(item))
 }
+
+/**
+ * Etiqueta PE catálogo — solo origen (+ LIQ).
+ * Prohibido repetir línea/referencia bajo el chip (Director 2026-07-20).
+ * `linea`/`referencia` se ignoran (compat call sites existentes).
+ */
+export function etiquetaProntaEntregaCatalogo(
+  _linea?: string | null,
+  _referencia?: string | null,
+  opts?: { liquidacion?: boolean },
+): string {
+  let out = 'Pronta entrega'
+  if (opts?.liquidacion) out += ' · LIQ'
+  return out
+}

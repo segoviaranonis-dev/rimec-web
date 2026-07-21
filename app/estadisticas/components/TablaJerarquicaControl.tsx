@@ -64,6 +64,14 @@ function FilaRecursive({
                 {nodo.count > 0 ? (
                   <span className="text-slate-400 font-normal ml-1">({nodo.count})</span>
                 ) : null}
+                {nodo.preventa ? (
+                  <span
+                    className="ml-2 font-mono text-[11px] font-semibold text-sky-900 bg-sky-100/80 px-1.5 py-0.5 rounded border border-sky-200"
+                    title="Nº preventa Carlos"
+                  >
+                    {nodo.preventa}
+                  </span>
+                ) : null}
               </span>
               {nodo.meta ? (
                 <p className="text-[10px] text-slate-500 font-mono mt-0.5">{nodo.meta}</p>

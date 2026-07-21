@@ -4,7 +4,10 @@ import type { ListaId } from '@/store/sesionVenta'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { CatalogPanelOrigen } from '@/components/catalog/CatalogPanelOrigen'
 import { useCatalogAcordeon } from '@/components/catalog/CatalogAcordeonContext'
-import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import { resolveParesPorCaja, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
+import { esLiquidacionPe } from '@/lib/catalogoComercial'
+import { DatoDuroCpFilas } from '@/components/catalog/DatoDuroCpFilas'
+import { etiquetaDatoDuroCp, partesDatoDuroCp } from '@/lib/datoDuroCabecera'
 import { formatPrecioGs } from '@/lib/formatPrecioGs'
 import { precioDeLoteCatalogo } from '@/lib/precioLoteCatalogo'
 import { indiceVariantePorTonoKey } from '@/lib/catalogoTonoActivo'
@@ -16,7 +19,14 @@ import {
 
 export function etiquetaDatoDuroLote(lote: TarjetaCatalogo): string {
   const v = lote.variantes.find(vv => vv.cajas_disponibles > 0) ?? lote.variantes[0]
-  if (lote.origen_tipo === 'PRONTA_ENTREGA') return 'Pronta entrega'
+  if (lote.origen_tipo === 'PRONTA_ENTREGA') {
+    return etiquetaProntaEntregaCatalogo(lote.linea_codigo, lote.referencia_codigo, {
+      liquidacion: esLiquidacionPe(lote),
+    })
+  }
+  if (v?.numero_preventa || v?.quincena_desc) {
+    return etiquetaDatoDuroCp(v.numero_preventa, v.quincena_desc)
+  }
   if (v?.quincena_desc) return v.quincena_desc
   return lote.origen_label || 'Compra previa'
 }
@@ -88,18 +98,37 @@ export function CatalogLotesAcordeon({
     <div className="space-y-1">
       {lotes.map(lote => {
         const esConf = isConfecciones638Lote(lote)
-        // 638: botones talla siempre visibles (no esconder detrás del acordeón).
+        const esPe = lote.origen_tipo === 'PRONTA_ENTREGA'
+        const v = lote.variantes.find(vv => vv.cajas_disponibles > 0) ?? lote.variantes[0]
         const open = esConf || isOpen(lote.cardKey)
-        const label = etiquetaDatoDuroLote(lote)
+        const cpPartes =
+          !esPe && v
+            ? partesDatoDuroCp(v.numero_preventa, v.quincena_desc)
+            : { preventa: '', quincena: '' }
+        const labelFallback = etiquetaDatoDuroLote(lote)
         const uCorta = unidadStockCorta(lote)
         const stockUds = stockBadgeAcordeonLote(lote, { open, activeTonoKey })
         const stockBadgeTitle = open
           ? 'Stock del color seleccionado'
           : 'Stock total del lote (todos los colores)'
-        const esPe = lote.origen_tipo === 'PRONTA_ENTREGA'
         const accent = esPe ? 'border-l-emerald-500' : 'border-l-sky-600'
-        // Protocolo: precio solo con venta activa (4.01.04.001) — confecciones: precio en sub-tarjetas por talla
         const precioVal = activa && !esConf ? precioDeLoteCatalogo(lote, listaPrecioId) : null
+
+        const datoDuroLabel = esPe ? (
+          <span
+            className="block text-[10px] font-semibold leading-snug text-slate-800"
+            title={labelFallback}
+          >
+            {labelFallback}
+          </span>
+        ) : (
+          <DatoDuroCpFilas
+            preventa={cpPartes.preventa}
+            quincena={cpPartes.quincena}
+            fallbackLabel={labelFallback}
+            layout="center"
+          />
+        )
 
         return (
           <div key={lote.cardKey} className="overflow-hidden rounded-lg">
@@ -108,19 +137,16 @@ export function CatalogLotesAcordeon({
                 type="button"
                 onClick={() => toggle(lote.cardKey)}
                 aria-expanded={open}
-                className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-1.5 text-left shadow-sm transition hover:bg-slate-50/80 ${accent}`}
+                className={`flex w-full items-center gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-2 text-left shadow-sm transition hover:bg-slate-50/80 ${accent}`}
               >
                 <span
-                  className="mt-0.5 shrink-0 text-[11px] font-bold leading-none text-slate-400"
+                  className="shrink-0 text-[11px] font-bold leading-none text-slate-400"
                   aria-hidden
                 >
                   {open ? '▾' : '▸'}
                 </span>
-                <span
-                  className="min-w-0 flex-1 text-[10px] font-semibold leading-snug text-slate-800 break-words whitespace-normal"
-                  title={label}
-                >
-                  {label}
+                <span className="flex min-w-0 flex-1 items-center justify-center px-1" title={labelFallback}>
+                  {datoDuroLabel}
                 </span>
                 <span className="ml-0.5 flex shrink-0 flex-col items-end gap-0.5">
                   {stockUds > 0 ? (
@@ -146,11 +172,8 @@ export function CatalogLotesAcordeon({
               <div
                 className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-1.5 ${accent}`}
               >
-                <span
-                  className="min-w-0 flex-1 text-[10px] font-semibold leading-snug text-slate-800 break-words whitespace-normal"
-                  title={label}
-                >
-                  {label}
+                <span className="min-w-0 flex-1" title={labelFallback}>
+                  {datoDuroLabel}
                 </span>
                 {stockUds > 0 ? (
                   <span className="rounded-full bg-bazzar-naranja px-2 py-0.5 text-[11px] font-black tabular-nums leading-none text-white shadow-sm">

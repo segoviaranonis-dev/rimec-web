@@ -1,3 +1,5 @@
+import { redondearCentenaGs } from '@/lib/redondeoCentenaGs'
+
 /** Paridad Tablet/Report depósito — precio en Gs. */
 export function formatPrecioGs(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—'
@@ -5,5 +7,5 @@ export function formatPrecioGs(n: number | null | undefined): string {
     style: 'currency',
     currency: 'PYG',
     maximumFractionDigits: 0,
-  }).format(Math.round(n))
+  }).format(redondearCentenaGs(n))
 }

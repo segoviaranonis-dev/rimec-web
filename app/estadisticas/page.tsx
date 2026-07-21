@@ -141,7 +141,7 @@ function TarjetaCompraPrevia() {
                 <button
                   key={pp.id}
                   type="button"
-                  title={`${pp.nro}${pp.proforma ? ` · ${pp.proforma}` : ''}`}
+                  title={`${pp.nro}${pp.proforma ? ` · ${pp.proforma}` : ''}${pp.preventa ? ` · preventa ${pp.preventa}` : ''}`}
                   onClick={() =>
                     setPpSel(prev =>
                       prev.includes(pp.id) ? prev.filter(x => x !== pp.id) : [...prev, pp.id],
@@ -155,6 +155,9 @@ function TarjetaCompraPrevia() {
                 >
                   <span className="font-bold">{pp.proforma || 'Sin proforma'}</span>
                   <span className="text-slate-500"> · {pp.eta ? pp.eta.slice(5) : 'sin ETA'}</span>
+                  {pp.preventa ? (
+                    <span className="text-sky-800 font-mono font-semibold"> · {pp.preventa}</span>
+                  ) : null}
                   <span className="block text-[9px] font-mono text-slate-400">{pp.nro}</span>
                 </button>
               )

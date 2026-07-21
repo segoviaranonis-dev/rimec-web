@@ -18,19 +18,16 @@ const MESES_ABBR: Record<string, string> = {
   diciembre: 'Dic.',
 }
 
-/** Unifica nro_pedido_externo → PP-NNNN (dígitos puros incluidos). */
+/** Conserva el valor asignado: solo normaliza PP- cuando el prefijo ya existe. */
 export function formatNumeroPreventaCarlos(raw: string | null | undefined): string {
   const s = String(raw ?? '').trim()
   if (!s) return ''
 
   if (/^PP-\d+(-\d+)?$/i.test(s)) return `PP-${s.slice(3)}`
 
-  if (/^\d+(-\d+)?$/.test(s)) return `PP-${s}`
-
   const ppMatch = s.match(/^PP\s*[-–]?\s*(.+)$/i)
   if (ppMatch) {
     const rest = ppMatch[1].replace(/\s+/g, '')
-    if (/^\d+(-\d+)?$/.test(rest)) return `PP-${rest}`
     return `PP-${rest}`
   }
 

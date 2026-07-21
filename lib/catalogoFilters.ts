@@ -126,18 +126,25 @@ export function applyTipoGruposSqlFilter(
 ): any {
   const sel = tipoGrupos ?? []
   if (!sel.length) return query
+  const wantsLiq = opts?.allowLiquidacion !== false && sel.includes('liquidacion')
   const parts: string[] = []
   if (sel.includes('normal')) {
     parts.push(`descp_caso.in.(${CASOS_TIPO_NORMAL.join(',')})`)
   }
   if (sel.includes('carteras')) parts.push('descp_caso.eq.CARTERAS')
   if (sel.includes('promo')) parts.push('descp_caso.eq.PROMOCIONAL')
-  if (opts?.allowLiquidacion !== false && sel.includes('liquidacion')) {
+  if (wantsLiq) {
     parts.push('es_liquidacion.eq.true')
     parts.push('cadena_comercial.eq.LIQUIDACION')
   }
   if (!parts.length) return query
-  return query.or(parts.join(','))
+  let q = query.or(parts.join(','))
+  if (!wantsLiq) {
+    q = q.or('es_liquidacion.eq.false,es_liquidacion.is.null')
+  }
+  // Nota: es_promo / cadena PROMOCIONAL se resuelven en applyMemoryFilters
+  // (filtro-tipo-canonico) — CP no tiene columna es_promo.
+  return q
 }
 
 export function applyNonOrigenSqlFilters(
@@ -268,9 +275,10 @@ export function applyMemoryFilters(
       rowMatchesTipoGrupos(
         {
           descp_caso: r.descp_caso,
-          caso_precio: r.descp_caso,
+          caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
           linea_codigo: r.linea_codigo,
           es_liquidacion: r.es_liquidacion,
+          es_promo: r.es_promo,
           cadena_comercial: r.cadena_comercial,
         },
         tipoGrupos,

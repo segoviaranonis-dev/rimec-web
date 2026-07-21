@@ -21,6 +21,8 @@ import {
 } from '@/lib/filtros/filtro-tipo-canonico'
 import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
 import { clearSharedCatalogFilters } from '@/lib/catalogoFiltrosCompartidos'
+import type { DatoDuroCpParItem } from '@/lib/datoDuroCpFiltro'
+import { DatoDuroCpFilas } from '@/components/catalog/DatoDuroCpFilas'
 import type { CatalogoFilterState } from './FiltrosCatalogo'
 
 type FilterItem = { id: number; label: string }
@@ -34,10 +36,10 @@ export type CatalogoFiltrosOpciones = {
   generos: GeneroItem[]
   materialFamilias: FamiliaPilarItem[]
   colorFamilias: FamiliaPilarItem[]
-  /** Fechas de llegada CP (ex slider / quincenas) */
+  /** Fechas de llegada CP (legacy) */
   quincenas?: { id: number; label: string }[]
-  /** Nº preventa Carlos */
-  preventas?: string[]
+  /** Pares casados preventa + quincena */
+  paresDatoDuro?: DatoDuroCpParItem[]
 }
 
 type Props = {
@@ -68,7 +70,7 @@ export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
   tipo_grupos: [],
   material_familias: [],
   color_familias: [],
-  preventas: [],
+  dato_duro_cp: [],
 }
 
 function cap(s: string) {
@@ -76,8 +78,8 @@ function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
 }
 
-function toggleStr(arr: string[], val: string): string[] {
-  return arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]
+function toggleDatoDuroCp(arr: string[], key: string): string[] {
+  return arr.includes(key) ? arr.filter(x => x !== key) : [...arr, key]
 }
 
 function hayFiltrosActivos(f: CatalogoFilterState, empty: CatalogoFilterState): boolean {
@@ -92,8 +94,7 @@ function hayFiltrosActivos(f: CatalogoFilterState, empty: CatalogoFilterState): 
     Boolean(f.genero_codigo) ||
     (f.material_familias?.length ?? 0) > 0 ||
     (f.color_familias?.length ?? 0) > 0 ||
-    (f.quincenas?.length ?? 0) > 0 ||
-    (f.preventas?.length ?? 0) > 0 ||
+    (f.dato_duro_cp?.length ?? 0) > 0 ||
     Boolean(f.buscar?.trim()) ||
     Boolean(f.deposito_codigo) ||
     (f.origen_tipo ?? '') !== (empty.origen_tipo ?? 'TODOS') ||
@@ -499,7 +500,7 @@ export function CatalogoFiltrosSidebar({
     (filtros.deposito_codigo ? 1 : 0) +
     (ramo ? 1 : 0) +
     (origen !== 'TODOS' ? 1 : 0) +
-    (filtros.quincenas?.length ?? 0)
+    (filtros.dato_duro_cp?.length ?? 0)
 
   const badgeMol =
     estiloIds.length +
@@ -510,7 +511,12 @@ export function CatalogoFiltrosSidebar({
   const setOrigen = (origen_tipo: string) => {
     patch({
       origen_tipo,
-      quincenas: origen_tipo === 'CP' ? filtros.quincenas : [],
+      dato_duro_cp:
+        origen_tipo === 'CP' || origen_tipo === 'TRÁNSITO_PP' || !origen_tipo
+          ? filtros.dato_duro_cp
+          : [],
+      quincenas: [],
+      preventas: [],
       ramo_tipo: 'CALZADO',
       deposito_codigo: origen_tipo === 'PRONTA_ENTREGA' ? filtros.deposito_codigo : '',
     })
@@ -541,10 +547,8 @@ export function CatalogoFiltrosSidebar({
     patch({ ramo_tipo: next, ...resetCascadaAlCambiarRamo() })
   }
 
-  const quincenasOpts = opciones.quincenas ?? []
-  const quincenasSel = filtros.quincenas ?? []
-  const preventasOpts = opciones.preventas ?? []
-  const preventasSel = filtros.preventas ?? []
+  const paresOpts = opciones.paresDatoDuro ?? []
+  const datoDuroSel = filtros.dato_duro_cp ?? []
 
   return (
     <div
@@ -590,11 +594,8 @@ export function CatalogoFiltrosSidebar({
               }`}
             >
               🚢 Compra previa
-              {esCp && quincenasSel.length > 0
-                ? ` · ${quincenasSel.length} fecha${quincenasSel.length === 1 ? '' : 's'}`
-                : ''}
-              {esCp && preventasSel.length > 0
-                ? ` · ${preventasSel.length} preventa${preventasSel.length === 1 ? '' : 's'}`
+              {esCp && datoDuroSel.length > 0
+                ? ` · ${datoDuroSel.length} lote${datoDuroSel.length === 1 ? '' : 's'}`
                 : ''}
             </button>
 
@@ -605,14 +606,14 @@ export function CatalogoFiltrosSidebar({
                     <span className="text-rimec-azul transition group-open:rotate-90" aria-hidden>
                       ▸
                     </span>
-                    Fechas de llegada
-                    {quincenasSel.length > 0 ? (
+                    Llegada · preventa
+                    {datoDuroSel.length > 0 ? (
                       <span className="rounded-full bg-rimec-azul px-1.5 py-0.5 text-[9px] font-black text-white">
-                        {quincenasSel.length}
+                        {datoDuroSel.length}
                       </span>
                     ) : null}
                   </span>
-                  {quincenasSel.length > 0 ? (
+                  {datoDuroSel.length > 0 ? (
                     <span
                       role="button"
                       tabIndex={0}
@@ -620,13 +621,13 @@ export function CatalogoFiltrosSidebar({
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        patch({ quincenas: [] })
+                        patch({ dato_duro_cp: [], quincenas: [], preventas: [] })
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault()
                           e.stopPropagation()
-                          patch({ quincenas: [] })
+                          patch({ dato_duro_cp: [], quincenas: [], preventas: [] })
                         }
                       }}
                     >
@@ -634,22 +635,26 @@ export function CatalogoFiltrosSidebar({
                     </span>
                   ) : null}
                 </summary>
-                <div className="max-h-48 space-y-1 overflow-y-auto border-t border-slate-100 p-2">
-                  {quincenasOpts.length === 0 ? (
-                    <p className="px-1 py-1 text-[11px] text-slate-400">Sin fechas disponibles</p>
+                <div className="max-h-52 space-y-1 overflow-y-auto border-t border-slate-100 p-2">
+                  {paresOpts.length === 0 ? (
+                    <p className="px-1 py-1 text-[11px] text-slate-400">Sin lotes disponibles</p>
                   ) : (
-                    quincenasOpts.map((q) => {
-                      const on = quincenasSel.includes(q.id)
+                    paresOpts.map((par) => {
+                      const on = datoDuroSel.includes(par.key)
                       return (
                         <button
-                          key={q.id}
+                          key={par.key}
                           type="button"
                           onClick={() =>
-                            patch({ quincenas: toggleId(quincenasSel, q.id) })
+                            patch({
+                              dato_duro_cp: toggleDatoDuroCp(datoDuroSel, par.key),
+                              quincenas: [],
+                              preventas: [],
+                            })
                           }
-                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs ${
+                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${
                             on
-                              ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
+                              ? 'bg-rimec-azul/10 ring-1 ring-rimec-azul/20'
                               : 'text-slate-700 hover:bg-slate-50'
                           }`}
                         >
@@ -663,74 +668,15 @@ export function CatalogoFiltrosSidebar({
                           >
                             {on ? '✓' : ''}
                           </span>
-                          <span className="min-w-0 flex-1 truncate" title={q.label}>
-                            {q.label}
-                          </span>
+                          <DatoDuroCpFilas
+                            preventa={par.preventa}
+                            quincena={par.quincenaLabel}
+                            layout="left"
+                          />
                         </button>
                       )
                     })
                   )}
-                </div>
-              </details>
-            ) : null}
-
-            {esCp && preventasOpts.length > 0 ? (
-              <details className="group rounded-lg border border-slate-200 bg-white">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 [&::-webkit-details-marker]:hidden">
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-rimec-azul transition group-open:rotate-90" aria-hidden>
-                      ▸
-                    </span>
-                    Nº preventa
-                    {preventasSel.length > 0 ? (
-                      <span className="rounded-full bg-rimec-azul px-1.5 py-0.5 text-[9px] font-black text-white">
-                        {preventasSel.length}
-                      </span>
-                    ) : null}
-                  </span>
-                  {preventasSel.length > 0 ? (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="text-[10px] font-semibold normal-case tracking-normal text-red-600 hover:underline"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        patch({ preventas: [] })
-                      }}
-                    >
-                      Limpiar
-                    </span>
-                  ) : null}
-                </summary>
-                <div className="max-h-48 space-y-1 overflow-y-auto border-t border-slate-100 p-2">
-                  {preventasOpts.map((pv) => {
-                    const on = preventasSel.includes(pv)
-                    return (
-                      <button
-                        key={pv}
-                        type="button"
-                        onClick={() => patch({ preventas: toggleStr(preventasSel, pv) })}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-xs ${
-                          on
-                            ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span
-                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] ${
-                            on
-                              ? 'border-rimec-azul bg-rimec-azul text-white'
-                              : 'border-slate-300 bg-white'
-                          }`}
-                          aria-hidden
-                        >
-                          {on ? '✓' : ''}
-                        </span>
-                        {pv}
-                      </button>
-                    )
-                  })}
                 </div>
               </details>
             ) : null}

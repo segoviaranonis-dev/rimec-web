@@ -85,8 +85,10 @@ export type CatalogoFilterState = {
   /** Familias Material / Color (claves) */
   material_familias?: string[]
   color_familias?: string[]
-  /** Nº preventa Carlos (CP) */
+  /** Nº preventa Carlos (CP) — legacy */
   preventas?: string[]
+  /** Pares casados quincena + preventa (CP) */
+  dato_duro_cp?: string[]
 }
 
 const GENEROS_FALLBACK: GeneroItem[] = [

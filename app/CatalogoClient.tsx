@@ -94,6 +94,7 @@ function etiquetaCambioFiltro(prev: CatalogoFilterState, next: CatalogoFilterSta
     return `Color${cantidad(next.color_familias?.length ? next.color_familias : next.colores)}`
   }
   if (cambio('tonos') || cambio('sin_tono')) return 'Tono'
+  if (cambio('dato_duro_cp')) return `Lote CP${cantidad(next.dato_duro_cp)}`
   if (cambio('quincenas')) return `Quincena${cantidad(next.quincenas)}`
   if (cambio('preventas')) return `Preventa${cantidad(next.preventas)}`
   if (cambio('buscar')) return `Búsqueda · ${next.buscar?.trim() || 'limpia'}`
@@ -125,6 +126,7 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   if (filters.tipo_grupos?.length) params.set('tipo_grupos', filters.tipo_grupos.join(','))
   if (filters.material_familias?.length) params.set('material_familias', filters.material_familias.join(','))
   if (filters.color_familias?.length) params.set('color_familias', filters.color_familias.join(','))
+  if (filters.dato_duro_cp?.length) params.set('dato_duro_cp', filters.dato_duro_cp.join(','))
   if (filters.preventas?.length) params.set('preventas', filters.preventas.join(','))
   return params
 }
@@ -153,6 +155,7 @@ function filtersConOrigenInmediato(
     deposito_codigo: live.deposito_codigo,
     quincenas: live.quincenas,
     preventas: live.preventas,
+    dato_duro_cp: live.dato_duro_cp,
   }
 }
 
@@ -204,6 +207,9 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [colores, setColores] = useState<string[]>([])
   const [quincenas, setQuincenas] = useState<QuincenaItem[]>([])
   const [preventasOpciones, setPreventasOpciones] = useState<string[]>([])
+  const [paresDatoDuro, setParesDatoDuro] = useState<
+    { key: string; quincenaId: number; quincenaLabel: string; preventa: string }[]
+  >([])
   const [tonosDisponibles, setTonosDisponibles] = useState<string[]>([])
 
   const [productos, setProductos] = useState<TarjetaGrilla[]>([])
@@ -302,6 +308,7 @@ export function CatalogoClient({ initialFilters }: Props) {
           colores?: string[]
           quincenas?: QuincenaItem[]
           preventas?: string[]
+          paresDatoDuro?: typeof paresDatoDuro
           tonosDisponibles?: string[]
           materialFamilias?: FamiliaPilarItem[]
           colorFamilias?: FamiliaPilarItem[]
@@ -322,6 +329,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         setColores(json.colores ?? [])
         setQuincenas(json.quincenas ?? [])
         setPreventasOpciones(json.preventas ?? [])
+        setParesDatoDuro(json.paresDatoDuro ?? [])
         setTonosDisponibles(json.tonosDisponibles ?? [])
 
         const lineaIdsValid = new Set((meta.todasLineas as FilterItem[]).map(l => l.id))
@@ -364,6 +372,8 @@ export function CatalogoClient({ initialFilters }: Props) {
     filters.tipo_ids.join(','),
     filters.colores.join(','),
     filters.quincenas.join(','),
+    filters.dato_duro_cp?.join(',') ?? '',
+    filters.preventas?.join(',') ?? '',
     filters.tonos?.join(',') ?? '',
     filters.sin_tono ? '1' : '',
     filters.buscar ?? '',
@@ -522,6 +532,8 @@ export function CatalogoClient({ initialFilters }: Props) {
     deferredFilters.tipo_ids.join(','),
     deferredFilters.colores.join(','),
     filters.quincenas.join(','),
+    filters.dato_duro_cp?.join(',') ?? '',
+    filters.preventas?.join(',') ?? '',
     filters.origen_tipo ?? '',
     filters.ramo_tipo ?? '',
     filters.deposito_codigo ?? '',
@@ -748,7 +760,7 @@ export function CatalogoClient({ initialFilters }: Props) {
                   materialFamilias: materialFamiliasUi,
                   colorFamilias: colorFamiliasUi,
                   quincenas,
-                  preventas: preventasOpciones,
+                  paresDatoDuro,
                 }}
                 emptyFilters={CATALOGO_FILTROS_VACIOS}
               />
@@ -767,7 +779,7 @@ export function CatalogoClient({ initialFilters }: Props) {
                 materialFamilias: materialFamiliasUi,
                 colorFamilias: colorFamiliasUi,
                 quincenas,
-                preventas: preventasOpciones,
+                paresDatoDuro,
               }}
               emptyFilters={CATALOGO_FILTROS_VACIOS}
             />

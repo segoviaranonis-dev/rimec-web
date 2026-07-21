@@ -2,6 +2,10 @@ import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
 import type { StockRow } from '@/app/catalogo-types'
 import { CATALOGO_SOLO_COMPRA_PREVIA } from '@/lib/catalogoData'
 import { formatQuincenaCorta, formatNumeroPreventaCarlos } from '@/lib/datoDuroCabecera'
+import {
+  quincenasIdsFromDatoDuroCp,
+  rowMatchesDatoDuroCp,
+} from '@/lib/datoDuroCpFiltro'
 import { inferPeRamoTipo, type PeDepositoCodigo } from '@/lib/rimecPeDeposito'
 import { etiquetaTonoFromRaw } from '@/lib/pilares/color-canon'
 import {
@@ -35,8 +39,10 @@ export type CatalogoFilterStateExtended = CatalogoFilterState & {
   /** Familias Material / Color (claves · NN · Napa · Verniz) */
   material_familias?: string[]
   color_familias?: string[]
-  /** Nº preventa Carlos (CP) */
+  /** Nº preventa Carlos (CP) — legacy; preferir dato_duro_cp */
   preventas?: string[]
+  /** Pares casados quincena+preventa — claves q:{id}:PP-NNNN */
+  dato_duro_cp?: string[]
 }
 
 export const CATALOGO_ORIGEN_TODOS = 'TODOS'
@@ -164,7 +170,10 @@ export function applyNonOrigenSqlFilters(
     : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
   if (marcaIds.length) q = q.in('marca_id', marcaIds)
   if (filters.linea_ids.length) q = q.in('linea_id', filters.linea_ids)
-  if (filters.quincenas.length) q = q.in('quincena_arribo_id', filters.quincenas)
+  const quincenaSql = quincenasIdsFromDatoDuroCp(filters.dato_duro_cp).length
+    ? quincenasIdsFromDatoDuroCp(filters.dato_duro_cp)
+    : filters.quincenas
+  if (quincenaSql.length) q = q.in('quincena_arribo_id', quincenaSql)
   if (estiloIds.length) q = q.in('grupo_estilo_id', estiloIds)
   if (filters.tipo_ids.length) q = q.in('tipo_1_id', filters.tipo_ids)
   if (filters.colores.length) {
@@ -238,21 +247,29 @@ export function applyMemoryFilters(
       return String(r.deposito_nombre ?? '').trim() === dep
     })
   }
-  if (filters.quincenas.length && isCatalogoOrigenTodos(filters)) {
-    const qSet = new Set(filters.quincenas)
+  const datoDuroCp = filters.dato_duro_cp ?? []
+  if (datoDuroCp.length) {
     out = out.filter(r => {
       if (normalizeOrigenCatalogo(r.origen_tipo) !== 'TRÁNSITO_PP') return true
-      return r.quincena_arribo_id != null && qSet.has(r.quincena_arribo_id)
+      return rowMatchesDatoDuroCp(r, datoDuroCp)
     })
-  }
-  const preventas = filters.preventas ?? []
-  if (preventas.length) {
-    const pSet = new Set(preventas.map(p => p.trim()).filter(Boolean))
-    out = out.filter(r => {
-      if (normalizeOrigenCatalogo(r.origen_tipo) !== 'TRÁNSITO_PP') return true
-      const pv = String(r.numero_preventa ?? '').trim()
-      return pv && pSet.has(pv)
-    })
+  } else {
+    if (filters.quincenas.length && isCatalogoOrigenTodos(filters)) {
+      const qSet = new Set(filters.quincenas)
+      out = out.filter(r => {
+        if (normalizeOrigenCatalogo(r.origen_tipo) !== 'TRÁNSITO_PP') return true
+        return r.quincena_arribo_id != null && qSet.has(r.quincena_arribo_id)
+      })
+    }
+    const preventas = filters.preventas ?? []
+    if (preventas.length) {
+      const pSet = new Set(preventas.map(p => formatNumeroPreventaCarlos(p)).filter(Boolean))
+      out = out.filter(r => {
+        if (normalizeOrigenCatalogo(r.origen_tipo) !== 'TRÁNSITO_PP') return true
+        const pv = formatNumeroPreventaCarlos(r.numero_preventa)
+        return pv && pSet.has(pv)
+      })
+    }
   }
   const cadena = String(filters.cadena_comercial ?? '').trim().toUpperCase()
   if (cadena === 'LIQUIDACION') {
@@ -461,6 +478,7 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
     material_familias: (sp.get('material_familias') ?? '').split(',').filter(Boolean),
     color_familias: (sp.get('color_familias') ?? '').split(',').filter(Boolean),
     preventas: (sp.get('preventas') ?? '').split(',').filter(Boolean),
+    dato_duro_cp: (sp.get('dato_duro_cp') ?? '').split(',').filter(Boolean),
   }
 }
 

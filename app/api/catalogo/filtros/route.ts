@@ -13,11 +13,13 @@ import {
   buildQuincenasFromRows,
   buildPreventasFromRows,
   buildTonosDisponiblesFromRows,
+  isCatalogoOrigenCp,
   isCatalogoOrigenTodos,
   normalizeOrigenCatalogo,
   parseCatalogoFiltersFromSearchParams,
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
+import { buildParesDatoDuroFromRows } from '@/lib/datoDuroCpFiltro'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import type { StockRow } from '@/app/catalogo-types'
 import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
@@ -115,6 +117,24 @@ const cachedMetaRpc = unstable_cache(
   { revalidate: 300 },
 )
 
+async function paresDatoDuroParaFiltros(filters: CatalogoFilterStateExtended) {
+  const wantCp =
+    isCatalogoOrigenCp(filters) ||
+    (isCatalogoOrigenTodos(filters) && filters.ramo_tipo !== 'CONFECCIONES')
+  if (!wantCp) return []
+
+  const facetFilters: CatalogoFilterStateExtended = {
+    ...filters,
+    material_familias: [],
+    color_familias: [],
+    dato_duro_cp: [],
+    quincenas: [],
+    preventas: [],
+  }
+  const rows = await rowsForFiltrosLegacy(facetFilters)
+  return buildParesDatoDuroFromRows(rows)
+}
+
 /** GET — meta sidebar en cascada (marca → líneas → tonos · familias Material/Color). */
 export async function GET(req: NextRequest) {
   try {
@@ -124,8 +144,10 @@ export async function GET(req: NextRequest) {
     const rpcMeta = await cachedMetaRpc(cacheKey)
     if (rpcMeta) {
       const payload = metaRpcToFiltrosResponse(rpcMeta)
+      const paresDatoDuro = await paresDatoDuroParaFiltros(filters)
       return NextResponse.json({
         ...payload,
+        paresDatoDuro,
         materialFamilias: [],
         colorFamilias: [],
         totalFilas: null,
@@ -145,6 +167,7 @@ export async function GET(req: NextRequest) {
       colores: buildColoresFromRows(rows),
       quincenas: buildQuincenasFromRows(rows),
       preventas: buildPreventasFromRows(rows),
+      paresDatoDuro: buildParesDatoDuroFromRows(rows),
       tonosDisponibles: buildTonosDisponiblesFromRows(rows),
       materialFamilias: buildMaterialFamiliasFromRows(rows),
       colorFamilias: buildColorFamiliasFromRows(rows),

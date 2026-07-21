@@ -117,6 +117,9 @@ function filtersQueryString(filters: CatalogoFilterState) {
   if (filters.color_familias?.length) {
     params.set('color_familias', filters.color_familias.join(','))
   }
+  if (filters.dato_duro_cp?.length) {
+    params.set('dato_duro_cp', filters.dato_duro_cp.join(','))
+  }
   if (filters.preventas?.length) {
     params.set('preventas', filters.preventas.join(','))
   }

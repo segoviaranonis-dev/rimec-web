@@ -13,6 +13,8 @@ export function hasSidebarFilters(f: CatalogoFilterState): boolean {
       f.tipo_ids.length ||
       f.colores.length ||
       f.quincenas.length ||
+      (f.dato_duro_cp?.length ?? 0) > 0 ||
+      (f.preventas?.length ?? 0) > 0 ||
       f.deposito_codigo ||
       (f.tonos?.length ?? 0) > 0 ||
       f.sin_tono ||

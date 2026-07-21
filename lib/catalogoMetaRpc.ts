@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
+import { formatQuincenaCorta } from '@/lib/datoDuroCabecera'
 import {
   dedupeFilterItemsByLabel,
   normalizeFilterItems,
@@ -7,6 +8,7 @@ import {
   isCatalogoOrigenPe,
   isCatalogoOrigenTodos,
 } from '@/lib/catalogoFilters'
+import { quincenasIdsFromDatoDuroCp } from '@/lib/datoDuroCpFiltro'
 import { esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
 
 export type CatalogoMetaRpc = {
@@ -27,6 +29,11 @@ function rpcParams(filters: CatalogoFilterStateExtended, esPe: boolean) {
   const estilos = filters.grupo_estilo_ids?.length
     ? filters.grupo_estilo_ids
     : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
+  const quincenaIds = quincenasIdsFromDatoDuroCp(filters.dato_duro_cp).length
+    ? quincenasIdsFromDatoDuroCp(filters.dato_duro_cp)
+    : filters.quincenas?.length
+      ? filters.quincenas
+      : null
   return {
     p_es_pe: esPe,
     // RPC legacy es single; con multi no estrechar metadata (grilla sí filtra por .in).
@@ -37,7 +44,7 @@ function rpcParams(filters: CatalogoFilterStateExtended, esPe: boolean) {
     p_genero_codigo: filters.genero_codigo?.trim() || null,
     p_ramo_tipo: filters.ramo_tipo || null,
     p_deposito: filters.deposito_codigo?.trim() || null,
-    p_quincena_ids: filters.quincenas?.length ? filters.quincenas : null,
+    p_quincena_ids: quincenaIds,
   }
 }
 
@@ -58,7 +65,10 @@ async function fetchMetaRpc(
     tipos: normalizeFilterItems(raw.tipos ?? []),
     generos: raw.generos ?? [],
     colores: raw.colores ?? [],
-    quincenas: raw.quincenas ?? [],
+    quincenas: (raw.quincenas ?? []).map((q) => ({
+      id: q.id,
+      label: formatQuincenaCorta(q.label) || String(q.label ?? ''),
+    })),
     tonos: raw.tonos ?? [],
   }
 }

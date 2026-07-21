@@ -37,19 +37,21 @@ export type RowTipoSignals = {
   descp_caso?: string | null
   caso_id?: number | null
   cadena_comercial?: string | null
-  es_liquidacion?: boolean | null
+  es_liquidacion?: boolean | number | string | null
   /** SDRM / vista PE — misma señal que badge PROMO en grilla */
-  es_promo?: boolean | null
+  es_promo?: boolean | number | string | null
 }
 
 export function esLiquidacionRow(row: RowTipoSignals): boolean {
-  if (row.es_liquidacion === true) return true
+  if (row.es_liquidacion === true || row.es_liquidacion === 1) return true
+  if (String(row.es_liquidacion ?? '').trim().toLowerCase() === 'true') return true
   return String(row.cadena_comercial ?? '').trim().toUpperCase() === 'LIQUIDACION'
 }
 
 /** Promo comercial — prioriza flag SDRM sobre caso/BCL (paridad badge UI). */
 export function esPromoRow(row: RowTipoSignals): boolean {
-  if (row.es_promo === true) return true
+  if (row.es_promo === true || row.es_promo === 1) return true
+  if (String(row.es_promo ?? '').trim().toLowerCase() === 'true') return true
   if (String(row.cadena_comercial ?? '').trim().toUpperCase() === 'PROMOCIONAL') return true
   const snap = normalizeCasoNombre(row.caso_precio ?? row.descp_caso)
   return Boolean(snap && SET_PROMO.has(snap))

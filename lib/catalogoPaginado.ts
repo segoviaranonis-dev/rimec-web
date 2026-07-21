@@ -63,12 +63,15 @@ async function fetchStockBatchFromView(
 
     query =
       view === 'v_stock_pe_rimec'
-        ? applyPeCommercialSqlFilters(
-            applyPeDepositoQuery(
-              applyNonOrigenSqlFilters(query, filtersForPeSql(filters), {
-                allowLiquidacion: true,
-                skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
-              }),
+        ? applyPeTipoExclusionesSql(
+            applyPeCommercialSqlFilters(
+              applyPeDepositoQuery(
+                applyNonOrigenSqlFilters(query, filtersForPeSql(filters), {
+                  allowLiquidacion: true,
+                  skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
+                }),
+                filters,
+              ),
               filters,
             ),
             filters,
@@ -111,6 +114,22 @@ function filtersForPeSql(filters: CatalogoFilterStateExtended): CatalogoFilterSt
     origen_tipo: 'PRONTA_ENTREGA',
     quincenas: [],
   }
+}
+
+/** Excluir LIQ/Promo en SQL PE cuando el chip Tipo no los pide (aunque se skip el OR de casos). */
+function applyPeTipoExclusionesSql(query: any, filters: CatalogoFilterStateExtended): any {
+  const sel = filters.tipo_grupos ?? []
+  if (!sel.length) return query
+  let q = query
+  if (!sel.includes('liquidacion')) {
+    q = q.or('es_liquidacion.eq.false,es_liquidacion.is.null')
+    q = q.neq('cadena_comercial', 'LIQUIDACION')
+  }
+  if (!sel.includes('promo')) {
+    q = q.or('es_promo.eq.false,es_promo.is.null')
+    q = q.neq('cadena_comercial', 'PROMOCIONAL')
+  }
+  return q
 }
 
 async function fetchStockBatch(

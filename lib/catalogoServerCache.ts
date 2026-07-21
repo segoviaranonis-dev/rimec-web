@@ -27,7 +27,10 @@ export function isWarmTarjetasRequest(
     Boolean(filters.deposito_codigo) ||
     (filters.tonos?.length ?? 0) > 0 ||
     Boolean(filters.sin_tono) ||
-    Boolean(filters.cadena_comercial?.trim())
+    Boolean(filters.cadena_comercial?.trim()) ||
+    (filters.tipo_grupos?.length ?? 0) > 0 ||
+    (filters.material_familias?.length ?? 0) > 0 ||
+    (filters.color_familias?.length ?? 0) > 0
 
   if (hasExtraFilters) return false
 
@@ -51,7 +54,7 @@ const fetchWarmTarjetasInner = unstable_cache(
       limit,
     })
   },
-  ['catalogo-tarjetas-warm-v1'],
+  ['catalogo-tarjetas-warm-v2'],
   { revalidate: WARM_TTL_SEC },
 )
 

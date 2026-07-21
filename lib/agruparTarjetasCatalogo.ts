@@ -17,6 +17,31 @@ import {
 import { enrichImagenUrls } from '@/lib/productImage'
 import { gradasFmtFromRow } from '@/lib/gradasFmt'
 import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import {
+  esLiquidacionRow,
+  esPromoRow,
+  type TipoGrupoId,
+} from '@/lib/filtros/filtro-tipo-canonico'
+
+/** Separar Normal / Promo / LIQ — mismo SKU PE no puede contaminar badge ni filtro Tipo. */
+export function commercialBucketFromRow(item: {
+  es_liquidacion?: boolean | null
+  es_promo?: boolean | null
+  cadena_comercial?: string | null
+  descp_caso?: string | null
+  caso_precio?: string | null
+}): TipoGrupoId | 'otro' {
+  const signals = {
+    es_liquidacion: item.es_liquidacion,
+    es_promo: item.es_promo,
+    cadena_comercial: item.cadena_comercial,
+    descp_caso: item.descp_caso,
+    caso_precio: item.caso_precio ?? item.descp_caso,
+  }
+  if (esLiquidacionRow(signals)) return 'liquidacion'
+  if (esPromoRow(signals)) return 'promo'
+  return 'normal'
+}
 
 export interface RimecVariante {
   det_id: number
@@ -100,7 +125,8 @@ export function agruparTarjetasCatalogo(
 
     const skuId = buildSkuId(item.linea_id, item.referencia_id, item.material_code)
     const origen: OrigenMetadatos = deriveOrigenFromStockRow(item)
-    const cardKey = buildCardKey(skuId, origen)
+    const bucket = commercialBucketFromRow(item)
+    const cardKey = `${buildCardKey(skuId, origen)}|${bucket}`
 
     if (!cardMap.has(cardKey)) {
       cardMap.set(cardKey, {

@@ -107,6 +107,8 @@ export interface TarjetaCatalogo {
   es_liquidacion?: boolean
   es_promo?: boolean
   cadena_comercial?: string | null
+  /** COD.GRUPO Carlos — dígito cadena → LIQ/PROMO/REGULAR (R-FI-2) */
+  cod_grupo?: string | null
   tipo_v2_id?: number | null
   ramo_tipo?: string | null
   variantes: RimecVariante[]
@@ -155,6 +157,7 @@ export function agruparTarjetasCatalogo(
         es_liquidacion: item.es_liquidacion === true,
         es_promo: item.es_promo === true,
         cadena_comercial: item.cadena_comercial ?? null,
+        cod_grupo: item.cod_grupo ?? null,
         tipo_v2_id: item.tipo_v2_id ?? null,
         ramo_tipo: item.ramo_tipo ?? null,
         variantes: [],

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
 import { getSession } from '@/lib/auth/session'
 import { sanitizeConfirmarPayload } from '@/lib/sanitizeConfirmarPayload'
 import { repairConfirmarPayloadPrecios } from '@/lib/repairConfirmarPayloadPrecios'
+import { asegurarSegregacionFiPayload } from '@/lib/asegurarSegregacionFiPayload'
 
 /**
  * POST /api/carrito/confirmar
@@ -38,7 +39,27 @@ export async function POST(req: NextRequest) {
 
     const sb = getSupabaseAdmin()
     const sanitized = sanitizeConfirmarPayload(p_payload)
-    const payload = await repairConfirmarPayloadPrecios(sb, session.id_usuario, sanitized)
+    const repaired = await repairConfirmarPayloadPrecios(sb, session.id_usuario, sanitized)
+    let payload: unknown
+    try {
+      const seg = await asegurarSegregacionFiPayload(sb, repaired)
+      payload = seg.payload
+      if (seg.facturas_spliteadas > 0) {
+        console.info(
+          `[confirmar] R-FI-2: se separaron ${seg.facturas_spliteadas} FI por cadena comercial`,
+        )
+      }
+    } catch (segErr) {
+      return NextResponse.json(
+        {
+          error:
+            segErr instanceof Error
+              ? segErr.message
+              : 'R-FI-2: PROMO y LIQUIDACIÓN no pueden ir en la misma factura',
+        },
+        { status: 400 },
+      )
+    }
     const totalMonto =
       payload && typeof payload === 'object' && 'total_neto' in payload
         ? Number((payload as { total_neto?: number }).total_neto) || Number(p_total_monto) || 0

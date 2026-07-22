@@ -28,7 +28,8 @@ import {
 } from '@/lib/prontaEntregaVenta'
 import { normalizarDescuentos4, precioNetoCascada } from '@/lib/carritoDescuentosFi'
 import { gradasFmtFromRow } from '@/lib/gradasFmt'
-import { claveCasoFi, etiquetaCasoFi } from '@/lib/facturaCasoClave'
+import { etiquetaCasoFi } from '@/lib/facturaCasoClave'
+import { cadenaComercialFi, claveCelulaFi, etiquetaCelulaFi } from '@/lib/facturaCelulaClave'
 
 export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
 
@@ -73,6 +74,10 @@ export interface ItemCarrito {
   marca_id:        number | null
   caso:            string
   caso_id:         number | null
+  /** R-FI-2 — señales comerciales (PE / SDRM) */
+  es_promo?:       boolean | null
+  es_liquidacion?: boolean | null
+  cadena_comercial?: string | null
   nombre:          string
   gradas_fmt:      string
   imagen_url:      string
@@ -269,6 +274,9 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     marca_id: row.marca_id_snapshot,
     caso: row.caso_snapshot,
     caso_id: row.caso_id_snapshot,
+    es_promo: null,
+    es_liquidacion: null,
+    cadena_comercial: null,
     nombre: stockRow?.nombre ?? '',
     gradas_fmt: gradasFmtFromRow({
       grades_json: stockRow?.grades_json as Record<string, number> | null | undefined,
@@ -695,20 +703,25 @@ export function fragmentarCarrito(
     }
 
     const marcas: MarcaFragmentada[] = Object.entries(byMarca).map(([marca, mItems]) => {
-      // R-FI-1: 1 FI = 1 caso. Clave = caso_id (no colapsar nombres vacíos → «Sin caso»).
-      const byCaso: Record<string, ItemCarrito[]> = {}
+      // R-FI-1 + R-FI-2: 1 FI = 1 caso × 1 cadena (PROMO ≠ LIQUIDACIÓN ≠ REGULAR).
+      const byCelula: Record<string, ItemCarrito[]> = {}
       for (const item of mItems) {
-        const key = claveCasoFi(item)
-        if (!byCaso[key]) byCaso[key] = []
-        byCaso[key].push(item)
+        const key = claveCelulaFi(item)
+        if (!byCelula[key]) byCelula[key] = []
+        byCelula[key].push(item)
       }
 
-      const facturas: FacturaPrevisible[] = Object.entries(byCaso).map(([casoKey, cItems]) => {
+      const facturas: FacturaPrevisible[] = Object.entries(byCelula).map(([celulaKey, cItems]) => {
         const casoId =
           cItems.find((i) => i.caso_id != null && Number(i.caso_id) > 0)?.caso_id ?? null
-        const caso = etiquetaCasoFi({
+        const caso = etiquetaCelulaFi({
           caso: cItems.find((i) => String(i.caso ?? '').trim())?.caso ?? '',
           caso_id: casoId,
+          es_promo: cItems.find((i) => i.es_promo)?.es_promo ?? null,
+          es_liquidacion: cItems.find((i) => i.es_liquidacion)?.es_liquidacion ?? null,
+          cadena_comercial:
+            cItems.find((i) => i.cadena_comercial)?.cadena_comercial ??
+            cadenaComercialFi(cItems[0]!),
         })
         // Buscar configuración de esta factura específica (MIG-083)
         const facturaConfig = facturasConfig?.find(
@@ -716,7 +729,8 @@ export function fragmentarCarrito(
             f.pp_id === ppId &&
             f.marca === marca &&
             ((casoId != null && f.caso_id != null && Number(f.caso_id) === Number(casoId)) ||
-              f.caso === caso),
+              f.caso === caso ||
+              f.caso === etiquetaCasoFi({ caso: cItems[0]?.caso, caso_id: casoId })),
         )
         const descFactura = normalizarDescuentos4(facturaConfig?.descuentos ?? descCabecera)
         const listaFactura = facturaConfig?.lista_precio_id ?? 1
@@ -766,7 +780,7 @@ export function fragmentarCarrito(
           }
         })
         return {
-          grupo_key: `pp${ppId}__${marca}__${casoKey}`,
+          grupo_key: `pp${ppId}__${marca}__${celulaKey}`,
           caso,
           caso_id: casoId,
           total_pares: detalle.reduce((s, i) => s + i.pares, 0),

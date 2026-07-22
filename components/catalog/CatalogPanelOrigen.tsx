@@ -134,6 +134,7 @@ export function CatalogPanelOrigen({
       es_promo: p.es_promo === true,
       es_liquidacion: p.es_liquidacion === true,
       cadena_comercial: p.cadena_comercial ?? null,
+      cod_grupo: p.cod_grupo ?? null,
       nombre: p.nombre,
       gradas_fmt: v.gradas_fmt,
       imagen_url: v.imagen_url,

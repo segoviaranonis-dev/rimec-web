@@ -2,13 +2,21 @@
  * R-FI-2 — Segregación comercial infalible en FI.
  * PROMO y LIQUIDACIÓN nunca comparten factura (ni entre sí ni con Regular
  * si el caso_id colapsara). Prioridad: LIQ > PROMO > REGULAR (hermanos siameses).
+ *
+ * Fuente de verdad liquidación/promo PE = COD.GRUPO Carlos (dígito cadena)
+ * materializado en `es_liquidacion` / `es_promo` / `cadena_comercial` (vista PE).
+ * Si faltan flags, se re-deriva desde `cod_grupo`.
  */
 import { esLiquidacionRow, esPromoRow, type RowTipoSignals } from '@/lib/filtros/filtro-tipo-canonico'
 import { claveCasoFi, etiquetaCasoFi, type CasoFragmentable } from '@/lib/facturaCasoClave'
+import { cadenaComercialDesdeCodGrupo } from '@/lib/pilares/codGrupoCadena'
 
 export type CadenaComercialFi = 'LIQUIDACION' | 'PROMOCIONAL' | 'REGULAR'
 
-export type CelulaFragmentable = CasoFragmentable & RowTipoSignals
+export type CelulaFragmentable = CasoFragmentable &
+  RowTipoSignals & {
+    cod_grupo?: string | null
+  }
 
 export function cadenaComercialFi(item: CelulaFragmentable): CadenaComercialFi {
   const row: RowTipoSignals = {
@@ -22,6 +30,9 @@ export function cadenaComercialFi(item: CelulaFragmentable): CadenaComercialFi {
   }
   if (esLiquidacionRow(row)) return 'LIQUIDACION'
   if (esPromoRow(row)) return 'PROMOCIONAL'
+  // Fallback Carlos: dígito cadena en COD.GRUPO (calzado 45=04 · confecciones 67=04)
+  const desdeGrupo = cadenaComercialDesdeCodGrupo(item.cod_grupo)
+  if (desdeGrupo) return desdeGrupo
   return 'REGULAR'
 }
 

@@ -6,8 +6,9 @@ import { normalizarFilaStockVenta } from '@/lib/disponibilidad'
 const CARRITO_STOCK_SELECT_CP =
   'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, saldo_pares, cantidad_cajas, cantidad_pares, pares_vendidos, grades_json, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo, pp_id'
 
+/** PE: señales R-FI-2 + COD.GRUPO Carlos (dígito cadena → LIQ/PROMO/REGULAR). */
 const CARRITO_STOCK_SELECT_PE =
-  `${CARRITO_STOCK_SELECT_CP.replace('grades_json,', 'grades_json, grada,')}, proveedor_importacion_id, tipo_v2_id`
+  `${CARRITO_STOCK_SELECT_CP.replace('grades_json,', 'grades_json, grada,')}, proveedor_importacion_id, tipo_v2_id, es_liquidacion, es_promo, cadena_comercial, cod_grupo`
 
 /** @deprecated Usar select por vista. */
 export const CARRITO_STOCK_SELECT = CARRITO_STOCK_SELECT_CP

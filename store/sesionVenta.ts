@@ -74,10 +74,11 @@ export interface ItemCarrito {
   marca_id:        number | null
   caso:            string
   caso_id:         number | null
-  /** R-FI-2 — señales comerciales (PE / SDRM) */
+  /** R-FI-2 — señales comerciales (PE / SDRM / COD.GRUPO Carlos) */
   es_promo?:       boolean | null
   es_liquidacion?: boolean | null
   cadena_comercial?: string | null
+  cod_grupo?:      string | null
   nombre:          string
   gradas_fmt:      string
   imagen_url:      string
@@ -206,10 +207,29 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     grades_json?: Record<string, number> | null
     origen_tipo?: string
     cajas_disponibles?: number
+    es_promo?: boolean | null
+    es_liquidacion?: boolean | null
+    cadena_comercial?: string | null
+    cod_grupo?: string | null
   } | undefined
   const stockSaldo = stockAny?.saldo_pares
   const stockGrada = stockAny?.grada
   const stockGrades = stockAny?.grades_json
+  // R-FI-2: stock PE manda sobre cache local (si falta, todo colapsa a REGULAR por caso_id).
+  const esPromo =
+    stockAny?.es_promo != null ? Boolean(stockAny.es_promo) : base?.es_promo ?? null
+  const esLiq =
+    stockAny?.es_liquidacion != null
+      ? Boolean(stockAny.es_liquidacion)
+      : base?.es_liquidacion ?? null
+  const cadenaCom =
+    stockAny?.cadena_comercial != null && String(stockAny.cadena_comercial).trim() !== ''
+      ? String(stockAny.cadena_comercial)
+      : base?.cadena_comercial ?? null
+  const codGrupo =
+    stockAny?.cod_grupo != null && String(stockAny.cod_grupo).trim() !== ''
+      ? String(stockAny.cod_grupo)
+      : base?.cod_grupo ?? null
 
   if (base) {
     const enriched: ItemCarritoMeta = {
@@ -217,6 +237,10 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
       saldo_pares: base.saldo_pares ?? stockSaldo ?? null,
       grada: base.grada ?? stockGrada ?? null,
       grades_json: base.grades_json ?? stockGrades ?? null,
+      es_promo: esPromo,
+      es_liquidacion: esLiq,
+      cadena_comercial: cadenaCom,
+      cod_grupo: codGrupo,
     }
     persistMeta(enriched)
     const pares = paresCalc(enriched, row.cantidad_cajas)
@@ -274,9 +298,10 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     marca_id: row.marca_id_snapshot,
     caso: row.caso_snapshot,
     caso_id: row.caso_id_snapshot,
-    es_promo: null,
-    es_liquidacion: null,
-    cadena_comercial: null,
+    es_promo: esPromo,
+    es_liquidacion: esLiq,
+    cadena_comercial: cadenaCom,
+    cod_grupo: codGrupo,
     nombre: stockRow?.nombre ?? '',
     gradas_fmt: gradasFmtFromRow({
       grades_json: stockRow?.grades_json as Record<string, number> | null | undefined,

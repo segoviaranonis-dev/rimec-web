@@ -41,6 +41,7 @@ type StockSignal = {
   es_promo?: boolean | null
   cadena_comercial?: string | null
   descp_caso?: string | null
+  cod_grupo?: string | null
 }
 
 async function loadSignals(
@@ -50,7 +51,7 @@ async function loadSignals(
   const map = new Map<number, StockSignal>()
   if (!detIds.length) return map
   const uniq = [...new Set(detIds.filter((n) => Number.isFinite(n) && n > 0))]
-  const colsPe = 'det_id, es_liquidacion, es_promo, cadena_comercial, descp_caso'
+  const colsPe = 'det_id, es_liquidacion, es_promo, cadena_comercial, descp_caso, cod_grupo'
   const colsCp = 'det_id, descp_caso'
 
   const [pe, cp] = await Promise.all([
@@ -82,6 +83,7 @@ function cadenaDeItem(
     es_liquidacion: s?.es_liquidacion ?? null,
     es_promo: s?.es_promo ?? null,
     cadena_comercial: s?.cadena_comercial ?? null,
+    cod_grupo: s?.cod_grupo ?? null,
   })
 }
 

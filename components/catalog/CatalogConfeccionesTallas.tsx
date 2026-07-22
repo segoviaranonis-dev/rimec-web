@@ -57,6 +57,7 @@ function buildCartItem(
     es_promo: lote.es_promo === true,
     es_liquidacion: lote.es_liquidacion === true,
     cadena_comercial: lote.cadena_comercial ?? null,
+    cod_grupo: lote.cod_grupo ?? null,
     nombre: lote.nombre,
     gradas_fmt: v.gradas_fmt,
     imagen_url: v.imagen_url,

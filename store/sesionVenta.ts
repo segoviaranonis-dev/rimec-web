@@ -28,6 +28,7 @@ import {
 } from '@/lib/prontaEntregaVenta'
 import { normalizarDescuentos4, precioNetoCascada } from '@/lib/carritoDescuentosFi'
 import { gradasFmtFromRow } from '@/lib/gradasFmt'
+import { claveCasoFi, etiquetaCasoFi } from '@/lib/facturaCasoClave'
 
 export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
 
@@ -694,17 +695,28 @@ export function fragmentarCarrito(
     }
 
     const marcas: MarcaFragmentada[] = Object.entries(byMarca).map(([marca, mItems]) => {
+      // R-FI-1: 1 FI = 1 caso. Clave = caso_id (no colapsar nombres vacíos → «Sin caso»).
       const byCaso: Record<string, ItemCarrito[]> = {}
       for (const item of mItems) {
-        const caso = (item.caso && String(item.caso).trim()) || 'Sin caso'
-        if (!byCaso[caso]) byCaso[caso] = []
-        byCaso[caso].push(item)
+        const key = claveCasoFi(item)
+        if (!byCaso[key]) byCaso[key] = []
+        byCaso[key].push(item)
       }
 
-      const facturas: FacturaPrevisible[] = Object.entries(byCaso).map(([caso, cItems]) => {
+      const facturas: FacturaPrevisible[] = Object.entries(byCaso).map(([casoKey, cItems]) => {
+        const casoId =
+          cItems.find((i) => i.caso_id != null && Number(i.caso_id) > 0)?.caso_id ?? null
+        const caso = etiquetaCasoFi({
+          caso: cItems.find((i) => String(i.caso ?? '').trim())?.caso ?? '',
+          caso_id: casoId,
+        })
         // Buscar configuración de esta factura específica (MIG-083)
         const facturaConfig = facturasConfig?.find(
-          f => f.pp_id === ppId && f.marca === marca && f.caso === caso
+          (f) =>
+            f.pp_id === ppId &&
+            f.marca === marca &&
+            ((casoId != null && f.caso_id != null && Number(f.caso_id) === Number(casoId)) ||
+              f.caso === caso),
         )
         const descFactura = normalizarDescuentos4(facturaConfig?.descuentos ?? descCabecera)
         const listaFactura = facturaConfig?.lista_precio_id ?? 1
@@ -754,9 +766,9 @@ export function fragmentarCarrito(
           }
         })
         return {
-          grupo_key: `pp${ppId}__${marca}__${caso}`,
+          grupo_key: `pp${ppId}__${marca}__${casoKey}`,
           caso,
-          caso_id: cItems[0].caso_id ?? null,
+          caso_id: casoId,
           total_pares: detalle.reduce((s, i) => s + i.pares, 0),
           total_monto: detalle.reduce((s, i) => s + i.subtotal, 0),
           items: detalle,

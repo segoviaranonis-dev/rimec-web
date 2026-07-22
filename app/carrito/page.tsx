@@ -284,7 +284,13 @@ export default function CarritoPage() {
             m.facturas.map((f) => {
               // Buscar configuración de descuentos específicos para esta factura
               const facturaConfig = facturas.find(
-                fc => fc.pp_id === lote.pp_id && fc.marca === m.marca && fc.caso === f.caso
+                (fc) =>
+                  fc.pp_id === lote.pp_id &&
+                  fc.marca === m.marca &&
+                  ((f.caso_id != null &&
+                    fc.caso_id != null &&
+                    Number(fc.caso_id) === Number(f.caso_id)) ||
+                    fc.caso === f.caso),
               )
               const descFactura = normalizarDescuentos4(facturaConfig?.descuentos ?? descuentos)
               const listaFactura = facturaConfig?.lista_precio_id ?? listaPrecioId

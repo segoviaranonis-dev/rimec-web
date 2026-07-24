@@ -149,7 +149,7 @@ export interface SesionVenta {
   setDescuentos:    (desc: number[]) => Promise<void>
   setDescuentoLote: (ppId: number, desc: number[]) => Promise<void>
   actualizarDescuentosFactura: (pp_id: number, marca: string, caso: string, config: { lista_precio_id?: number; descuentos?: number[]; pre_autorizado?: boolean }) => Promise<void>
-  guardarDescuentosFactura: (pp_id: number, marca: string, caso: string, config: { lista_precio_id: number; descuentos: number[] }) => Promise<{ items_actualizados: number; origen: string }>
+  guardarDescuentosFactura: (pp_id: number, marca: string, caso: string, config: { lista_precio_id: number; descuentos: number[]; caso_id?: number | null }) => Promise<{ items_actualizados: number; origen: string }>
   recalcularFactura: (pp_id: number, marca: string, caso: string) => Promise<{ ok: boolean; items_actualizados: number; lista_aplicada: number; descuentos_aplicados: number[] }>
   agregarCaja:      (item: ItemCarritoMeta) => Promise<void>
   quitarCaja:       (det_id: number) => Promise<void>

@@ -268,7 +268,7 @@ export async function carritoGuardarDescuentosFi(
   pp_id: number,
   marca: string,
   caso: string,
-  config: { lista_precio_id: number; descuentos: number[] },
+  config: { lista_precio_id: number; descuentos: number[]; caso_id?: number | null },
 ): Promise<{
   ok: boolean
   items_actualizados: number

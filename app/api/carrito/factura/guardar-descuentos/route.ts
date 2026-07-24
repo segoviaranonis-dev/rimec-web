@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { pp_id, marca, caso, lista_precio_id, descuentos } = body
+    const { pp_id, marca, caso, caso_id, lista_precio_id, descuentos } = body
 
     if (pp_id == null || !marca || !caso) {
       return NextResponse.json({ error: 'pp_id, marca y caso obligatorios' }, { status: 400 })
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       pp_id: Number(pp_id),
       marca: String(marca),
       caso: String(caso),
+      caso_id: caso_id != null && Number(caso_id) > 0 ? Number(caso_id) : null,
       lista_precio_id: lista_precio_id != null ? Number(lista_precio_id) : undefined,
       descuentos,
     })

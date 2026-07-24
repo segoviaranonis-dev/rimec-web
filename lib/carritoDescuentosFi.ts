@@ -1,7 +1,7 @@
 import { asegurarFacturasDescuentosLote } from '@/lib/asegurarFacturasDescuentosLote'
 import { parseDescuentoInput } from '@/lib/descuentoInput'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
-import { etiquetaCelulaFi } from '@/lib/facturaCelulaClave'
+import { claveCelulaFi, etiquetaCelulaFi } from '@/lib/facturaCelulaClave'
 import { mismaFacturaConfig, sintetizarFacturaConfig } from '@/lib/facturaConfigMatch'
 import { getPrecioActivo, getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
 import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
@@ -38,6 +38,7 @@ export interface GuardarDescuentosFiInput {
   pp_id: number
   marca: string
   caso: string
+  caso_id?: number | null
   lista_precio_id?: number
   descuentos: unknown
 }
@@ -59,15 +60,20 @@ type ItemRow = {
   caso_id_snapshot: number | null
 }
 
-function etiquetaItem(
-  item: ItemRow,
-  stock: Record<string, unknown> | undefined,
-): string {
+function baseCasoEtiqueta(caso: string): string {
+  const t = String(caso ?? '').trim()
+  const sep = t.indexOf(' · ')
+  return sep >= 0 ? t.slice(0, sep).trim() : t
+}
+
+function signalsItem(item: ItemRow, stock: Record<string, unknown> | undefined) {
   const casoId =
     item.caso_id_snapshot != null && Number(item.caso_id_snapshot) > 0
       ? Number(item.caso_id_snapshot)
-      : null
-  return etiquetaCelulaFi({
+      : stock?.caso_id != null && Number(stock.caso_id) > 0
+        ? Number(stock.caso_id)
+        : null
+  return {
     caso: String(item.caso_snapshot ?? stock?.descp_caso ?? ''),
     caso_id: casoId,
     es_promo: stock?.es_promo != null ? Boolean(stock.es_promo) : null,
@@ -75,7 +81,31 @@ function etiquetaItem(
     cadena_comercial: stock?.cadena_comercial != null ? String(stock.cadena_comercial) : null,
     cod_grupo: stock?.cod_grupo != null ? String(stock.cod_grupo) : null,
     linea_codigo: stock?.linea_codigo != null ? String(stock.linea_codigo) : null,
-  })
+  }
+}
+
+function etiquetaItem(
+  item: ItemRow,
+  stock: Record<string, unknown> | undefined,
+): string {
+  return etiquetaCelulaFi(signalsItem(item, stock))
+}
+
+function itemPerteneceFi(
+  item: ItemRow,
+  stock: Record<string, unknown> | undefined,
+  input: Pick<GuardarDescuentosFiInput, 'caso' | 'caso_id'>,
+): boolean {
+  const etiqueta = etiquetaItem(item, stock)
+  const baseInput = baseCasoEtiqueta(input.caso)
+  const snap = String(item.caso_snapshot ?? '').trim()
+  if (etiqueta === input.caso) return true
+  if (snap === input.caso || snap === baseInput) return true
+  if (input.caso_id != null && Number(input.caso_id) > 0) {
+    const sig = signalsItem(item, stock)
+    if (sig.caso_id != null && Number(sig.caso_id) === Number(input.caso_id)) return true
+  }
+  return false
 }
 
 /**
@@ -118,7 +148,7 @@ export async function guardarDescuentosFacturaInterna(
       input.pp_id,
       input.marca,
       input.caso,
-      null,
+      input.caso_id ?? null,
     ),
   )
 
@@ -128,6 +158,7 @@ export async function guardarDescuentosFacturaInterna(
         pp_id: input.pp_id,
         marca: input.marca,
         caso: input.caso,
+        caso_id: input.caso_id ?? null,
         lista_precio_id: Number(input.lista_precio_id ?? sesion.lista_precio_id) || 1,
         descuentos,
         items_count: 0,
@@ -156,36 +187,59 @@ export async function guardarDescuentosFacturaInterna(
     .eq('id_usuario', idUsuario)
     .eq('marca_snapshot', input.marca)
 
-  let itemsFiltered = itemsRaw ?? []
+  if (itemsErr) throw new Error(itemsErr.message)
+
+  let itemsFiltered = (itemsRaw ?? []) as ItemRow[]
+  if (!itemsFiltered.length) {
+    // Marca puede venir con distinta capitalización desde UI sintetizada
+    const { data: allItems } = await sb
+      .from('carrito_item')
+      .select('det_id, pp_id, marca_snapshot, caso_snapshot, caso_id_snapshot')
+      .eq('id_usuario', idUsuario)
+    itemsFiltered = ((allItems ?? []) as ItemRow[]).filter(
+      (i) => String(i.marca_snapshot).trim().toUpperCase() === String(input.marca).trim().toUpperCase(),
+    )
+  }
+
   if (input.pp_id) {
-    const byPp = itemsFiltered.filter((i) => Number(i.pp_id) === Number(input.pp_id))
+    let byPp = itemsFiltered.filter((i) => Number(i.pp_id) === Number(input.pp_id))
+    if (!byPp.length) {
+      byPp = itemsFiltered.filter(
+        (i) => Math.abs(Number(i.pp_id)) === Math.abs(Number(input.pp_id)),
+      )
+    }
     if (byPp.length) itemsFiltered = byPp
   }
 
-  if (itemsErr) throw new Error(itemsErr.message)
   if (!itemsFiltered.length) throw new Error('Sin ítems en esta factura interna')
 
   const stockMap = await fetchCarritoStockByDetIds(
     sb,
-    itemsRaw.map((i) => Number(i.det_id)),
+    itemsFiltered.map((i) => Number(i.det_id)),
   )
 
-  // R-FI-2: caso UI = etiquetaCelulaFi; caso_snapshot puede diferir.
-  let items = (itemsFiltered as ItemRow[]).filter((item) => {
+  // R-FI-2: etiqueta UI («X · PROMOCIONAL») ≠ caso_snapshot («X»).
+  let items = itemsFiltered.filter((item) => {
     const stock = stockMap.get(Number(item.det_id)) as Record<string, unknown> | undefined
-    const etiqueta = etiquetaItem(item, stock)
-    return etiqueta === input.caso || String(item.caso_snapshot) === input.caso
+    return itemPerteneceFi(item, stock, input)
   })
 
   if (!items.length) {
-    const etiquetas = new Set(
-      (itemsRaw as ItemRow[]).map((item) => {
+    const claves = new Set(
+      itemsFiltered.map((item) => {
         const stock = stockMap.get(Number(item.det_id)) as Record<string, unknown> | undefined
-        return etiquetaItem(item, stock)
+        return claveCelulaFi(signalsItem(item, stock))
       }),
     )
-    // Una sola FI en ese PP×marca → aplicar a todos
-    if (etiquetas.size <= 1) items = itemsFiltered as ItemRow[]
+    const facturasPpMarca = descuentosLote.facturas.filter(
+      (f) =>
+        Number(f.pp_id) === Number(input.pp_id) &&
+        String(f.marca).trim().toUpperCase() === String(input.marca).trim().toUpperCase(),
+    )
+    // Una sola célula comercial o una sola FI en sesión → aplicar a todos los ítems del lote×marca
+    if (claves.size <= 1 || facturasPpMarca.length <= 1) {
+      items = itemsFiltered
+    }
   }
 
   if (!items.length) throw new Error('Sin ítems en esta factura interna')

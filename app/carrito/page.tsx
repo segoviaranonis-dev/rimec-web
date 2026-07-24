@@ -973,7 +973,7 @@ export default function CarritoPage() {
                 editorFi.pp_id,
                 editorFi.marca,
                 editorFi.caso,
-                payload,
+                { ...payload, caso_id: editorFi.caso_id ?? null },
               )
               setEditorFi(null)
               setError(null)

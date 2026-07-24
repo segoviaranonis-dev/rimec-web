@@ -35,9 +35,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'payload inválido — falta pp_id' }, { status: 400 })
   }
 
-  const ppId = isPe
-    ? (body.pp_id < 0 ? body.pp_id : syntheticPpIdForPe({ pp_nro: 'PE-import' }))
-    : body.pp_id
+  // PE: agrupar carrito por PP real (-pp_id) — evita PE_PP_MIXTO al confirmar (MIG-173).
+  let ppId = body.pp_id
+  if (isPe) {
+    if (body.pp_id < 0) {
+      ppId = body.pp_id
+    } else if (body.pp_id > 0) {
+      ppId = -Math.abs(body.pp_id)
+    } else {
+      ppId = syntheticPpIdForPe({ pp_nro: 'PE-import' })
+    }
+  }
 
   const sb = getSupabaseAdmin()
 

@@ -4,11 +4,19 @@ import { getSession } from '@/lib/auth/session'
 import { sanitizeConfirmarPayload } from '@/lib/sanitizeConfirmarPayload'
 import { repairConfirmarPayloadPrecios } from '@/lib/repairConfirmarPayloadPrecios'
 import { asegurarSegregacionFiPayload } from '@/lib/asegurarSegregacionFiPayload'
+import { asegurarSegregacionPePpPayload } from '@/lib/asegurarSegregacionPePpPayload'
+import {
+  extraerLogisticaPePayload,
+  persistirLogisticaPePostConfirmar,
+} from '@/lib/logisticaPeConfirmar'
 
 /**
  * POST /api/carrito/confirmar
  * Confirma pedido ejecutando RPC desde servidor (no desde cliente)
  * Requiere sesión activa (vendedor/admin)
+ *
+ * PE (MIG-173): confirmar_pedido_web resuelve pp_id real vía PPD / v_stock_pe_rimec.
+ * No emitir FI PE sin PP — ancla Fecha de entrega Real en pedido_proveedor.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -43,10 +51,16 @@ export async function POST(req: NextRequest) {
     let payload: unknown
     try {
       const seg = await asegurarSegregacionFiPayload(sb, repaired)
-      payload = seg.payload
+      const pePp = await asegurarSegregacionPePpPayload(sb, seg.payload)
+      payload = pePp.payload
       if (seg.facturas_spliteadas > 0) {
         console.info(
           `[confirmar] R-FI-2: se separaron ${seg.facturas_spliteadas} FI por cadena comercial`,
+        )
+      }
+      if (pePp.facturas_spliteadas > 0) {
+        console.info(
+          `[confirmar] MIG-173: se separaron ${pePp.facturas_spliteadas} FI PE por pedido proveedor`,
         )
       }
     } catch (segErr) {
@@ -86,6 +100,15 @@ export async function POST(req: NextRequest) {
         { error: rpcErr.message, details: rpcErr.details },
         { status: 500 },
       )
+    }
+
+    const logisticaPe = extraerLogisticaPePayload(payload)
+    const pedidoId =
+      data && typeof data === 'object' && 'pedido_id' in data
+        ? Number((data as { pedido_id?: number }).pedido_id)
+        : NaN
+    if (Number.isFinite(pedidoId) && pedidoId > 0) {
+      await persistirLogisticaPePostConfirmar(sb, pedidoId, logisticaPe)
     }
 
     return NextResponse.json(data)

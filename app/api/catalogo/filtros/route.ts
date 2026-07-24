@@ -20,6 +20,8 @@ import {
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
 import { buildParesDatoDuroFromRows } from '@/lib/datoDuroCpFiltro'
+import { fetchPrecioMinMaxSql } from '@/lib/catalogoPrecioSql'
+import type { ListaPrecioId } from '@/lib/precioLista'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import type { StockRow } from '@/app/catalogo-types'
 import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
@@ -108,14 +110,34 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
   return applyMemoryFilters(enriched, filters)
 }
 
-const cachedMetaRpc = unstable_cache(
+/** RPC directo — sin unstable_cache (hotfix 2026-07-24: cache/null + timeout bloqueaban sidebar). */
+async function metaRpcParaFiltros(filters: CatalogoFilterStateExtended) {
+  return fetchCatalogoMetaViaRpc(filters)
+}
+
+const cachedPrecioRango = unstable_cache(
   async (key: string) => {
     const filters = JSON.parse(key) as CatalogoFilterStateExtended
-    return fetchCatalogoMetaViaRpc(filters)
+    return fetchPrecioMinMaxSql(filters)
   },
-  ['catalogo-meta-rpc'],
+  ['catalogo-precio-rango-sql-v1'],
   { revalidate: 300 },
 )
+
+async function precioRangoParaFiltros(filters: CatalogoFilterStateExtended) {
+  const listaRaw = Number(filters.lista_precio_id ?? 1)
+  const listaId = (listaRaw === 1 || listaRaw === 2 || listaRaw === 3 || listaRaw === 4
+    ? listaRaw
+    : 1) as ListaPrecioId
+  const scopeKey = JSON.stringify({
+    origen_tipo: filters.origen_tipo ?? '',
+    ramo_tipo: filters.ramo_tipo ?? '',
+    deposito_codigo: filters.deposito_codigo ?? '',
+    cadena_comercial: filters.cadena_comercial ?? '',
+    lista_precio_id: listaId,
+  })
+  return cachedPrecioRango(scopeKey)
+}
 
 async function paresDatoDuroParaFiltros(filters: CatalogoFilterStateExtended) {
   const wantCp =
@@ -139,15 +161,29 @@ async function paresDatoDuroParaFiltros(filters: CatalogoFilterStateExtended) {
 export async function GET(req: NextRequest) {
   try {
     const filters = parseCatalogoFiltersFromSearchParams(req.nextUrl.searchParams)
-    const cacheKey = JSON.stringify(filters)
 
-    const rpcMeta = await cachedMetaRpc(cacheKey)
-    if (rpcMeta) {
+    const rpcMeta = await metaRpcParaFiltros(filters)
+    if (rpcMeta && (rpcMeta.marcas.length > 0 || rpcMeta.lineas.length > 0 || rpcMeta.tipos.length > 0)) {
       const payload = metaRpcToFiltrosResponse(rpcMeta)
-      const paresDatoDuro = await paresDatoDuroParaFiltros(filters)
+      // Hotfix: no escanear 6k+ filas en TODOS — bloqueaba prod (>10s) y dejaba filtros vacíos.
+      let paresDatoDuro: Awaited<ReturnType<typeof paresDatoDuroParaFiltros>> = []
+      if (isCatalogoOrigenCp(filters)) {
+        try {
+          paresDatoDuro = await paresDatoDuroParaFiltros(filters)
+        } catch (e) {
+          console.error('[catalogo/filtros] paresDatoDuro CP', e)
+        }
+      }
+      let precioRango: Awaited<ReturnType<typeof precioRangoParaFiltros>> = null
+      try {
+        precioRango = await precioRangoParaFiltros(filters)
+      } catch (e) {
+        console.error('[catalogo/filtros] precioRango', e)
+      }
       return NextResponse.json({
         ...payload,
         paresDatoDuro,
+        precioRango,
         materialFamilias: [],
         colorFamilias: [],
         totalFilas: null,
@@ -162,6 +198,7 @@ export async function GET(req: NextRequest) {
       color_familias: [],
     }
     const rows = await rowsForFiltrosLegacy(facetFilters)
+    const precioRango = await precioRangoParaFiltros(filters)
     return NextResponse.json({
       filtros: buildFiltrosFromRows(rows),
       colores: buildColoresFromRows(rows),
@@ -171,6 +208,7 @@ export async function GET(req: NextRequest) {
       tonosDisponibles: buildTonosDisponiblesFromRows(rows),
       materialFamilias: buildMaterialFamiliasFromRows(rows),
       colorFamilias: buildColorFamiliasFromRows(rows),
+      precioRango,
       totalFilas: rows.length,
       origen: filters.origen_tipo,
       metaSource: 'legacy',

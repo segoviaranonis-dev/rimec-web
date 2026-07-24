@@ -32,6 +32,8 @@ import {
   warmCatalogImages,
 } from '@/lib/catalogoPeWarmCache'
 import type { ColorEstandar } from '@/lib/pilares/colores-estandar'
+import type { PrecioRangoCatalogo } from '@/lib/catalogoPrecioRango'
+import { useSesion, type ListaId } from '@/store/sesionVenta'
 import { COLORES_ESTANDAR_DEFAULT } from '@/lib/pilares/colores-estandar'
 import {
   applySharedSliceToFilters,
@@ -94,6 +96,9 @@ function etiquetaCambioFiltro(prev: CatalogoFilterState, next: CatalogoFilterSta
     return `Color${cantidad(next.color_familias?.length ? next.color_familias : next.colores)}`
   }
   if (cambio('tonos') || cambio('sin_tono')) return 'Tono'
+  if (cambio('precio_min') || cambio('precio_max') || cambio('precio_tope') || cambio('lista_precio_id')) {
+    return 'Rango precio'
+  }
   if (cambio('dato_duro_cp')) return `Lote CP${cantidad(next.dato_duro_cp)}`
   if (cambio('quincenas')) return `Quincena${cantidad(next.quincenas)}`
   if (cambio('preventas')) return `Preventa${cantidad(next.preventas)}`
@@ -128,6 +133,10 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   if (filters.color_familias?.length) params.set('color_familias', filters.color_familias.join(','))
   if (filters.dato_duro_cp?.length) params.set('dato_duro_cp', filters.dato_duro_cp.join(','))
   if (filters.preventas?.length) params.set('preventas', filters.preventas.join(','))
+  if (filters.precio_tope != null) params.set('precio_tope', String(filters.precio_tope))
+  if (filters.precio_min != null) params.set('precio_min', String(filters.precio_min))
+  if (filters.precio_max != null) params.set('precio_max', String(filters.precio_max))
+  if (filters.lista_precio_id != null) params.set('lista_precio_id', String(filters.lista_precio_id))
   return params
 }
 
@@ -211,6 +220,9 @@ export function CatalogoClient({ initialFilters }: Props) {
     { key: string; quincenaId: number; quincenaLabel: string; preventa: string }[]
   >([])
   const [tonosDisponibles, setTonosDisponibles] = useState<string[]>([])
+  const [precioRangoApi, setPrecioRangoApi] = useState<PrecioRangoCatalogo | null>(null)
+  const listaPrecioSesion = useSesion(s => s.listaPrecioId)
+  const ventaActiva = useSesion(s => s.activa)
 
   const [productos, setProductos] = useState<TarjetaGrilla[]>([])
   const [rowFrom, setRowFrom] = useState(0)
@@ -299,7 +311,9 @@ export function CatalogoClient({ initialFilters }: Props) {
 
     async function loadFiltros(attempt = 0) {
       try {
-        const qs = filterToSearchParams(filters).toString()
+        const params = filterToSearchParams(filters)
+        if (ventaActiva) params.set('lista_precio_id', String(listaPrecioSesion))
+        const qs = params.toString()
         const r = await fetch(`/api/catalogo/filtros${qs ? `?${qs}` : ''}`, { credentials: 'same-origin' })
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const json = await readJsonResponse<{
@@ -312,10 +326,11 @@ export function CatalogoClient({ initialFilters }: Props) {
           tonosDisponibles?: string[]
           materialFamilias?: FamiliaPilarItem[]
           colorFamilias?: FamiliaPilarItem[]
+          precioRango?: PrecioRangoCatalogo | null
         }>(r)
         if (cancelled || json.error) return
         const meta = json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] }
-        setFiltrosMeta({
+        let nextMeta = {
           todasLineas: normalizeFilterItems(meta.todasLineas ?? []),
           todasMarcas: normalizeFilterItems(
             (meta.todasMarcas ?? []).filter((m) => !esMarcaFantasmaFiltro(m.label)),
@@ -323,7 +338,38 @@ export function CatalogoClient({ initialFilters }: Props) {
           todosEstilos: normalizeFilterItems(meta.todosEstilos ?? []),
           todosTipos: normalizeFilterItems(meta.todosTipos ?? []),
           todosGeneros: meta.todosGeneros ?? [],
-        })
+        }
+        if (!nextMeta.todasMarcas.length) {
+          try {
+            const hr = await fetch('/api/catalogo/header-filtros', { credentials: 'same-origin' })
+            if (hr.ok) {
+              const hj = await readJsonResponse<{
+                todasMarcas?: FilterItem[]
+                todasLineas?: FilterItem[]
+                todosEstilos?: FilterItem[]
+                todosTipos?: FilterItem[]
+              }>(hr)
+              if ((hj.todasMarcas?.length ?? 0) > 0) {
+                nextMeta = {
+                  ...nextMeta,
+                  todasMarcas: normalizeFilterItems(hj.todasMarcas ?? []),
+                  todasLineas: nextMeta.todasLineas.length
+                    ? nextMeta.todasLineas
+                    : normalizeFilterItems(hj.todasLineas ?? []),
+                  todosEstilos: nextMeta.todosEstilos.length
+                    ? nextMeta.todosEstilos
+                    : normalizeFilterItems(hj.todosEstilos ?? []),
+                  todosTipos: nextMeta.todosTipos.length
+                    ? nextMeta.todosTipos
+                    : normalizeFilterItems(hj.todosTipos ?? []),
+                }
+              }
+            }
+          } catch {
+            /* fallback header opcional */
+          }
+        }
+        setFiltrosMeta(nextMeta)
         setMaterialFamilias(json.materialFamilias ?? [])
         setColorFamilias(json.colorFamilias ?? [])
         setColores(json.colores ?? [])
@@ -331,6 +377,9 @@ export function CatalogoClient({ initialFilters }: Props) {
         setPreventasOpciones(json.preventas ?? [])
         setParesDatoDuro(json.paresDatoDuro ?? [])
         setTonosDisponibles(json.tonosDisponibles ?? [])
+        if (json.precioRango && json.precioRango.min < json.precioRango.max) {
+          setPrecioRangoApi(json.precioRango)
+        }
 
         const lineaIdsValid = new Set((meta.todasLineas as FilterItem[]).map(l => l.id))
         // No borrar líneas si meta vino vacía (RPC/legacy falló) — evita “filtros que no pegan”.
@@ -381,6 +430,8 @@ export function CatalogoClient({ initialFilters }: Props) {
     filters.tipo_grupos?.join(',') ?? '',
     filters.material_familias?.join(',') ?? '',
     filters.color_familias?.join(',') ?? '',
+    ventaActiva ? '1' : '0',
+    String(listaPrecioSesion),
   ])
 
   useEffect(() => {
@@ -736,6 +787,7 @@ export function CatalogoClient({ initialFilters }: Props) {
         colorFamilias={colorFamiliasUi}
         totalModelos={productos.length}
         totalPares={totalPares}
+        rangoPrecioCatalogo={precioRangoApi}
         value={filters}
         onChange={updateFilters}
         variant="cabecera"

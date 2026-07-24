@@ -21,6 +21,8 @@ export interface FacturaConfig {
   descuentos: number[]
   pre_autorizado: boolean
   items_count: number
+  /** R-FI-2 — LIQUIDACION | PROMOCIONAL | REGULAR (opcional, sync PE/CP). */
+  cadena_comercial?: string | null
 }
 
 export interface DescuentosLote {
@@ -33,9 +35,12 @@ export interface CarritoSesionBD {
   cliente_nombre: string
   plazo_id: number | null
   plazo_nombre: string | null
+  cod_oper_carlos: string | null
   lista_precio_id: number
   descuentos: number[]
   descuentos_lote: DescuentosLote
+  observacion?: string | null
+  fecha_entrega_cliente?: string | null
   iniciada_en: string
   actualizada_en: string
   validada_en: string | null
@@ -127,12 +132,30 @@ export async function carritoPutSesion(payload: {
   cliente_nombre: string
   plazo_id?: number | null
   plazo_nombre?: string | null
+  cod_oper_carlos?: string | null
   lista_precio_id?: number
   descuentos?: number[]
   descuentos_lote?: Record<string, number[]>
+  observacion?: string | null
+  fecha_entrega_cliente?: string | null
 }): Promise<CarritoSesionBD> {
   const res = await fetch('/api/carrito/sesion', {
     method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  const data = await asJson<{ sesion: CarritoSesionBD }>(res)
+  return data.sesion
+}
+
+/** MIG-175 — observación + fecha entrega cliente (PE ↔ Logística OK) */
+export async function carritoPatchLogisticaPe(payload: {
+  observacion?: string | null
+  fecha_entrega_cliente?: string | null
+}): Promise<CarritoSesionBD> {
+  const res = await fetch('/api/carrito/sesion', {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify(payload),

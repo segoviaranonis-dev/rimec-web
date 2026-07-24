@@ -4,6 +4,7 @@
  */
 import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { asegurarFacturasDescuentosLote } from '@/lib/asegurarFacturasDescuentosLote'
 import { normalizarDescuentos4, precioNetoCascada } from '@/lib/carritoDescuentosFi'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
 import {
@@ -12,6 +13,8 @@ import {
   paresDisponiblesDeFila,
   type StockRowMin,
 } from '@/lib/disponibilidad'
+import { etiquetaCelulaFi } from '@/lib/facturaCelulaClave'
+import { findFacturaConfig } from '@/lib/facturaConfigMatch'
 import { getPrecioActivo, getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
 import { isProntaEntregaStockRow, paresDesdeCajasCerradas } from '@/lib/prontaEntregaVenta'
 
@@ -39,15 +42,35 @@ export type ValidarResponse = {
 
 function listaParaItem(
   sesion: { lista_precio_id?: number; descuentos_lote?: { facturas?: Array<Record<string, unknown>> } },
-  item: { pp_id: number; marca_snapshot: string; caso_snapshot: string },
+  item: {
+    pp_id: number
+    marca_snapshot: string
+    caso_snapshot: string
+    caso_id_snapshot?: number | null
+    es_promo?: boolean | null
+    es_liquidacion?: boolean | null
+    cadena_comercial?: string | null
+    cod_grupo?: string | null
+  },
 ): ListaPrecioId {
-  const facturas = sesion.descuentos_lote?.facturas ?? []
-  const hit = facturas.find(
-    (f) =>
-      Number(f.pp_id) === item.pp_id &&
-      String(f.marca) === item.marca_snapshot &&
-      String(f.caso) === item.caso_snapshot,
-  )
+  const facturas = (sesion.descuentos_lote?.facturas ?? []) as unknown as import('@/lib/carritoApi').FacturaConfig[]
+  const casoEtiqueta = etiquetaCelulaFi({
+    caso: item.caso_snapshot,
+    caso_id: item.caso_id_snapshot ?? null,
+    es_promo: item.es_promo ?? null,
+    es_liquidacion: item.es_liquidacion ?? null,
+    cadena_comercial: item.cadena_comercial ?? null,
+    cod_grupo: item.cod_grupo ?? null,
+  })
+  const hit =
+    findFacturaConfig(
+      facturas,
+      item.pp_id,
+      item.marca_snapshot,
+      casoEtiqueta,
+      item.caso_id_snapshot ?? null,
+    ) ??
+    findFacturaConfig(facturas, item.pp_id, item.marca_snapshot, item.caso_snapshot, item.caso_id_snapshot ?? null)
   const lista = Number(hit?.lista_precio_id ?? sesion.lista_precio_id ?? 1)
   if (lista >= 1 && lista <= 4) return lista as ListaPrecioId
   return 1
@@ -55,15 +78,35 @@ function listaParaItem(
 
 function descuentosParaItem(
   sesion: { descuentos_lote?: { facturas?: Array<Record<string, unknown>> }; descuentos?: number[] },
-  item: { pp_id: number; marca_snapshot: string; caso_snapshot: string },
+  item: {
+    pp_id: number
+    marca_snapshot: string
+    caso_snapshot: string
+    caso_id_snapshot?: number | null
+    es_promo?: boolean | null
+    es_liquidacion?: boolean | null
+    cadena_comercial?: string | null
+    cod_grupo?: string | null
+  },
 ): number[] {
-  const facturas = sesion.descuentos_lote?.facturas ?? []
-  const hit = facturas.find(
-    (f) =>
-      Number(f.pp_id) === item.pp_id &&
-      String(f.marca) === item.marca_snapshot &&
-      String(f.caso) === item.caso_snapshot,
-  )
+  const facturas = (sesion.descuentos_lote?.facturas ?? []) as unknown as import('@/lib/carritoApi').FacturaConfig[]
+  const casoEtiqueta = etiquetaCelulaFi({
+    caso: item.caso_snapshot,
+    caso_id: item.caso_id_snapshot ?? null,
+    es_promo: item.es_promo ?? null,
+    es_liquidacion: item.es_liquidacion ?? null,
+    cadena_comercial: item.cadena_comercial ?? null,
+    cod_grupo: item.cod_grupo ?? null,
+  })
+  const hit =
+    findFacturaConfig(
+      facturas,
+      item.pp_id,
+      item.marca_snapshot,
+      casoEtiqueta,
+      item.caso_id_snapshot ?? null,
+    ) ??
+    findFacturaConfig(facturas, item.pp_id, item.marca_snapshot, item.caso_snapshot, item.caso_id_snapshot ?? null)
   const raw = hit?.descuentos ?? sesion.descuentos ?? []
   return [...normalizarDescuentos4(raw)]
 }
@@ -130,6 +173,7 @@ async function validarItemsStockEnCarrito(
       precio_snapshot: number
       marca_snapshot: string
       caso_snapshot: string
+      caso_id_snapshot?: number | null
     }
     const detId = Number(item.det_id)
     const stockRaw = stockMap.get(detId)
@@ -161,8 +205,15 @@ async function validarItemsStockEnCarrito(
     const paresActuales = paresDisponiblesDeFila(fila)
     const paresSolicitados = paresDesdeCajasCerradas(cajasSolicitadas, paresInputDeFila(fila))
 
-    const listaId = listaParaItem(sesion, item)
-    const descuentos = descuentosParaItem(sesion, item)
+    const itemSignals = {
+      ...item,
+      es_promo: stockRaw.es_promo != null ? Boolean(stockRaw.es_promo) : null,
+      es_liquidacion: stockRaw.es_liquidacion != null ? Boolean(stockRaw.es_liquidacion) : null,
+      cadena_comercial: stockRaw.cadena_comercial != null ? String(stockRaw.cadena_comercial) : null,
+      cod_grupo: stockRaw.cod_grupo != null ? String(stockRaw.cod_grupo) : null,
+    }
+    const listaId = listaParaItem(sesion, itemSignals)
+    const descuentos = descuentosParaItem(sesion, itemSignals)
     const caso = String(item.caso_snapshot ?? stockRaw.descp_caso ?? '')
     const rowPrecio = {
       lpn: Number(stockRaw.lpn) || null,
@@ -256,11 +307,24 @@ export async function validarCarritoPeApp(
     return { success: false, estado: 'ERROR', detail: 'Sesión de venta no activa' }
   }
 
+  try {
+    await asegurarFacturasDescuentosLote(sb, idUsuario)
+  } catch (err) {
+    console.warn('[validarCarritoPeApp] asegurarFacturas:', err)
+  }
+
+  const { data: sesionFresh } = await sb
+    .from('carrito_sesion')
+    .select('*')
+    .eq('id_usuario', idUsuario)
+    .maybeSingle()
+  const sesionActiva = sesionFresh ?? sesion
+
   const { items: validados, recalculados } = await validarItemsStockEnCarrito(
     sb,
     idUsuario,
     items,
-    sesion,
+    sesionActiva,
   )
 
   const allOk = validados.every((i) => i.ok)

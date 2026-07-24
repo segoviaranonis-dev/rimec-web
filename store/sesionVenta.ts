@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import {
+  carritoPatchLogisticaPe,
   carritoDeleteItem,
   carritoDeleteSesion,
   carritoGet,
@@ -46,8 +47,10 @@ export interface Vendedor {
 }
 
 export interface Plazo {
-  id_plazo:    number
-  descp_plazo: string
+  id_plazo:         number
+  descp_plazo:      string
+  cod_oper_carlos:  string
+  label_ui?:        string
 }
 
 export const LISTAS = [
@@ -135,6 +138,10 @@ export interface SesionVenta {
     }>
   }
 
+  /** MIG-175 — PE ↔ Logística OK (opcional, sugerido en carrito) */
+  observacionPe:         string
+  fechaEntregaCliente:   string
+
   // Acciones (todas async — golpean /api/carrito/*).
   activar:          (cliente: Cliente, vendedor: Vendedor, plazo: Plazo, listaId: ListaId, descuentos: number[]) => Promise<void>
   desactivar:       () => Promise<void>
@@ -157,6 +164,8 @@ export interface SesionVenta {
   setVendedor:      (v: Vendedor | null) => void
   setValidacion:    (val: SesionVenta['validacion']) => void
   limpiarValidacion: () => void
+  setLogisticaPe:   (observacion: string, fechaEntregaCliente: string) => Promise<void>
+  patchLogisticaPeLocal: (observacion: string, fechaEntregaCliente: string) => void
 }
 
 /* ── Helpers ── */
@@ -377,11 +386,27 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     expiraEn: null,
     items: [],
   },
+  observacionPe: '',
+  fechaEntregaCliente: '',
 
   setVendedor: (v) => set({ vendedor: v }),
   setValidacion: (val) => set({ validacion: val }),
   limpiarValidacion: () =>
     set({ validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } }),
+
+  setLogisticaPe: async (observacion, fechaEntregaCliente) => {
+    try {
+      await carritoPatchLogisticaPe({
+        observacion: observacion.trim() || null,
+        fecha_entrega_cliente: fechaEntregaCliente.trim().slice(0, 10) || null,
+      })
+    } catch (e) {
+      console.warn('[sesionVenta] setLogisticaPe:', e)
+    }
+  },
+
+  patchLogisticaPeLocal: (observacion, fechaEntregaCliente) =>
+    set({ observacionPe: observacion, fechaEntregaCliente }),
 
   aplicarSnapshot: (sesion, items) => {
     hydrateMetaFromLocal()
@@ -398,7 +423,11 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
         ? { id_cliente: sesion.cliente_id, descp_cliente: sesion.cliente_nombre, email: null }
         : null,
       plazo: sesion && sesion.plazo_id
-        ? { id_plazo: sesion.plazo_id, descp_plazo: sesion.plazo_nombre ?? '' }
+        ? {
+            id_plazo: sesion.plazo_id,
+            descp_plazo: sesion.plazo_nombre ?? '',
+            cod_oper_carlos: sesion.cod_oper_carlos ?? '',
+          }
         : null,
       listaPrecioId: listaId,
       descuentos: sesion?.descuentos ?? [],
@@ -408,6 +437,8 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       carrito,
       activa: Boolean(sesion),
       activatedAt: sesion?.iniciada_en ?? null,
+      observacionPe: sesion?.observacion ?? '',
+      fechaEntregaCliente: sesion?.fecha_entrega_cliente?.slice(0, 10) ?? '',
       vendedor: s.vendedor,
       hydrated: true,
       hydrating: false,
@@ -443,6 +474,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       cliente_nombre: cliente.descp_cliente,
       plazo_id: plazo.id_plazo,
       plazo_nombre: plazo.descp_plazo,
+      cod_oper_carlos: plazo.cod_oper_carlos,
       lista_precio_id: listaId,
       descuentos: descuentos.slice(0, 4),
       descuentos_lote: {},
@@ -468,6 +500,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       activa: false, activatedAt: null,
       carrito: {}, descuentos: [], descuentosPorLote: {},
       facturas: [], todasPreAutorizadas: true,
+      observacionPe: '', fechaEntregaCliente: '',
       validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
     })
   },
@@ -480,6 +513,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       cliente_nombre: s.cliente.descp_cliente,
       plazo_id: s.plazo?.id_plazo ?? null,
       plazo_nombre: s.plazo?.descp_plazo ?? null,
+      cod_oper_carlos: s.plazo?.cod_oper_carlos ?? null,
       lista_precio_id: id,
       descuentos: s.descuentos,
       descuentos_lote: s.descuentosPorLote as Record<string, number[]>,
@@ -496,6 +530,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       cliente_nombre: s.cliente.descp_cliente,
       plazo_id: s.plazo?.id_plazo ?? null,
       plazo_nombre: s.plazo?.descp_plazo ?? null,
+      cod_oper_carlos: s.plazo?.cod_oper_carlos ?? null,
       lista_precio_id: s.listaPrecioId,
       descuentos: next,
       descuentos_lote: s.descuentosPorLote as Record<string, number[]>,
@@ -512,6 +547,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       cliente_nombre: s.cliente.descp_cliente,
       plazo_id: s.plazo?.id_plazo ?? null,
       plazo_nombre: s.plazo?.descp_plazo ?? null,
+      cod_oper_carlos: s.plazo?.cod_oper_carlos ?? null,
       lista_precio_id: s.listaPrecioId,
       descuentos: s.descuentos,
       descuentos_lote: nextLote as Record<string, number[]>,

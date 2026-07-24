@@ -10,6 +10,7 @@ import { EditorDescuentosFi } from '@/components/EditorDescuentosFi'
 import { getImageCandidatesForUi } from '@/lib/imagen'
 import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
 import { etiquetaDescuentos, normalizarDescuentos4 } from '@/lib/carritoDescuentosFi'
+import { resolverFacturaConfig } from '@/lib/facturaConfigMatch'
 
 const AZUL = '#1E40AF'
 const VERDE = '#10B981'
@@ -47,6 +48,10 @@ export default function CarritoPage() {
   const cargarDesdeBD       = useSesion(s => s.cargarDesdeBD)
   const hydrating           = useSesion(s => s.hydrating)
   const hydrated            = useSesion(s => s.hydrated)
+  const observacionPe       = useSesion(s => s.observacionPe)
+  const fechaEntregaCliente = useSesion(s => s.fechaEntregaCliente)
+  const setLogisticaPe      = useSesion(s => s.setLogisticaPe)
+  const patchLogisticaPeLocal = useSesion(s => s.patchLogisticaPeLocal)
 
   const router = useRouter()
   const [enviando, setEnviando] = useState(false)
@@ -57,6 +62,7 @@ export default function CarritoPage() {
   const [error, setError] = useState<string | null>(null)
   const [editorFi, setEditorFi] = useState<FacturaConfig | null>(null)
   const [guardandoDesc, setGuardandoDesc] = useState(false)
+  const logisticaSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Countdown del token (60 s desde validacion.expiraEn).
   const [now, setNow] = useState(() => Date.now())
@@ -129,6 +135,16 @@ export default function CarritoPage() {
   const totalRefs     = carritoItems.length
   const totalCajas    = carritoItems.reduce((s, i) => s + i.cajas, 0)
   const totalParesCarrito = carritoItems.reduce((s, i) => s + i.pares, 0)
+  const tienePe = lotes.some((l) => l.pp_id < 0) ||
+    carritoItems.some((i) => isProntaEntregaStockRow(i))
+
+  function programarGuardadoLogisticaPe(obs: string, fecha: string) {
+    patchLogisticaPeLocal(obs, fecha)
+    if (logisticaSaveTimer.current) clearTimeout(logisticaSaveTimer.current)
+    logisticaSaveTimer.current = setTimeout(() => {
+      void setLogisticaPe(obs, fecha)
+    }, 450)
+  }
 
   const itemsConProblema: ValidarItemResult[] =
     validacion.estado === 'DIFERENCIAS'
@@ -251,6 +267,14 @@ export default function CarritoPage() {
       )
       return
     }
+    if (tienePe && !fechaEntregaCliente.trim()) {
+      const seguir = window.confirm(
+        'No indicaste la fecha de entrega al cliente.\n\n' +
+          'Podés confirmar igual — la FI quedará en Logística OK como pendiente de confirmación.\n\n' +
+          '¿Confirmar sin fecha?',
+      )
+      if (!seguir) return
+    }
     confirmLock.current = true
     setEnviando(true)
     setError(null)
@@ -263,6 +287,7 @@ export default function CarritoPage() {
         vendedor_nombre: String(vendedor?.descp_vendedor || '—'),
         plazo_id:        plazo!.id_plazo,
         plazo_nombre:    String(plazo!.descp_plazo || ''),
+        cod_oper_carlos: plazo!.cod_oper_carlos,
         lista_precio_id: listaPrecioId,
         lista_nombre:    String(listaActiva.nombre || ''),
         descuento_1: Number(d1) || 0,
@@ -271,7 +296,14 @@ export default function CarritoPage() {
         descuento_4: Number(d4) || 0,
         total_pares: Number(totalGenPares) || 0,
         total_neto:  Number(totalGenMonto) || 0,
+        cod_oper: plazo!.cod_oper_carlos,
         fecha:       new Date().toISOString(),
+        ...(tienePe
+          ? {
+              observacion: observacionPe.trim() || null,
+              fecha_entrega_cliente: fechaEntregaCliente.trim().slice(0, 10) || null,
+            }
+          : {}),
         lotes: lotes.map((lote) => ({
           pp_id:  Number(lote.pp_id),
           pp_nro: String(lote.pp_nro || ''),
@@ -283,17 +315,18 @@ export default function CarritoPage() {
           facturas: lote.marcas.flatMap((m) =>
             m.facturas.map((f) => {
               // Buscar configuración de descuentos específicos para esta factura
-              const facturaConfig = facturas.find(
-                (fc) =>
-                  fc.pp_id === lote.pp_id &&
-                  fc.marca === m.marca &&
-                  ((f.caso_id != null &&
-                    fc.caso_id != null &&
-                    Number(fc.caso_id) === Number(f.caso_id)) ||
-                    fc.caso === f.caso),
-              )
-              const descFactura = normalizarDescuentos4(facturaConfig?.descuentos ?? descuentos)
-              const listaFactura = facturaConfig?.lista_precio_id ?? listaPrecioId
+              const facturaConfig = resolverFacturaConfig(facturas, {
+                pp_id: lote.pp_id,
+                marca: m.marca,
+                marca_id: m.marca_id,
+                caso: f.caso,
+                caso_id: f.caso_id,
+                lista_precio_id: listaPrecioId,
+                descuentos_cabecera: descuentos,
+                items_count: f.items.length,
+              })
+              const descFactura = normalizarDescuentos4(facturaConfig.descuentos)
+              const listaFactura = facturaConfig.lista_precio_id
 
               return {
                 marca: String(m.marca || ''),
@@ -629,9 +662,17 @@ export default function CarritoPage() {
                 </div>
 
                 {marca.facturas.map((fact, idx) => {
-                  const facturaConfig = facturas.find(f =>
-                    f.pp_id === lote.pp_id && f.marca === marca.marca && f.caso === fact.caso
-                  )
+                  // Hotfix PE: siempre mostrar Editar descuentos (sintetiza si falta en sesión).
+                  const facturaConfig = resolverFacturaConfig(facturas, {
+                    pp_id: lote.pp_id,
+                    marca: marca.marca,
+                    marca_id: marca.marca_id,
+                    caso: fact.caso,
+                    caso_id: fact.caso_id,
+                    lista_precio_id: listaPrecioId,
+                    descuentos_cabecera: descuentos,
+                    items_count: fact.items.length,
+                  })
                   return (
                   <div key={fact.grupo_key} style={{
                     padding: marca.cantidad_facturas > 1 ? '8px 20px 14px 20px' : '0 20px 12px 20px',
@@ -653,26 +694,24 @@ export default function CarritoPage() {
                           </span>
                         </div>
                       )}
-                      {facturaConfig && (
-                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 14px', backgroundColor: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                          <span style={{ fontSize: 12, color: '#64748B' }}>
-                            <strong>Lista:</strong> {LISTAS.find(l => l.id === facturaConfig.lista_precio_id)?.nombre ?? 'LPN'}
-                            &nbsp;·&nbsp;<strong>Desc.:</strong> {etiquetaDescuentos(facturaConfig.descuentos)}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={guardandoDesc || !!editorFi}
-                            onClick={() => setEditorFi(facturaConfig)}
-                            style={{
-                              marginLeft: 'auto', padding: '7px 14px', borderRadius: 8,
-                              border: `2px solid ${AZUL}`, backgroundColor: 'white', color: AZUL,
-                              fontWeight: 800, fontSize: 12, cursor: 'pointer',
-                            }}
-                          >
-                            Editar descuentos
-                          </button>
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 14px', backgroundColor: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                        <span style={{ fontSize: 12, color: '#64748B' }}>
+                          <strong>Lista:</strong> {LISTAS.find(l => l.id === facturaConfig.lista_precio_id)?.nombre ?? 'LPN'}
+                          &nbsp;·&nbsp;<strong>Desc.:</strong> {etiquetaDescuentos(facturaConfig.descuentos)}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={guardandoDesc || !!editorFi}
+                          onClick={() => setEditorFi(facturaConfig)}
+                          style={{
+                            marginLeft: 'auto', padding: '7px 14px', borderRadius: 8,
+                            border: `2px solid ${AZUL}`, backgroundColor: 'white', color: AZUL,
+                            fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                          }}
+                        >
+                          Editar descuentos
+                        </button>
+                      </div>
                     </div>
 
                     {fact.items.map((item) => {
@@ -783,6 +822,61 @@ export default function CarritoPage() {
             ))}
           </div>
       ))}
+
+      {/* PE ↔ Logística OK — entrega al cliente (opcional, sugerido) */}
+      {tienePe && (
+        <div style={{
+          border: '2px solid #059669', borderRadius: 16, padding: '20px 24px',
+          marginBottom: 24, backgroundColor: '#ECFDF5',
+        }}>
+          <h2 style={{ fontSize: 16, fontWeight: 900, color: '#065F46', marginBottom: 4 }}>
+            Entrega al cliente · Pronta entrega
+          </h2>
+          <p style={{ fontSize: 13, color: '#047857', marginBottom: 16 }}>
+            Recomendado completar — ayuda a Logística OK a programar la entrega. No es obligatorio para confirmar.
+          </p>
+          <label style={{ display: 'block', marginBottom: 14 }}>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#065F46', marginBottom: 6 }}>
+              Fecha de entrega al cliente
+            </span>
+            <input
+              type="date"
+              value={fechaEntregaCliente}
+              onChange={(e) => {
+                programarGuardadoLogisticaPe(observacionPe, e.target.value)
+              }}
+              style={{
+                width: '100%', maxWidth: 220, padding: '10px 12px', borderRadius: 10,
+                border: fechaEntregaCliente ? '1px solid #10B981' : '1px solid #F59E0B',
+                fontSize: 15,
+              }}
+            />
+            {!fechaEntregaCliente && (
+              <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#B45309' }}>
+                Sin fecha → pendiente de confirmación en Logística OK
+              </span>
+            )}
+          </label>
+          <label style={{ display: 'block' }}>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#065F46', marginBottom: 6 }}>
+              Logística (opcional)
+            </span>
+            <textarea
+              value={observacionPe}
+              onChange={(e) => {
+                programarGuardadoLogisticaPe(e.target.value, fechaEntregaCliente)
+              }}
+              placeholder="Ej.: entregar por la mañana, llamar antes, acceso por lateral…"
+              rows={3}
+              maxLength={2000}
+              style={{
+                width: '100%', padding: '10px 12px', borderRadius: 10,
+                border: '1px solid #6EE7B7', fontSize: 14, resize: 'vertical',
+              }}
+            />
+          </label>
+        </div>
+      )}
 
       {/* Total + Validar + Confirmar */}
       <div style={{ border: `2px solid ${AZUL}`, borderRadius: 16, padding: 24, backgroundColor: '#EFF6FF' }}>

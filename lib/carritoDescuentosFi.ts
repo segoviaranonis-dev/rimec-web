@@ -1,5 +1,8 @@
+import { asegurarFacturasDescuentosLote } from '@/lib/asegurarFacturasDescuentosLote'
 import { parseDescuentoInput } from '@/lib/descuentoInput'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
+import { etiquetaCelulaFi } from '@/lib/facturaCelulaClave'
+import { mismaFacturaConfig, sintetizarFacturaConfig } from '@/lib/facturaConfigMatch'
 import { getPrecioActivo, getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
 import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -48,6 +51,33 @@ export interface GuardarDescuentosFiResult {
   origen: 'CP' | 'PE' | 'MIXTO'
 }
 
+type ItemRow = {
+  det_id: number
+  pp_id: number
+  marca_snapshot: string
+  caso_snapshot: string
+  caso_id_snapshot: number | null
+}
+
+function etiquetaItem(
+  item: ItemRow,
+  stock: Record<string, unknown> | undefined,
+): string {
+  const casoId =
+    item.caso_id_snapshot != null && Number(item.caso_id_snapshot) > 0
+      ? Number(item.caso_id_snapshot)
+      : null
+  return etiquetaCelulaFi({
+    caso: String(item.caso_snapshot ?? stock?.descp_caso ?? ''),
+    caso_id: casoId,
+    es_promo: stock?.es_promo != null ? Boolean(stock.es_promo) : null,
+    es_liquidacion: stock?.es_liquidacion != null ? Boolean(stock.es_liquidacion) : null,
+    cadena_comercial: stock?.cadena_comercial != null ? String(stock.cadena_comercial) : null,
+    cod_grupo: stock?.cod_grupo != null ? String(stock.cod_grupo) : null,
+    linea_codigo: stock?.linea_codigo != null ? String(stock.linea_codigo) : null,
+  })
+}
+
 /**
  * Transacción lógica única: fija descuentos FI en sesión + recalcula precio_snapshot
  * de cada ítem (camino CP v_stock_rimec · camino PE v_stock_pe_rimec / staging).
@@ -59,6 +89,9 @@ export async function guardarDescuentosFacturaInterna(
 ): Promise<GuardarDescuentosFiResult> {
   const descuentos = normalizarDescuentos4(input.descuentos)
 
+  // Regenera facturas PE/CP si faltan (hotfix: botón descuento sin fila en sesión).
+  await asegurarFacturasDescuentosLote(sb, idUsuario)
+
   const { data: sesion, error: sesionErr } = await sb
     .from('carrito_sesion')
     .select('descuentos_lote, lista_precio_id')
@@ -69,19 +102,38 @@ export async function guardarDescuentosFacturaInterna(
     throw new Error('Sesión de carrito no encontrada')
   }
 
-  const descuentosLote = sesion.descuentos_lote as { facturas: Array<Record<string, unknown>> }
-  if (!descuentosLote?.facturas?.length) {
-    throw new Error('Sin facturas internas en sesión')
+  const descuentosLote = (sesion.descuentos_lote as { facturas: Array<Record<string, unknown>> }) ?? {
+    facturas: [],
   }
+  if (!Array.isArray(descuentosLote.facturas)) descuentosLote.facturas = []
 
-  const idx = descuentosLote.facturas.findIndex(
-    (f) =>
-      Number(f.pp_id) === input.pp_id &&
-      String(f.marca) === input.marca &&
-      String(f.caso) === input.caso,
+  let idx = descuentosLote.facturas.findIndex((f) =>
+    mismaFacturaConfig(
+      {
+        pp_id: Number(f.pp_id),
+        marca: String(f.marca),
+        caso: String(f.caso),
+        caso_id: f.caso_id != null ? Number(f.caso_id) : null,
+      },
+      input.pp_id,
+      input.marca,
+      input.caso,
+      null,
+    ),
   )
+
   if (idx === -1) {
-    throw new Error('Factura interna no encontrada en sesión')
+    descuentosLote.facturas.push(
+      sintetizarFacturaConfig({
+        pp_id: input.pp_id,
+        marca: input.marca,
+        caso: input.caso,
+        lista_precio_id: Number(input.lista_precio_id ?? sesion.lista_precio_id) || 1,
+        descuentos,
+        items_count: 0,
+      }) as unknown as Record<string, unknown>,
+    )
+    idx = descuentosLote.facturas.length - 1
   }
 
   const prev = descuentosLote.facturas[idx]
@@ -95,21 +147,48 @@ export async function guardarDescuentosFacturaInterna(
     lista_precio_id: listaId,
     descuentos: [...descuentos],
     pre_autorizado: true,
+    caso: input.caso,
   }
 
-  const { data: items, error: itemsErr } = await sb
+  const { data: itemsRaw, error: itemsErr } = await sb
     .from('carrito_item')
-    .select('det_id, pp_id, marca_snapshot, caso_snapshot')
+    .select('det_id, pp_id, marca_snapshot, caso_snapshot, caso_id_snapshot')
     .eq('id_usuario', idUsuario)
-    .eq('pp_id', input.pp_id)
     .eq('marca_snapshot', input.marca)
-    .eq('caso_snapshot', input.caso)
+
+  let itemsFiltered = itemsRaw ?? []
+  if (input.pp_id) {
+    const byPp = itemsFiltered.filter((i) => Number(i.pp_id) === Number(input.pp_id))
+    if (byPp.length) itemsFiltered = byPp
+  }
 
   if (itemsErr) throw new Error(itemsErr.message)
-  if (!items?.length) throw new Error('Sin ítems en esta factura interna')
+  if (!itemsFiltered.length) throw new Error('Sin ítems en esta factura interna')
 
-  const detIds = items.map((i) => Number(i.det_id))
-  const stockMap = await fetchCarritoStockByDetIds(sb, detIds)
+  const stockMap = await fetchCarritoStockByDetIds(
+    sb,
+    itemsRaw.map((i) => Number(i.det_id)),
+  )
+
+  // R-FI-2: caso UI = etiquetaCelulaFi; caso_snapshot puede diferir.
+  let items = (itemsFiltered as ItemRow[]).filter((item) => {
+    const stock = stockMap.get(Number(item.det_id)) as Record<string, unknown> | undefined
+    const etiqueta = etiquetaItem(item, stock)
+    return etiqueta === input.caso || String(item.caso_snapshot) === input.caso
+  })
+
+  if (!items.length) {
+    const etiquetas = new Set(
+      (itemsRaw as ItemRow[]).map((item) => {
+        const stock = stockMap.get(Number(item.det_id)) as Record<string, unknown> | undefined
+        return etiquetaItem(item, stock)
+      }),
+    )
+    // Una sola FI en ese PP×marca → aplicar a todos
+    if (etiquetas.size <= 1) items = itemsFiltered as ItemRow[]
+  }
+
+  if (!items.length) throw new Error('Sin ítems en esta factura interna')
 
   let itemsActualizados = 0
   let origenCp = 0
@@ -157,6 +236,11 @@ export async function guardarDescuentosFacturaInterna(
 
     if (updErr) throw new Error(updErr.message)
     itemsActualizados += 1
+  }
+
+  descuentosLote.facturas[idx] = {
+    ...descuentosLote.facturas[idx],
+    items_count: items.length,
   }
 
   const { error: sesUpdErr } = await sb

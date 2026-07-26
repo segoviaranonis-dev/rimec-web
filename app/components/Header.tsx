@@ -84,7 +84,7 @@ export default function Header({ data: _data }: { data: HeaderData }) {
           esPe={false}
           esCp={false}
           esEstadisticas={false}
-          hrefCp="/?origen_tipo=CP&ramo_tipo=CALZADO"
+          hrefCp="/?origen_tipo=CP"
           hrefPe="/?origen_tipo=PRONTA_ENTREGA&ramo_tipo=CALZADO"
         />
       }
@@ -110,6 +110,10 @@ const FILTROS_COMPARTIDOS_URL = [
   'material_familias',
   'color_familias',
   'colores',
+  'precio_tope',
+  'precio_min',
+  'precio_max',
+  'lista_precio_id',
 ] as const
 
 function hrefOrigen(
@@ -126,8 +130,9 @@ function hrefOrigen(
     }
   }
   next.set('origen_tipo', origen)
-  const ramo = searchParams.get('ramo_tipo') || 'CALZADO'
-  next.set('ramo_tipo', ramo)
+  const ramo = searchParams.get('ramo_tipo')
+  if (ramo) next.set('ramo_tipo', ramo)
+  else if (origen === 'PRONTA_ENTREGA') next.set('ramo_tipo', 'CALZADO')
   if (origen === 'CP') {
     const q = searchParams.get('quincenas')
     if (q) next.set('quincenas', q)

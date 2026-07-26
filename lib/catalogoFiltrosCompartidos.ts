@@ -17,6 +17,7 @@ export type SharedCatalogFilterSlice = Pick<
   | 'tipo_ids'
   | 'colores'
   | 'genero_codigo'
+  | 'genero_codigos'
   | 'tonos'
   | 'sin_tono'
   | 'buscar'
@@ -35,7 +36,8 @@ function isSharedFieldEmpty(key: keyof SharedCatalogFilterSlice, value: unknown)
     key === 'tonos' ||
     key === 'tipo_grupos' ||
     key === 'material_familias' ||
-    key === 'color_familias'
+    key === 'color_familias' ||
+    key === 'genero_codigos'
   ) {
     return !Array.isArray(value) || value.length === 0
   }
@@ -54,6 +56,7 @@ export function extractSharedCatalogFilters(filters: CatalogoFilterState): Share
     tipo_ids: [...(filters.tipo_ids ?? [])],
     colores: [...(filters.colores ?? [])],
     genero_codigo: filters.genero_codigo ?? '',
+    genero_codigos: [...(filters.genero_codigos ?? [])],
     tonos: filters.sin_tono ? [] : [...(filters.tonos ?? [])],
     sin_tono: Boolean(filters.sin_tono),
     buscar: (filters.buscar ?? '').trim(),
@@ -79,7 +82,7 @@ function parseTipoGrupos(raw: unknown): TipoGrupoId[] {
   return raw
     .map(String)
     .filter((x): x is TipoGrupoId =>
-      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
+      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
     )
 }
 
@@ -106,6 +109,9 @@ export function readSharedCatalogFilters(): SharedCatalogFilterSlice | null {
         : [],
       colores: Array.isArray(parsed.colores) ? parsed.colores.filter(Boolean).map(String) : [],
       genero_codigo: String(parsed.genero_codigo ?? ''),
+      genero_codigos: Array.isArray(parsed.genero_codigos)
+        ? parsed.genero_codigos.filter(Boolean).map(String)
+        : [],
       tonos: Array.isArray(parsed.tonos) ? parsed.tonos.filter(Boolean).map(String) : [],
       sin_tono: Boolean(parsed.sin_tono),
       buscar: String(parsed.buscar ?? '').trim(),
@@ -157,6 +163,7 @@ export function mergeSharedIntoFilters(fromUrl: CatalogoFilterState): CatalogoFi
     tipo_ids: pick('tipo_ids'),
     colores: pick('colores'),
     genero_codigo: pick('genero_codigo'),
+    genero_codigos: pick('genero_codigos'),
     tonos: pick('tonos'),
     sin_tono: pick('sin_tono'),
     buscar: pick('buscar'),
@@ -182,6 +189,7 @@ export function applySharedSliceToFilters(
     tipo_ids: [...slice.tipo_ids],
     colores: [...slice.colores],
     genero_codigo: slice.genero_codigo,
+    genero_codigos: [...(slice.genero_codigos ?? [])],
     tonos: slice.sin_tono ? [] : [...(slice.tonos ?? [])],
     sin_tono: slice.sin_tono,
     buscar: slice.buscar,

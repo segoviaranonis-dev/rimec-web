@@ -2,6 +2,10 @@ import type { ReactNode } from 'react'
 import { ProductImage } from '@/components/ProductImage'
 import { PromoCasoBadge } from '@/components/catalog/PromoCasoBadge'
 import { productImagePrimaryStem } from '@/lib/productImageProtocol'
+import {
+  shellFooterLatidoClass,
+  shellLatidoClass,
+} from '@/lib/catalogoShellLatidos'
 
 export const CATALOG_CARD_WIDTH_CLASS =
   'w-[calc(50%-0.375rem)] max-w-[220px] sm:w-[180px] md:w-[200px]'
@@ -22,6 +26,8 @@ type Props = {
   material: string
   color: string
   imagenNombre?: string | null
+  /** Color Kyly legible (K0460) — etiqueta bajo imagen 638 */
+  descpColor?: string | null
   thumbSrc?: string | null
   flatSrc?: string | null
   thumbCandidates?: string[]
@@ -38,8 +44,12 @@ type Props = {
   imageOverlay?: ReactNode
   ventaFooter?: ReactNode
   hideStockBadge?: boolean
-  shellVariant?: 'cp' | 'pe' | 'fusion' | 'liquidacion' | 'promo'
-  /** Badge esquina imagen (ej. Liq. PE). */
+  shellVariant?: 'cp' | 'pe' | 'fusion' | 'liquidacion' | 'promo' | 'cp-promo' | 'comun'
+  /** Badge cabecera tras marca (PE PRO). */
+  headerBadge?: ReactNode
+  /** Badge esquina sup. derecha imagen (PE LIQ). */
+  imageTopRightBadge?: ReactNode
+  /** @deprecated Usar headerBadge / imageTopRightBadge */
   imageCornerBadge?: ReactNode
 }
 
@@ -53,6 +63,7 @@ export function CatalogTarjetaDeposito({
   material,
   color,
   imagenNombre,
+  descpColor,
   thumbSrc,
   flatSrc,
   thumbCandidates,
@@ -66,6 +77,8 @@ export function CatalogTarjetaDeposito({
   ventaFooter,
   hideStockBadge = false,
   shellVariant,
+  headerBadge,
+  imageTopRightBadge,
   imageCornerBadge,
 }: Props) {
   const widthClass = compactGrid ? CATALOG_CARD_COMPACT_CLASS : CATALOG_CARD_WIDTH_CLASS
@@ -77,37 +90,15 @@ export function CatalogTarjetaDeposito({
       material,
       color,
       imagenNombre,
+      descpColor,
       tipoV2Id: esConfecciones ? 2 : 1,
     }) ??
     (esConfecciones
       ? `${linea}_${color}`
       : [linea, referencia, material, color].filter(Boolean).join('-'))
 
-  const shellClass =
-    shellVariant === 'cp'
-      ? 'border-blue-200/90 bg-gradient-to-b from-blue-50/95 via-white to-white'
-      : shellVariant === 'pe'
-        ? 'border-emerald-200/90 bg-gradient-to-b from-emerald-50/95 via-white to-white'
-        : shellVariant === 'liquidacion'
-          ? 'catalog-card-liquidacion-pulse border-emerald-400/90 bg-gradient-to-b from-emerald-100/70 via-white to-white'
-          : shellVariant === 'promo'
-            ? 'catalog-card-promo-pulse border-amber-400/90 bg-gradient-to-b from-amber-50/80 via-white to-white'
-            : shellVariant === 'fusion'
-              ? 'border-violet-200/80 bg-gradient-to-b from-violet-50/40 via-white to-white'
-              : 'border-slate-300 bg-white'
-
-  const footerShellClass =
-    shellVariant === 'cp'
-      ? 'border-blue-100/80 bg-blue-50/30'
-      : shellVariant === 'pe'
-        ? 'border-emerald-100/80 bg-emerald-50/30'
-        : shellVariant === 'liquidacion'
-          ? 'border-emerald-200/90 bg-emerald-50/40'
-          : shellVariant === 'promo'
-            ? 'border-amber-200/90 bg-amber-50/40'
-            : shellVariant === 'fusion'
-              ? 'border-violet-100/80 bg-white/80'
-              : 'border-slate-200 bg-white'
+  const shellClass = shellLatidoClass(shellVariant)
+  const footerShellClass = shellFooterLatidoClass(shellVariant)
 
   const image = (
     <ProductImage
@@ -133,7 +124,8 @@ export function CatalogTarjetaDeposito({
             <p className="min-w-0 truncate text-[9px] font-normal uppercase tracking-wide text-rimec-azul sm:text-[10px]">
               {marca}
             </p>
-            {esPromo ? <PromoCasoBadge size="compact" /> : null}
+            {headerBadge}
+            {esPromo && !headerBadge ? <PromoCasoBadge size="compact" /> : null}
           </div>
           {!hideStockBadge && (
             <span className="shrink-0 rounded-full bg-bazzar-naranja px-1.5 py-0.5 text-[9px] font-bold text-white sm:px-2 sm:text-[10px]">
@@ -145,12 +137,14 @@ export function CatalogTarjetaDeposito({
         {onImageClick ? (
           <button type="button" onClick={onImageClick} className={IMAGE_HOST_CLASS} aria-label={alt}>
             {image}
+            {imageTopRightBadge}
             {imageCornerBadge}
             {imageOverlay}
           </button>
         ) : (
           <div className={IMAGE_HOST_CLASS}>
             {image}
+            {imageTopRightBadge}
             {imageCornerBadge}
             {imageOverlay}
           </div>

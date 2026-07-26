@@ -83,9 +83,10 @@ export async function enrichPreventaCatalogoRows(rows: StockRow[]): Promise<Stoc
 
   return rows.map(row => {
     const ppId = Number(row.pp_id)
-    if (!ppId || row.numero_preventa) return row
+    if (!ppId) return row
     const pv = map.get(ppId)
-    return pv ? { ...row, numero_preventa: pv } : row
+    if (!pv) return row
+    return { ...row, numero_preventa: pv }
   })
 }
 

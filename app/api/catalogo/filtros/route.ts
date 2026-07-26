@@ -39,7 +39,7 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
       quincenas: [],
     }
 
-    if (filters.ramo_tipo === 'CONFECCIONES') {
+    if (filters.ramo_tipo === 'CONFECCIONES' || filters.ramo_tipo === 'ACCESORIOS') {
       const peRes = await fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
         applySql: q =>
           applyPeDepositoQuery(
@@ -200,7 +200,7 @@ export async function GET(req: NextRequest) {
     const rows = await rowsForFiltrosLegacy(facetFilters)
     const precioRango = await precioRangoParaFiltros(filters)
     return NextResponse.json({
-      filtros: buildFiltrosFromRows(rows),
+      filtros: buildFiltrosFromRows(rows, filters.ramo_tipo),
       colores: buildColoresFromRows(rows),
       quincenas: buildQuincenasFromRows(rows),
       preventas: buildPreventasFromRows(rows),

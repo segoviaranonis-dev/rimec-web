@@ -2,16 +2,28 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { RIMEC_PE_DEPOSITOS, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { RIMEC_PE_DEPOSITOS, PE_RAMO_CATEGORIA_LABEL, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { tituloAbcrSidebar, tiposMetaModuloAccesorios, esRamoAccesorios } from '@/lib/filtros/modulo-accesorios'
 import { clearSharedCatalogFilters, persistSharedCatalogFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { FiltroTonoCabecera } from '@/components/catalog/FiltroTonoCabecera'
+import { FiltroTonoPrecioFila } from '@/components/catalog/FiltroTonoPrecioFila'
 import { CatalogExtenderDatosToggle } from '@/components/catalog/CatalogAcordeonContext'
+import { HeaderSesionVenta } from '@/components/catalog/HeaderSesionVenta'
 import type { ColorEstandar } from '@/lib/pilares/colores-estandar'
 import {
-  TIPO_GRUPO_OPCIONES,
+  sanitizeTipoGruposParaRamo,
+  tipoGrupoOpcionesVisibles,
   type TipoGrupoId,
 } from '@/lib/filtros/filtro-tipo-canonico'
+import {
+  PE_TIPO_DICCIONARIO_OPCIONES,
+  labelPeTipoDiccionario,
+  usaDiccionarioPeTipo,
+} from '@/lib/filtros/filtro-tipo-pe-diccionario'
 import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
+import type { PrecioRangoCatalogo } from '@/lib/catalogoPrecioRango'
+import { labelMarcaCatalogo } from '@/lib/marcaBadge'
+import { useSesion, type ListaId } from '@/store/sesionVenta'
 import {
   cascadaColor,
   cascadaEstilo,
@@ -56,6 +68,8 @@ interface Props {
   colorFamilias?: FamiliaPilarItem[]
   totalModelos: number
   totalPares:   number
+  /** Límites MIN/MAX SQL (barato → caro) */
+  rangoPrecioCatalogo?: PrecioRangoCatalogo | null
   value?: CatalogoFilterState
   onChange?: (filters: CatalogoFilterState) => void
   /** Cabecera + Tono; Dimensiones/Molécula viven en CatalogoFiltrosSidebar */
@@ -75,7 +89,9 @@ export type CatalogoFilterState = {
   origen_tipo?: string
   ramo_tipo?: '' | PeRamoTipo
   deposito_codigo?: '' | PeDepositoCodigo
+  /** Legacy single; plural genero_codigos manda. */
   genero_codigo?: string
+  genero_codigos?: string[]
   tonos?: string[]
   sin_tono?: boolean
   buscar?: string
@@ -89,6 +105,12 @@ export type CatalogoFilterState = {
   preventas?: string[]
   /** Pares casados quincena + preventa (CP) */
   dato_duro_cp?: string[]
+  /** Rango LPN (Gs) — filtro memoria */
+  precio_min?: number | null
+  precio_max?: number | null
+  /** Tope lista sesión — precio <= tope */
+  precio_tope?: number | null
+  lista_precio_id?: ListaId | null
 }
 
 const GENEROS_FALLBACK: GeneroItem[] = [
@@ -108,19 +130,20 @@ function parseTipoGruposParam(raw: string | null): TipoGrupoId[] {
     .split(',')
     .filter(Boolean)
     .filter((x): x is TipoGrupoId =>
-      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
+      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
     )
 }
 
 export function FiltrosCatalogo({
   estilos, marcas, lineas, tipos, generos, tonoCatalog,
   colores, quincenas, materialFamilias = [], colorFamilias = [],
-  totalModelos, totalPares, value, onChange,
+  totalModelos, totalPares, rangoPrecioCatalogo, value, onChange,
   variant = 'pills',
 }: Props) {
   const soloCabecera = variant === 'cabecera'
   const router       = useRouter()
   const searchParams = useSearchParams()
+  const ventaActiva  = useSesion((s) => s.activa)
 
   const estiloIdActual = value?.grupo_estilo_id ?? searchParams.get('grupo_estilo_id') ?? ''
   const marcaIdActual  = value?.marca_id        ?? searchParams.get('marca_id')        ?? ''
@@ -139,14 +162,36 @@ export function FiltrosCatalogo({
   const quincenasSel = value?.quincenas ?? (searchParams.get('quincenas') ? searchParams.get('quincenas')!.split(',').filter(Boolean).map(Number) : [])
   const origenActual = value?.origen_tipo ?? searchParams.get('origen_tipo') ?? ''
   const ramoActual = value?.ramo_tipo ?? (searchParams.get('ramo_tipo') as PeRamoTipo | '') ?? ''
+  const tiposAbcr = esRamoAccesorios(ramoActual) ? tiposMetaModuloAccesorios(tipos) : tipos
+  const abcrLabel = tituloAbcrSidebar(ramoActual)
   const depositoActual = value?.deposito_codigo ?? (searchParams.get('deposito_codigo') as PeDepositoCodigo | '') ?? ''
   const generoActual = value?.genero_codigo ?? searchParams.get('genero_codigo') ?? ''
+  const generoIdsActual = value?.genero_codigos ??
+    (searchParams.get('genero_codigos')
+      ? searchParams.get('genero_codigos')!.split(',').filter(Boolean)
+      : generoActual ? [generoActual] : [])
   const tonosSel = value?.tonos ?? (searchParams.get('tonos') ? searchParams.get('tonos')!.split(',').filter(Boolean) : [])
   const sinTono = value?.sin_tono ?? searchParams.get('sin_tono') === '1'
   const buscarActual = value?.buscar ?? searchParams.get('buscar') ?? ''
   const tipoGruposSel = value?.tipo_grupos ?? parseTipoGruposParam(searchParams.get('tipo_grupos'))
   const materialFamSel = value?.material_familias ?? (searchParams.get('material_familias') ? searchParams.get('material_familias')!.split(',').filter(Boolean) : [])
   const colorFamSel = value?.color_familias ?? (searchParams.get('color_familias') ? searchParams.get('color_familias')!.split(',').filter(Boolean) : [])
+  const parsePrecioParam = (raw: string | null): number | null => {
+    if (!raw) return null
+    const n = Number(raw.replace(/\D/g, ''))
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+  const precioMinActual = value?.precio_min ?? parsePrecioParam(searchParams.get('precio_min'))
+  const precioMaxActual =
+    value?.precio_max ??
+    parsePrecioParam(searchParams.get('precio_max')) ??
+    (value?.precio_tope ?? parsePrecioParam(searchParams.get('precio_tope')))
+  const listaPrecioFiltro = (() => {
+    const fromValue = value?.lista_precio_id
+    if (fromValue === 1 || fromValue === 2 || fromValue === 3 || fromValue === 4) return fromValue
+    const n = Number(searchParams.get('lista_precio_id'))
+    return n === 1 || n === 2 || n === 3 || n === 4 ? (n as ListaId) : null
+  })()
   const [buscarLocal, setBuscarLocal] = useState(buscarActual)
   const [encabezadoOculto, setEncabezadoOculto] = useState(false)
   const esProntaEntrega = origenActual.toUpperCase().includes('PRONTA')
@@ -186,6 +231,7 @@ export function FiltrosCatalogo({
     ramo_tipo?: '' | PeRamoTipo
     deposito_codigo?: '' | PeDepositoCodigo
     genero_codigo?: string
+    genero_codigos?: string[]
     tonos?: string[]
     sin_tono?: boolean
     buscar?: string
@@ -193,6 +239,10 @@ export function FiltrosCatalogo({
     tipo_grupos?: TipoGrupoId[]
     material_familias?: string[]
     color_familias?: string[]
+    precio_tope?: number | null
+    precio_min?: number | null
+    precio_max?: number | null
+    lista_precio_id?: ListaId | null
   }) => {
     const params = new URLSearchParams()
 
@@ -208,13 +258,21 @@ export function FiltrosCatalogo({
     const ramo   = opts.ramo_tipo       !== undefined ? opts.ramo_tipo       : ramoActual
     const dep    = opts.deposito_codigo !== undefined ? opts.deposito_codigo : depositoActual
     const gen    = opts.genero_codigo   !== undefined ? opts.genero_codigo   : generoActual
+    const genIds = opts.genero_codigos  !== undefined ? opts.genero_codigos : generoIdsActual
     const ton    = opts.tonos           !== undefined ? opts.tonos           : tonosSel
     const sinT   = opts.sin_tono        !== undefined ? opts.sin_tono        : sinTono
     const busq   = opts.buscar          !== undefined ? opts.buscar          : buscarActual
     const cadena = opts.cadena_comercial !== undefined ? opts.cadena_comercial : cadenaActual
-    const tGrupos = opts.tipo_grupos !== undefined ? opts.tipo_grupos : tipoGruposSel
+    const tGrupos = sanitizeTipoGruposParaRamo(
+      opts.tipo_grupos !== undefined ? opts.tipo_grupos : tipoGruposSel,
+      ramo,
+    )
     const matFam = opts.material_familias !== undefined ? opts.material_familias : materialFamSel
     const colFam = opts.color_familias !== undefined ? opts.color_familias : colorFamSel
+    const pTope = opts.precio_tope !== undefined ? opts.precio_tope : null
+    const pMin = opts.precio_min !== undefined ? opts.precio_min : precioMinActual
+    const pMax = opts.precio_max !== undefined ? opts.precio_max : precioMaxActual
+    const listaP = opts.lista_precio_id !== undefined ? opts.lista_precio_id : listaPrecioFiltro
 
     const next: CatalogoFilterState = {
       grupo_estilo_id: estId,
@@ -229,6 +287,7 @@ export function FiltrosCatalogo({
       ramo_tipo: ramo,
       deposito_codigo: dep,
       genero_codigo: gen,
+      genero_codigos: genIds,
       tonos: sinT ? [] : ton,
       sin_tono: sinT,
       buscar: busq,
@@ -236,6 +295,10 @@ export function FiltrosCatalogo({
       tipo_grupos: tGrupos,
       material_familias: matFam,
       color_familias: colFam,
+      precio_tope: pTope,
+      precio_min: pMin,
+      precio_max: pMax,
+      lista_precio_id: listaP,
     }
 
     if (onChange) {
@@ -257,7 +320,8 @@ export function FiltrosCatalogo({
     if (origen)      params.set('origen_tipo',     origen)
     if (ramo)        params.set('ramo_tipo',       ramo)
     if (dep)         params.set('deposito_codigo', dep)
-    if (gen)         params.set('genero_codigo',   gen)
+    if (genIds.length) params.set('genero_codigos', genIds.join(','))
+    else if (gen)      params.set('genero_codigo', gen)
     if (sinT)        params.set('sin_tono',        '1')
     else if (ton.length) params.set('tonos',     ton.join(','))
     if (busq.trim()) params.set('buscar',          busq.trim())
@@ -265,8 +329,12 @@ export function FiltrosCatalogo({
     if (tGrupos.length) params.set('tipo_grupos', tGrupos.join(','))
     if (matFam.length) params.set('material_familias', matFam.join(','))
     if (colFam.length) params.set('color_familias', colFam.join(','))
+    if (pTope != null) params.set('precio_tope', String(pTope))
+    if (pMin != null) params.set('precio_min', String(pMin))
+    if (pMax != null) params.set('precio_max', String(pMax))
+    if (listaP != null) params.set('lista_precio_id', String(listaP))
     router.push(`/${params.toString() ? '?' + params.toString() : ''}`)
-  }, [estiloIdActual, marcaIdActual, estiloIdsActual, marcaIdsActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, tonosSel, sinTono, buscarActual, cadenaActual, tipoGruposSel, materialFamSel, colorFamSel, router, onChange])
+  }, [estiloIdActual, marcaIdActual, estiloIdsActual, marcaIdsActual, lineasSelIds, tiposSelIds, colorsSel, quincenasSel, origenActual, ramoActual, depositoActual, generoActual, generoIdsActual, tonosSel, sinTono, buscarActual, cadenaActual, tipoGruposSel, materialFamSel, colorFamSel, precioMinActual, precioMaxActual, listaPrecioFiltro, router, onChange])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -277,78 +345,98 @@ export function FiltrosCatalogo({
 
   const hayFiltros = !!(
     estiloIdsActual.length || marcaIdsActual.length || lineasSelIds.length || tiposSelIds.length ||
-    colorsSel.length || quincenasSel.length || generoActual || tonosSel.length || sinTono ||
+    colorsSel.length || quincenasSel.length || generoIdsActual.length || tonosSel.length || sinTono ||
     buscarActual.trim() || esProntaEntrega || (ramoActual && ramoActual !== 'CALZADO') || depositoActual ||
     (origenActual && origenActual.toUpperCase() !== 'TODOS' && !esProntaEntrega) ||
-    tipoGruposSel.length || materialFamSel.length || colorFamSel.length
+    tipoGruposSel.length || materialFamSel.length || colorFamSel.length ||
+    precioMinActual != null ||
+    precioMaxActual != null
   )
 
   const activeEstiloLabel = estilos.find(e => String(e.id) === estiloIdActual)?.label
   const activeMarcaLabel  = marcas.find(m => String(m.id) === marcaIdActual)?.label
   const tonosActivos = sinTono ? 1 : tonosSel.length
 
-  /* Cabecera minimal — sin título «Catálogo» ni conteo de modelos; Tono en acordeón horizontal. */
+  /* Cabecera densificada: VENTA ocupa franja · Tono+Precio debajo · cero hueco muerto. */
   if (soloCabecera) {
+    const limpiarFiltros = () => {
+      const empty: CatalogoFilterState = {
+        grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
+        origen_tipo: 'TODOS', ramo_tipo: '', deposito_codigo: '',
+        genero_codigo: '', genero_codigos: [], tonos: [], sin_tono: false, buscar: '',
+        tipo_grupos: [], material_familias: [], color_familias: [],
+        precio_tope: null, precio_min: null, precio_max: null, lista_precio_id: null,
+      }
+      clearSharedCatalogFilters()
+      if (onChange) onChange(empty)
+      else router.push('/?origen_tipo=TODOS')
+    }
+
     return (
-      <div className="mb-2 space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-slate-500 tabular-nums">
-            {totalModelos.toLocaleString('es-PY')} tarjetas · {totalPares.toLocaleString('es-PY')} pares
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="mb-1.5 space-y-1.5">
+        {ventaActiva ? (
+          <HeaderSesionVenta
+            compact
+            trailing={
+              <>
+                <span className="hidden text-[10px] tabular-nums text-white/75 sm:inline">
+                  {totalModelos.toLocaleString('es-PY')} · {totalPares.toLocaleString('es-PY')} pares
+                </span>
+                {hayFiltros ? (
+                  <button
+                    type="button"
+                    onClick={limpiarFiltros}
+                    className="text-[11px] font-semibold text-red-200 hover:text-white hover:underline"
+                  >
+                    Limpiar
+                  </button>
+                ) : null}
+              </>
+            }
+          />
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2 py-0.5">
+            <p className="text-xs text-slate-500 tabular-nums">
+              {totalModelos.toLocaleString('es-PY')} tarjetas · {totalPares.toLocaleString('es-PY')} pares
+            </p>
             {hayFiltros ? (
               <button
                 type="button"
-                onClick={() => {
-                  const empty: CatalogoFilterState = {
-                    grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
-                    origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
-                    genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
-                    tipo_grupos: [], material_familias: [], color_familias: [],
-                  }
-                  clearSharedCatalogFilters()
-                  if (onChange) onChange(empty)
-                  else router.push('/?origen_tipo=TODOS&ramo_tipo=CALZADO')
-                }}
+                onClick={limpiarFiltros}
                 className="text-xs font-semibold text-red-600 hover:underline"
               >
                 Limpiar
               </button>
             ) : null}
-            {totalModelos > 0 ? <CatalogExtenderDatosToggle /> : null}
           </div>
-        </div>
+        )}
 
-        {tonoCatalog.length > 0 ? (
-          <details
-            open
-            className="group border border-slate-200 bg-white"
-          >
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600 [&::-webkit-details-marker]:hidden">
-              <span className="text-rimec-azul transition group-open:rotate-90" aria-hidden>
-                ▸
-              </span>
-              <span>Tono</span>
-              {tonosActivos > 0 ? (
-                <span className="rounded bg-rimec-azul px-1.5 py-0.5 text-[9px] font-black tabular-nums text-white">
-                  {tonosActivos}
-                </span>
-              ) : null}
-              <span className="ml-auto text-[10px] font-medium normal-case tracking-normal text-slate-400 group-open:hidden">
-                Abrir swatches →
-              </span>
-            </summary>
-            <div className="overflow-x-auto border-t border-slate-100 px-3 py-2">
-              <FiltroTonoCabecera
-                catalogo={tonoCatalog}
-                tonosSel={tonosSel}
-                sinTono={sinTono}
-                onChange={(tonos, sin) => aplicar({ tonos, sin_tono: sin })}
-                compact
-              />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <FiltroTonoPrecioFila
+              tonoCatalog={tonoCatalog}
+              tonosSel={tonosSel}
+              sinTono={sinTono}
+              onTonoChange={(tonos, sin) => aplicar({ tonos, sin_tono: sin })}
+              precioMin={precioMinActual}
+              precioMax={precioMaxActual}
+              onPrecioAplicar={(min, max, lista) =>
+                aplicar({
+                  precio_min: min,
+                  precio_max: max,
+                  precio_tope: null,
+                  lista_precio_id: lista,
+                })
+              }
+              rangoPrecioSql={rangoPrecioCatalogo}
+            />
+          </div>
+          {totalModelos > 0 ? (
+            <div className="shrink-0 [&_button]:min-h-[32px] [&_button]:px-3 [&_button]:text-[11px]">
+              <CatalogExtenderDatosToggle />
             </div>
-          </details>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     )
   }
@@ -394,8 +482,8 @@ export function FiltrosCatalogo({
             onClick={() => {
               const empty: CatalogoFilterState = {
                 grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
-                origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
-                genero_codigo: '', tonos: [], sin_tono: false, buscar: '',
+                origen_tipo: 'TODOS', ramo_tipo: '', deposito_codigo: '',
+                genero_codigo: '', genero_codigos: [], tonos: [], sin_tono: false, buscar: '',
                 tipo_grupos: [], material_familias: [], color_familias: [],
               }
               if (onChange) {
@@ -403,7 +491,7 @@ export function FiltrosCatalogo({
                 onChange(empty)
               } else {
                 clearSharedCatalogFilters()
-                router.push('/?origen_tipo=TODOS&ramo_tipo=CALZADO')
+                router.push('/?origen_tipo=TODOS')
               }
             }}
             className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl
@@ -429,13 +517,13 @@ export function FiltrosCatalogo({
           <div className="flex flex-wrap gap-2">
             <MarcaPill
               active={esTodos}
-              onClick={() => aplicar({ origen_tipo: 'TODOS', quincenas: [], ramo_tipo: 'CALZADO', deposito_codigo: '' })}
+              onClick={() => aplicar({ origen_tipo: 'TODOS', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
             >
               ⊞ Todos
             </MarcaPill>
             <MarcaPill
               active={esCpSolo}
-              onClick={() => aplicar({ origen_tipo: 'CP', quincenas: [], ramo_tipo: 'CALZADO', deposito_codigo: '' })}
+              onClick={() => aplicar({ origen_tipo: 'CP', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
             >
               🚢 Compra previa
             </MarcaPill>
@@ -479,6 +567,17 @@ export function FiltrosCatalogo({
                 >
                   👕 Confecciones
                 </CategoriaBtn>
+                <CategoriaBtn
+                  active={ramoActual === 'ACCESORIOS'}
+                  dimmed={!!ramoActual && ramoActual !== 'ACCESORIOS'}
+                  onClick={() => aplicar({
+                    ramo_tipo: ramoActual === 'ACCESORIOS' ? '' : 'ACCESORIOS',
+                    tipo_grupos: [],
+                    ...(ramoActual === 'ACCESORIOS' ? {} : resetCascadaAlCambiarRamo()),
+                  })}
+                >
+                  👜 {PE_RAMO_CATEGORIA_LABEL.ACCESORIOS}
+                </CategoriaBtn>
               </div>
             </div>
 
@@ -508,13 +607,13 @@ export function FiltrosCatalogo({
         <div className="h-px bg-slate-200" />
 
         {/* Dimensiones: Categoría (arriba PE) → AB-CR → Marca → Tipo → Género */}
-        {tipos.length > 0 && (
-          <FilterRow label="AB-CR">
+        {tiposAbcr.length > 0 && (
+          <FilterRow label={abcrLabel}>
             <ScrollPillsRow>
               <CabeceraPill active={!tiposSelIds.length} onClick={() => aplicar({ tipo_ids: [], material_familias: [], color_familias: [] })}>
                 Todos
               </CabeceraPill>
-              {tipos.map((t, idx) => {
+              {tiposAbcr.map((t, idx) => {
                 const sel = tiposSelIds.includes(t.id)
                 return (
                   <CabeceraPill
@@ -534,7 +633,7 @@ export function FiltrosCatalogo({
         )}
 
         {marcas.length > 0 && (
-          <FilterRow label="Marca">
+          <FilterRow label="Marca · multi">
             <ScrollPillsRow>
               <CabeceraPill active={!marcaIdsActual.length} onClick={() => aplicar({ marca_id: '', marca_ids: [], linea_ids: [], tonos: [], sin_tono: false, material_familias: [], color_familias: [] })}>
                 Todas
@@ -557,7 +656,7 @@ export function FiltrosCatalogo({
                       color_familias: [],
                     })}
                   >
-                    {m.label.charAt(0) + m.label.slice(1).toLowerCase()}
+                    {labelMarcaCatalogo(m.label)}
                   </CabeceraPill>
                 )
               })}
@@ -565,12 +664,19 @@ export function FiltrosCatalogo({
           </FilterRow>
         )}
 
-        <FilterRow label="Tipo">
+        {(() => {
+          const tipoPeUi = usaDiccionarioPeTipo(origenActual) && ramoActual !== 'ACCESORIOS'
+          const opcionesTipo = tipoPeUi
+            ? PE_TIPO_DICCIONARIO_OPCIONES
+            : tipoGrupoOpcionesVisibles(ramoActual)
+          if (!opcionesTipo.length) return null
+          return (
+        <FilterRow label={tipoPeUi ? 'Tipo · diccionario PE' : 'Tipo · multi'}>
           <ScrollPillsRow>
             <CabeceraPill active={!tipoGruposSel.length} onClick={() => aplicar({ tipo_grupos: [] })}>
               Todos
             </CabeceraPill>
-            {TIPO_GRUPO_OPCIONES.map((t) => {
+            {opcionesTipo.map((t) => {
               const sel = tipoGruposSel.includes(t.id)
               return (
                 <CabeceraPill
@@ -583,27 +689,37 @@ export function FiltrosCatalogo({
                     aplicar({ tipo_grupos: next })
                   }}
                 >
-                  {t.label}
+                  {tipoPeUi ? labelPeTipoDiccionario(t.id) : t.label}
                 </CabeceraPill>
               )
             })}
           </ScrollPillsRow>
         </FilterRow>
+          )
+        })()}
 
-        <FilterRow label="Género">
+        <FilterRow label="Género · multi">
           <ScrollPillsRow>
-            <CabeceraPill active={!generoActual} onClick={() => aplicar({ genero_codigo: '' })}>
+            <CabeceraPill active={!generoIdsActual.length} onClick={() => aplicar({ genero_codigo: '', genero_codigos: [] })}>
               Todos
             </CabeceraPill>
-            {generosLista.map(g => (
+            {generosLista.map(g => {
+              const selected = generoIdsActual.includes(g.codigo)
+              return (
               <CabeceraPill
                 key={g.codigo}
-                active={generoActual === g.codigo}
-                onClick={() => aplicar({ genero_codigo: generoActual === g.codigo ? '' : g.codigo })}
+                active={selected}
+                onClick={() => aplicar({
+                  genero_codigo: '',
+                  genero_codigos: selected
+                    ? generoIdsActual.filter((c) => c !== g.codigo)
+                    : [...generoIdsActual, g.codigo],
+                })}
               >
                 {g.label}
               </CabeceraPill>
-            ))}
+              )
+            })}
           </ScrollPillsRow>
         </FilterRow>
 
@@ -620,7 +736,7 @@ export function FiltrosCatalogo({
 
         {/* Molécula cascada: Estilo → Línea → Material → Color */}
         {estilos.length > 0 && (
-          <FilterRow label="Estilo">
+          <FilterRow label="Estilo · multi">
             <ScrollPillsRow>
               <CabeceraPill active={!estiloIdsActual.length} onClick={() => aplicar(cascadaEstilo([]))}>
                 Todos
@@ -646,7 +762,7 @@ export function FiltrosCatalogo({
         )}
 
         {lineas.length > 0 && (
-          <FilterRow label="Línea">
+          <FilterRow label="Línea · multi">
             <ScrollPillsRow>
               <CabeceraPill active={!lineasSelIds.length} onClick={() => aplicar(cascadaLinea([]))}>
                 Todas

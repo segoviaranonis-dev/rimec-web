@@ -56,12 +56,14 @@ export function SyncStagePreview({ tarjetas, stageId, ghostSlots = 0, accent = '
               material={v.material_code}
               color={v.color_code}
               imagenNombre={v.imagen_nombre}
+              descpColor={v.descp_color}
               thumbSrc={v.imagen_url_thumb}
               flatSrc={v.imagen_url_flat}
               thumbCandidates={v.imagen_candidates_thumb}
               alt={`${p.linea_codigo}-${p.referencia_codigo} ${v.descp_color}`}
               priority={i < 6}
               compactGrid={false}
+              esConfecciones={esConf}
               imageOverlay={
                 esConf && cantidadTallasConStock(p) > 1 ? (
                   <span className="pointer-events-none absolute top-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">

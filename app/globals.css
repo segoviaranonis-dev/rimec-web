@@ -9,7 +9,116 @@
   --color-bazzar-naranja: #EA580C; /* Tablet depósito — stock p */
 }
 
-/* Caso PROMOCIONAL — latido ámbar (paridad Report reposición) */
+/* LIQ PE = oro casino (1.65s) · PROMO CP+PE = fucsia casino (1.65s) — colores distintos */
+@keyframes catalog-casino-pulse-fucsia {
+  0%, 100% {
+    border-color: rgba(232, 121, 249, 0.45);
+    box-shadow:
+      0 0 0 0 rgba(217, 70, 239, 0.18),
+      0 0 0 0 rgba(192, 38, 211, 0.08);
+  }
+  50% {
+    border-color: rgba(192, 38, 211, 0.75);
+    box-shadow:
+      0 0 0 3px rgba(232, 121, 249, 0.28),
+      0 0 12px 2px rgba(192, 38, 211, 0.22);
+  }
+}
+
+@keyframes catalog-casino-pulse-oro {
+  0%, 100% {
+    border-color: rgba(251, 191, 36, 0.5);
+    box-shadow:
+      0 0 0 0 rgba(245, 158, 11, 0.2),
+      0 0 0 0 rgba(217, 119, 6, 0.1);
+  }
+  50% {
+    border-color: rgba(217, 119, 6, 0.82);
+    box-shadow:
+      0 0 0 3px rgba(251, 191, 36, 0.32),
+      0 0 14px 2px rgba(245, 158, 11, 0.28);
+  }
+}
+
+@keyframes catalog-pe-liq-badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.45);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 10px 2px rgba(245, 158, 11, 0.55);
+  }
+}
+
+.catalog-card-casino-fucsia {
+  animation: catalog-casino-pulse-fucsia 1.65s ease-in-out infinite;
+}
+
+.catalog-card-casino-oro {
+  animation: catalog-casino-pulse-oro 1.65s ease-in-out infinite;
+}
+
+.catalog-card-casino-comun {
+  animation: catalog-casino-pulse-comun 1.65s ease-in-out infinite;
+}
+
+@keyframes catalog-casino-pulse-comun {
+  0%, 100% {
+    border-color: rgba(16, 185, 129, 0.35);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.15);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 10px 2px rgba(16, 185, 129, 0.35);
+  }
+}
+
+.catalog-pe-liq-badge {
+  color: #78350f;
+  background: linear-gradient(145deg, #fef3c7 0%, #fde68a 45%, #fbbf24 100%);
+  border: 1px solid rgba(217, 119, 6, 0.65);
+  animation: catalog-pe-liq-badge-pulse 1.65s ease-in-out infinite;
+}
+
+@keyframes catalog-pe-pro-badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(192, 38, 211, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 10px 2px rgba(217, 70, 239, 0.5);
+  }
+}
+
+.catalog-pe-pro-badge {
+  color: #86198f;
+  background: linear-gradient(145deg, #fdf4ff 0%, #f5d0fe 45%, #e879f9 100%);
+  border: 1px solid rgba(192, 38, 211, 0.65);
+  animation: catalog-pe-pro-badge-pulse 1.65s ease-in-out infinite;
+}
+
+@keyframes catalog-cp-promo-badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(134, 25, 143, 0.35);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 10px 2px rgba(162, 28, 175, 0.45);
+  }
+}
+
+/* CP biblioteca caso PROMOCIONAL — Corazón 1 · borde fuerte · texto oscuro */
+.catalog-cp-promo-badge {
+  color: #581c87;
+  background: linear-gradient(145deg, #fce7f3 0%, #f0abfc 50%, #e879f9 100%);
+  border: 2px solid #a21caf;
+  animation: catalog-cp-promo-badge-pulse 1.65s ease-in-out infinite;
+}
+
+/* Legacy CP — preferir catalog-cp-promo-badge; mantiene compat lightbox */
 @keyframes catalog-promo-pulse {
   0%, 100% {
     border-color: rgba(245, 158, 11, 0.4);
@@ -43,7 +152,7 @@
   animation: catalog-fusion-pulse 2.4s ease-in-out infinite;
 }
 
-/* LIQUIDACIÓN PE — latido verde · frecuencia más alta que fusion (2.4s) */
+/* LIQUIDACIÓN PE legacy — sustituido por catalog-card-casino-oro (grupo uno 2026-07-24) */
 @keyframes catalog-liquidacion-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.22); }
   50% { box-shadow: 0 0 0 5px rgba(5, 150, 105, 0.32); }

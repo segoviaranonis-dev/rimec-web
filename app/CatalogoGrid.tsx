@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useSesion, getPrecioActivo, getPrecioActivoPe, LISTAS, esSesionDeOtroDia, type ListaId } from '@/store/sesionVenta'
+import { useSesion, getPrecioActivo, getPrecioActivoPe, LISTAS, type ListaId } from '@/store/sesionVenta'
 import { useRouter } from 'next/navigation'
 import { DialogoActivacion } from '@/components/DialogoActivacion'
 import { CatalogCarruselColores } from '@/components/catalog/CatalogCarruselColores'
 import { CatalogGrillaDeposito } from '@/components/catalog/CatalogGrillaDeposito'
 import { CatalogTarjetaDeposito } from '@/components/catalog/CatalogTarjetaDeposito'
 import { PromoCasoBadge } from '@/components/catalog/PromoCasoBadge'
+import { PeProBadge } from '@/components/catalog/PeProBadge'
 import { ProductImage } from '@/components/ProductImage'
 import {
   origenBadgePillStyle,
@@ -16,13 +17,14 @@ import {
 } from '@/lib/catalogCardChrome'
 import { formatearQuincena } from '@/lib/fecha'
 import { etiquetaDatoDuroCp } from '@/lib/datoDuroCabecera'
-import { estiloBadgeMarca } from '@/lib/marcaBadge'
+import { estiloBadgeMarca, labelMarcaCatalogo } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
 import { productImagePrimaryStem } from '@/lib/productImageProtocol'
 import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock } from '@/lib/confeccionesCatalogo'
 import { esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
-import { LiquidacionPeBadge } from '@/components/catalog/LiquidacionPeBadge'
+import { resolvePeVisualBadges } from '@/lib/catalogoPeVisual'
+import { warmPeDiccionarioClient } from '@/lib/peDiccionarioClient'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import {
   isTarjetaFusionada,
@@ -134,151 +136,6 @@ function precioCatalogo(
   return getPrecioActivo(row, listaId, descpCaso)
 }
 
-function HeaderSesion() {
-  const activa        = useSesion(s => s.activa)
-  const cliente       = useSesion(s => s.cliente)
-  const vendedorDesc  = useSesion(s => s.vendedor?.descp_vendedor)
-  const plazoDesc     = useSesion(s => s.plazo?.descp_plazo)
-  const listaPrecioId = useSesion(s => s.listaPrecioId)
-  const activatedAt   = useSesion(s => s.activatedAt)
-  const desactivar    = useSesion(s => s.desactivar)
-  const cerrarVenta   = () => { void desactivar() }
-  const router        = useRouter()
-
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
-
-  if (!activa) return null
-
-  const clienteNombre = cliente?.descp_cliente || 'Cliente no asignado'
-  const listaNombre   = LISTAS.find(l => l.id === listaPrecioId)?.nombre ?? '—'
-  // Sesión activada en un día calendario anterior: precios pueden haber cambiado en Nexus Core.
-  const sesionVieja   = mounted && esSesionDeOtroDia(activatedAt)
-  const fechaActiv    = activatedAt ? new Date(activatedAt) : null
-  const fechaActivStr = fechaActiv
-    ? fechaActiv.toLocaleString('es-PY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-    : null
-
-  return (
-    <div style={{ marginBottom: 28 }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 20px', backgroundColor: AZUL, color: 'white',
-        borderRadius: sesionVieja ? '16px 16px 0 0' : 16,
-        boxShadow: '0 4px 12px rgba(30,64,175,0.2)',
-        gap: 16, flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-          <div style={{
-            width: 42, height: 42, borderRadius: '50%',
-            backgroundColor: 'white', color: AZUL,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: 16, flexShrink: 0,
-          }}>
-            {clienteNombre.charAt(0).toUpperCase()}
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontSize: 10, color: '#93C5FD', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700, marginBottom: 2 }}>
-              Venta a cliente
-            </p>
-            <p style={{ fontSize: 15, fontWeight: 800, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {clienteNombre}
-            </p>
-            <p style={{ fontSize: 11, color: '#93C5FD', marginTop: 2 }}>
-              Lista <strong style={{ color: 'white' }}>{listaNombre}</strong>
-              {plazoDesc ? <> · Plazo <strong style={{ color: 'white' }}>{plazoDesc}</strong></> : null}
-              {vendedorDesc ? <> · Vendedor <strong style={{ color: 'white' }}>{vendedorDesc}</strong></> : null}
-            </p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            onClick={() => router.refresh()}
-            title="Volver a consultar precios y stock al servidor"
-            style={{
-              padding: '8px 14px', borderRadius: 8,
-              backgroundColor: 'rgba(255,255,255,0.16)', color: 'white',
-              border: '1px solid rgba(255,255,255,0.22)',
-              cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            🔄 Revalidar
-          </button>
-          <button
-            onClick={cerrarVenta}
-            title="Cerrar la sesión de venta (sigue logueado como vendedor)"
-            style={{
-              padding: '8px 16px', borderRadius: 8,
-              backgroundColor: 'rgba(255,255,255,0.12)', color: 'white',
-              border: '1px solid rgba(255,255,255,0.18)',
-              cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Cerrar venta
-          </button>
-        </div>
-      </div>
-
-      {sesionVieja && (
-        <div
-          role="alert"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 16, flexWrap: 'wrap',
-            padding: '12px 20px',
-            backgroundColor: '#FEF3C7',
-            color: '#78350F',
-            border: '1px solid #FCD34D',
-            borderTop: 'none',
-            borderRadius: '0 0 16px 16px',
-            fontSize: 13,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontWeight: 800 }}>
-                Sesión iniciada el {fechaActivStr}
-              </p>
-              <p style={{ fontSize: 12, marginTop: 2 }}>
-                Los precios o disponibilidad pueden haber cambiado desde anoche. Refrescá el catálogo;
-                las tarjetas que aparezcan como <em>Sin precio</em> ya no están vigentes en la lista <strong>{listaNombre}</strong>.
-              </p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button
-              onClick={() => router.refresh()}
-              style={{
-                padding: '8px 14px', borderRadius: 8,
-                backgroundColor: '#78350F', color: 'white',
-                border: 'none', cursor: 'pointer',
-                fontSize: 12, fontWeight: 700,
-              }}
-            >
-              Refrescar catálogo
-            </button>
-            <button
-              onClick={cerrarVenta}
-              title="Descarta sesión y carrito vencidos para empezar de cero"
-              style={{
-                padding: '8px 14px', borderRadius: 8,
-                backgroundColor: 'transparent', color: '#78350F',
-                border: '1px solid #B45309', cursor: 'pointer',
-                fontSize: 12, fontWeight: 700,
-              }}
-            >
-              Iniciar venta nueva
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ChipEta({
   label,
   shell,
@@ -321,6 +178,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
       material: v.material_code,
       color: v.color_code,
       imagenNombre: v.imagen_nombre,
+      descpColor: v.descp_color,
       tipoV2Id: esConf ? 2 : 1,
     }) ??
     (esConf
@@ -419,7 +277,8 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
                     style={estiloBadgeMarca(p.descp_marca)}>
                 {p.descp_marca}
               </span>
-              {esPromoTarjeta(p) ? <PromoCasoBadge size="md" /> : null}
+              {p.origen_tipo === 'PRONTA_ENTREGA' && esPromoTarjeta(p) ? <PeProBadge /> : null}
+              {p.origen_tipo !== 'PRONTA_ENTREGA' && esPromoTarjeta(p) ? <PromoCasoBadge size="md" /> : null}
               <div className="min-w-0 truncate font-mono text-[11px] font-extrabold text-slate-800" title={nombreImagen}>
                 {nombreImagen}
               </div>
@@ -461,7 +320,31 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
   )
 }
 
-function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCatalogo; onNeedSession: () => void }) {
+function shellYBadgesPe(lote: TarjetaCatalogo, esFusion = false) {
+  const peVis = resolvePeVisualBadges(lote)
+  if (peVis) return peVis
+  return {
+    headerBadge: null as React.ReactNode,
+    imageTopRightBadge: null as React.ReactNode,
+    shellVariant: resolveCatalogShellVariant({
+      esLiquidacion: esLiquidacionPe(lote),
+      esPromo: esPromoTarjeta(lote),
+      esPe: lote.origen_tipo === 'PRONTA_ENTREGA',
+      esFusion,
+    }),
+    showCpPromoBadge: esPromoTarjeta(lote),
+  }
+}
+
+function TarjetaProducto({
+  producto: p,
+  onNeedSession,
+  descuentoPctPorMol,
+}: {
+  producto: TarjetaCatalogo
+  onNeedSession: () => void
+  descuentoPctPorMol?: Map<string, number> | null
+}) {
   const variantesConStock = p.variantes.filter(v => v.cajas_disponibles > 0)
   const v0 = variantesConStock[0] || p.variantes[0]
   const [activeTonoKey, setActiveTonoKey] = useState(() => tonoKeyDeVariante(v0))
@@ -481,14 +364,8 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
   const v = variantesConStock[varIdx] || p.variantes[0]
   const paresStock = paresEnTarjeta(p)
   const esConf = isConfecciones638Lote(p)
-  const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
-  const esPromo = esPromoTarjeta(p)
-  const esLiquidacion = esLiquidacionPe(p)
-  const shellVariant = resolveCatalogShellVariant({
-    esLiquidacion,
-    esPromo,
-    esPe,
-  })
+  const vis = shellYBadgesPe(p)
+  const esPromoCp = vis.showCpPromoBadge
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -498,23 +375,27 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
       onNeedSession={onNeedSession}
       activeTonoKey={activeTonoKey}
       onSelectTonoKey={setActiveTonoKey}
+      descuentoPctPorMol={descuentoPctPorMol}
     />
   )
 
   return (
     <>
       <CatalogTarjetaDeposito
-        marca={p.descp_marca}
-        esPromo={esPromo}
+        marca={labelMarcaCatalogo(p.descp_marca)}
+        esPromo={esPromoCp}
         stockPares={paresStock}
         stockUnidad={esConf ? 'prend' : 'p'}
         hideStockBadge
-        shellVariant={shellVariant}
+        shellVariant={vis.shellVariant}
+        headerBadge={vis.headerBadge}
+        imageTopRightBadge={vis.imageTopRightBadge}
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
         material={v.material_code}
         color={v.color_code}
         imagenNombre={v.imagen_nombre}
+        descpColor={v.descp_color}
         thumbSrc={v.imagen_url_thumb}
         flatSrc={v.imagen_url_flat}
         thumbCandidates={v.imagen_candidates_thumb}
@@ -523,14 +404,17 @@ function TarjetaProducto({ producto: p, onNeedSession }: { producto: TarjetaCata
         compactGrid
         esConfecciones={esConf}
         onImageClick={() => setLightbox(true)}
-        imageCornerBadge={esPe && esLiquidacion ? <LiquidacionPeBadge /> : null}
         imageOverlay={
           esConf && cantidadTallasConStock(p) > 1 ? (
             <span className="pointer-events-none absolute top-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
               {cantidadTallasConStock(p)} tall.
             </span>
           ) : !esConf && variantesConStock.length > 1 ? (
-            <span className="pointer-events-none absolute top-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
+            <span
+              className={`pointer-events-none absolute top-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm ${
+                vis.imageTopRightBadge ? 'left-2.5' : 'right-2.5'
+              }`}
+            >
               {coloresUnicosEnLote(p).length} col.
             </span>
           ) : null
@@ -569,9 +453,11 @@ function paresEnTarjeta(p: TarjetaCatalogo): number {
 function TarjetaProductoFusion({
   producto: p,
   onNeedSession,
+  descuentoPctPorMol,
 }: {
   producto: TarjetaCatalogoFusionada
   onNeedSession: () => void
+  descuentoPctPorMol?: Map<string, number> | null
 }) {
   const [lightbox, setLightbox] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -591,14 +477,16 @@ function TarjetaProductoFusion({
   const vHero = porTono?.variante ?? vHero0
   const paresStock = p.lotes.reduce((s, l) => s + paresEnTarjeta(l), 0)
   const esConf = p.lotes.every(l => isConfecciones638Lote(l))
-  const esPromo = p.lotes.some(l => esPromoTarjeta(l))
-  const esLiquidacion = p.lotes.some(l => esLiquidacionPe(l))
-  const esPeLiq = p.lotes.some(l => l.origen_tipo === 'PRONTA_ENTREGA' && esLiquidacionPe(l))
-  const shellVariant = resolveCatalogShellVariant({
-    esLiquidacion,
-    esPromo,
+  const lotePeHero = loteHero.origen_tipo === 'PRONTA_ENTREGA' ? loteHero : p.lotes.find(l => l.origen_tipo === 'PRONTA_ENTREGA')
+  const peVis = lotePeHero ? resolvePeVisualBadges(lotePeHero) : null
+  const esPromoFusion = p.lotes.some(l => esPromoTarjeta(l))
+  const esLiquidacionFusion = p.lotes.some(l => esLiquidacionPe(l))
+  const shellVariant = peVis?.shellVariant ?? resolveCatalogShellVariant({
+    esLiquidacion: esLiquidacionFusion,
+    esPromo: esPromoFusion,
     esFusion: true,
   })
+  const esPromoCp = peVis ? false : esPromoFusion
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -608,23 +496,27 @@ function TarjetaProductoFusion({
       onNeedSession={onNeedSession}
       activeTonoKey={activeTonoKey}
       onSelectTonoKey={setActiveTonoKey}
+      descuentoPctPorMol={descuentoPctPorMol}
     />
   )
 
   return (
     <>
       <CatalogTarjetaDeposito
-        marca={p.descp_marca}
-        esPromo={esPromo}
+        marca={labelMarcaCatalogo(p.descp_marca)}
+        esPromo={esPromoCp}
         stockPares={paresStock}
         stockUnidad={esConf ? 'prend' : 'p'}
         hideStockBadge
         shellVariant={shellVariant}
+        headerBadge={peVis?.headerBadge ?? null}
+        imageTopRightBadge={peVis?.imageTopRightBadge ?? null}
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
         material={vHero.material_code}
         color={vHero.color_code}
         imagenNombre={vHero.imagen_nombre}
+        descpColor={vHero.descp_color}
         thumbSrc={vHero.imagen_url_thumb}
         flatSrc={vHero.imagen_url_flat}
         thumbCandidates={vHero.imagen_candidates_thumb}
@@ -633,7 +525,6 @@ function TarjetaProductoFusion({
         compactGrid
         esConfecciones={esConf}
         onImageClick={() => setLightbox(true)}
-        imageCornerBadge={esPeLiq ? <LiquidacionPeBadge /> : null}
         ventaFooter={ventaFooter}
       />
       {lightbox && (
@@ -658,14 +549,28 @@ function TarjetaProductoFusion({
 function TarjetaGrillaItem({
   producto,
   onNeedSession,
+  descuentoPctPorMol,
 }: {
   producto: TarjetaGrilla
   onNeedSession: () => void
+  descuentoPctPorMol?: Map<string, number> | null
 }) {
   if (isTarjetaFusionada(producto)) {
-    return <TarjetaProductoFusion producto={producto} onNeedSession={onNeedSession} />
+    return (
+      <TarjetaProductoFusion
+        producto={producto}
+        onNeedSession={onNeedSession}
+        descuentoPctPorMol={descuentoPctPorMol}
+      />
+    )
   }
-  return <TarjetaProducto producto={producto} onNeedSession={onNeedSession} />
+  return (
+    <TarjetaProducto
+      producto={producto}
+      onNeedSession={onNeedSession}
+      descuentoPctPorMol={descuentoPctPorMol}
+    />
+  )
 }
 
 
@@ -696,6 +601,30 @@ export function CatalogoGrid({
   onLoadMore?: () => void
 }) {
   const sentinelRef = React.useRef<HTMLDivElement | null>(null)
+
+  React.useEffect(() => {
+    void warmPeDiccionarioClient()
+  }, [])
+
+  const [descuentoPctPorMol, setDescuentoPctPorMol] = React.useState<Map<string, number>>(
+    () => new Map(),
+  )
+  React.useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/pe-descuento-comercial', { cache: 'no-store' })
+        const json = (await res.json()) as { ok?: boolean; descuentos?: Record<string, number> }
+        if (cancelled || !json.ok || !json.descuentos) return
+        setDescuentoPctPorMol(new Map(Object.entries(json.descuentos)))
+      } catch {
+        /* sin mapa · UI sigue */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   React.useEffect(() => {
     if (!hasMore || !onLoadMore) return
@@ -822,7 +751,7 @@ export function CatalogoGrid({
   return (
     <>
       <DialogoActivacion open={mostrarDialogo} onClose={() => setMostrarDialogo(false)} />
-      <HeaderSesion />
+      {/* HeaderSesion vive en FiltrosCatalogo cabecera — cero hueco muerto */}
 
       <p style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
         {filtered.length} tarjetas
@@ -899,7 +828,12 @@ export function CatalogoGrid({
       ) : (
         <CatalogGrillaDeposito totalModelos={filtered.length} totalPares={grillaPares} stockLabel={grillaStockLabel} compactStats>
           {filtered.map(p => (
-            <TarjetaGrillaItem key={p.cardKey} producto={p} onNeedSession={() => setMostrarDialogo(true)} />
+            <TarjetaGrillaItem
+              key={p.cardKey}
+              producto={p}
+              onNeedSession={() => setMostrarDialogo(true)}
+              descuentoPctPorMol={descuentoPctPorMol}
+            />
           ))}
         </CatalogGrillaDeposito>
       )}

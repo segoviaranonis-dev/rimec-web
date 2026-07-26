@@ -6,7 +6,7 @@ const MAX_CATALOGO_ROWS = 15000
 /** Catálogo mayorista: solo compra previa — excluir PE en la query (no post-fetch). */
 export const CATALOGO_SOLO_COMPRA_PREVIA = true
 
-/** Columnas comunes CP + PE (sin grada — solo PE la tiene en vista). */
+/** Columnas comunes CP + PE. */
 const CATALOGO_STOCK_SELECT_BASE = `
   det_id, pp_id, pp_nro, proforma,
   quincena_arribo_id, quincena_desc,
@@ -20,8 +20,8 @@ const CATALOGO_STOCK_SELECT_BASE = `
   imagen_url, origen_tipo, deposito_id, deposito_nombre, pp_estado
 `.replace(/\s+/g, ' ').trim()
 
-/** Compra previa — v_stock_rimec (MIG-138). Sin imagen_color_excel (solo PE · MIG-149). */
-export const CATALOGO_STOCK_SELECT_CP = CATALOGO_STOCK_SELECT_BASE
+/** Compra previa — v_stock_rimec (MIG-170 numero_preventa + grada/LPN 638). */
+export const CATALOGO_STOCK_SELECT_CP = `${CATALOGO_STOCK_SELECT_BASE.replace('grades_json,', 'grades_json, grada, numero_preventa,')}, proveedor_importacion_id, tipo_v2_id`
 
 /** Pronta entrega — v_stock_pe_rimec · dual 654/638 · excel_color Kyly · grada texto MIG-150. */
 export const CATALOGO_STOCK_SELECT_PE = `${CATALOGO_STOCK_SELECT_BASE.replace('grades_json,', 'grades_json, grada,')}, proveedor_importacion_id, tipo_v2_id, imagen_color_excel, cod_grupo, sdrm_marca, sdrm_tipo0, sdrm_tipo1, sdrm_tipo2, es_liquidacion, es_promo, cadena_comercial`

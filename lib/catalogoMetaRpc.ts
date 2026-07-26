@@ -2,6 +2,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
 import { formatQuincenaCorta } from '@/lib/datoDuroCabecera'
 import {
   dedupeFilterItemsByLabel,
+  generoCodigosActivos,
+  mergeTiposCatalogoTodos,
   normalizeFilterItems,
   type CatalogoFilterStateExtended,
   isCatalogoOrigenCp,
@@ -9,7 +11,13 @@ import {
   isCatalogoOrigenTodos,
 } from '@/lib/catalogoFilters'
 import { quincenasIdsFromDatoDuroCp } from '@/lib/datoDuroCpFiltro'
-import { esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
+import { calzadoExcluyeCarterasPorDefecto, esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
+import {
+  esLabelModuloAccesorios,
+  esRamoAccesorios,
+  mergePeAbcrTipo1Items,
+  tiposMetaModuloAccesorios,
+} from '@/lib/filtros/modulo-accesorios'
 
 export type CatalogoMetaRpc = {
   marcas: { id: number; label: string }[]
@@ -20,6 +28,32 @@ export type CatalogoMetaRpc = {
   colores: string[]
   quincenas: { id: number; label: string }[]
   tonos: string[]
+}
+
+/** Universo facetas multi-select — CHUSAR cabecera: pills multi en Marca/Estilo/Tipo/Línea/Género. */
+export function filtersForFacetUniverse(filters: CatalogoFilterStateExtended): CatalogoFilterStateExtended {
+  return {
+    ...filters,
+    marca_id: '',
+    marca_ids: [],
+    grupo_estilo_id: '',
+    grupo_estilo_ids: [],
+    linea_ids: [],
+    tipo_ids: [],
+    material_familias: [],
+    color_familias: [],
+    tipo_grupos: [],
+    colores: [],
+    tonos: [],
+    sin_tono: false,
+    genero_codigo: '',
+    genero_codigos: [],
+    quincenas: [],
+    dato_duro_cp: [],
+    preventas: [],
+    buscar: '',
+    cadena_comercial: '',
+  }
 }
 
 function rpcParams(filters: CatalogoFilterStateExtended, esPe: boolean) {
@@ -36,19 +70,35 @@ function rpcParams(filters: CatalogoFilterStateExtended, esPe: boolean) {
       : null
   return {
     p_es_pe: esPe,
-    // RPC legacy es single; con multi no estrechar metadata (grilla sí filtra por .in).
+    // Cascada línea/color/tono — grilla usa .in() multi; meta legacy solo 1 FK.
     p_marca_id: marcas.length === 1 ? marcas[0] : null,
     p_linea_ids: filters.linea_ids?.length ? filters.linea_ids : null,
     p_grupo_estilo_id: estilos.length === 1 ? estilos[0] : null,
-    p_tipo_ids: filters.tipo_ids?.length ? filters.tipo_ids : null,
-    p_genero_codigo: filters.genero_codigo?.trim() || null,
+    p_tipo_ids: filters.tipo_ids?.filter((id) => id > 0).length
+      ? filters.tipo_ids.filter((id) => id > 0)
+      : null,
+    p_genero_codigo: (() => {
+      const gens = generoCodigosActivos(filters)
+      return gens.length === 1 ? gens[0] : null
+    })(),
     p_ramo_tipo: filters.ramo_tipo || null,
     p_deposito: filters.deposito_codigo?.trim() || null,
     p_quincena_ids: quincenaIds,
   }
 }
 
-async function fetchMetaRpc(
+const EMPTY_META: CatalogoMetaRpc = {
+  marcas: [],
+  lineas: [],
+  estilos: [],
+  tipos: [],
+  generos: [],
+  colores: [],
+  quincenas: [],
+  tonos: [],
+}
+
+async function fetchMetaRpcOnce(
   filters: CatalogoFilterStateExtended,
   esPe: boolean,
 ): Promise<CatalogoMetaRpc | null> {
@@ -70,6 +120,30 @@ async function fetchMetaRpc(
       label: formatQuincenaCorta(q.label) || String(q.label ?? ''),
     })),
     tonos: raw.tonos ?? [],
+  }
+}
+
+/** Facetas multi-select: listas completas sin auto-estrechar; cascada solo Color/Tono. */
+async function fetchMetaRpc(
+  filters: CatalogoFilterStateExtended,
+  esPe: boolean,
+): Promise<CatalogoMetaRpc | null> {
+  const [universe, cascade] = await Promise.all([
+    fetchMetaRpcOnce(filtersForFacetUniverse(filters), esPe),
+    fetchMetaRpcOnce(filters, esPe),
+  ])
+  if (!universe && !cascade) return null
+  const u = universe ?? EMPTY_META
+  const c = cascade ?? EMPTY_META
+  return {
+    marcas: u.marcas,
+    estilos: u.estilos,
+    tipos: u.tipos,
+    generos: u.generos,
+    lineas: u.lineas,
+    quincenas: u.quincenas.length ? u.quincenas : c.quincenas,
+    colores: c.colores,
+    tonos: c.tonos,
   }
 }
 
@@ -95,23 +169,91 @@ function mergeGeneros(a: CatalogoMetaRpc['generos'], b: CatalogoMetaRpc['generos
     .map(([codigo, label]) => ({ codigo, label }))
 }
 
+function stripAccesoriosFromMetaIfCalzado(
+  meta: CatalogoMetaRpc,
+  filters: CatalogoFilterStateExtended,
+): CatalogoMetaRpc {
+  if (!calzadoExcluyeCarterasPorDefecto(filters)) return meta
+  const isAcc = (label: string) => esLabelModuloAccesorios(label)
+  const tiposFiltrados = meta.tipos.filter((t) => !isAcc(t.label))
+  return {
+    ...meta,
+    estilos: meta.estilos.filter((e) => !isAcc(e.label)),
+    tipos: mergePeAbcrTipo1Items(tiposFiltrados),
+  }
+}
+
+function metaSoloModuloAccesorios(meta: CatalogoMetaRpc): CatalogoMetaRpc {
+  const isAcc = (label: string) => esLabelModuloAccesorios(label)
+  return {
+    ...meta,
+    estilos: meta.estilos.filter((e) => isAcc(e.label)),
+    tipos: tiposMetaModuloAccesorios(meta.tipos),
+  }
+}
+
+function finalizeMeta(
+  meta: CatalogoMetaRpc | null,
+  filters: CatalogoFilterStateExtended,
+): CatalogoMetaRpc | null {
+  if (!meta) return null
+  if (esRamoAccesorios(filters.ramo_tipo)) return metaSoloModuloAccesorios(meta)
+  return stripAccesoriosFromMetaIfCalzado(meta, filters)
+}
+
 /** Meta sidebar vía RPC SQL (CAT-LAT-T2) — fallback null → scan legacy. */
 export async function fetchCatalogoMetaViaRpc(
   filters: CatalogoFilterStateExtended,
 ): Promise<CatalogoMetaRpc | null> {
   if (isCatalogoOrigenPe(filters)) {
-    return fetchMetaRpc(filters, true)
+    return finalizeMeta(await fetchMetaRpc(filters, true), filters)
   }
   if (isCatalogoOrigenCp(filters)) {
-    return fetchMetaRpc(filters, false)
+    return finalizeMeta(await fetchMetaRpc(filters, false), filters)
   }
   if (isCatalogoOrigenTodos(filters)) {
-    // Confecciones = solo PE (638). CP no aporta marcas ni meta (evita mezclar Actvitta/Vizzano con Kyly).
+    if (esRamoAccesorios(filters.ramo_tipo)) {
+      const peAcc = {
+        ...filters,
+        origen_tipo: 'PRONTA_ENTREGA' as const,
+        quincenas: [] as number[],
+        ramo_tipo: 'CALZADO' as const,
+      }
+      return finalizeMeta(await fetchMetaRpc(peAcc, true), filters)
+    }
+    // Confecciones = CP 638 + PE confecciones (no PE-only).
     if (filters.ramo_tipo === 'CONFECCIONES') {
-      return fetchMetaRpc(
-        { ...filters, origen_tipo: 'PRONTA_ENTREGA', quincenas: [] as number[] },
-        true,
-      )
+      const cpConf = {
+        ...filters,
+        origen_tipo: 'TRÁNSITO_PP' as const,
+        ramo_tipo: 'CONFECCIONES' as const,
+        deposito_codigo: '' as const,
+        quincenas: [] as number[],
+      }
+      const peConf = {
+        ...filters,
+        origen_tipo: 'PRONTA_ENTREGA' as const,
+        quincenas: [] as number[],
+        ramo_tipo: 'CONFECCIONES' as const,
+      }
+      const [cp, pe] = await Promise.all([fetchMetaRpc(cpConf, false), fetchMetaRpc(peConf, true)])
+      if (!cp && !pe) return null
+      const empty: CatalogoMetaRpc = { marcas: [], lineas: [], estilos: [], tipos: [], generos: [], colores: [], quincenas: [], tonos: [] }
+      const a = cp ?? empty
+      const b = pe ?? empty
+      return finalizeMeta({
+        marcas: mergeItems(a.marcas, b.marcas),
+        lineas: mergeItems(a.lineas, b.lineas),
+        estilos: mergeItems(a.estilos, b.estilos),
+        tipos: mergeTiposCatalogoTodos(a.tipos, b.tipos, filters.ramo_tipo),
+        generos: mergeGeneros(a.generos, b.generos),
+        colores: [...new Set([...a.colores, ...b.colores])].sort((x, y) => x.localeCompare(y, 'es')),
+        quincenas: mergeItems(
+          a.quincenas.map(q => ({ id: q.id, label: q.label })),
+          b.quincenas.map(q => ({ id: q.id, label: q.label })),
+        ).map(x => ({ id: x.id, label: x.label })),
+        tonos: [...new Set([...a.tonos, ...b.tonos])].sort((x, y) => x.localeCompare(y, 'es')),
+      }, filters)
     }
 
     const cpF = {
@@ -132,11 +274,11 @@ export async function fetchCatalogoMetaViaRpc(
     const empty: CatalogoMetaRpc = { marcas: [], lineas: [], estilos: [], tipos: [], generos: [], colores: [], quincenas: [], tonos: [] }
     const a = cp ?? empty
     const b = pe ?? empty
-    return {
+    return finalizeMeta({
       marcas: mergeItems(a.marcas, b.marcas),
       lineas: mergeItems(a.lineas, b.lineas),
       estilos: mergeItems(a.estilos, b.estilos),
-      tipos: mergeItems(a.tipos, b.tipos),
+      tipos: mergeTiposCatalogoTodos(a.tipos, b.tipos, filters.ramo_tipo),
       generos: mergeGeneros(a.generos, b.generos),
       colores: [...new Set([...a.colores, ...b.colores])].sort((x, y) => x.localeCompare(y, 'es')),
       quincenas: mergeItems(
@@ -144,7 +286,7 @@ export async function fetchCatalogoMetaViaRpc(
         b.quincenas.map(q => ({ id: q.id, label: q.label })),
       ).map(x => ({ id: x.id, label: x.label })),
       tonos: [...new Set([...a.tonos, ...b.tonos])].sort((x, y) => x.localeCompare(y, 'es')),
-    }
+    }, filters)
   }
   return null
 }

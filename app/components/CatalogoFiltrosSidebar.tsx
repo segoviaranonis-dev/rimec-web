@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { RIMEC_PE_DEPOSITOS, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { RIMEC_PE_DEPOSITOS, PE_RAMO_CATEGORIA_LABEL, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { tituloAbcrSidebar, tiposMetaModuloAccesorios, esRamoAccesorios } from '@/lib/filtros/modulo-accesorios'
 import {
   cascadaEstilo,
   cascadaLinea,
@@ -16,9 +17,18 @@ import {
 } from '@/lib/catalogoCascadaMolecula'
 import {
   TIPO_GRUPO_OPCIONES,
+  sanitizeTipoGruposParaRamo,
+  tipoGrupoOpcionesVisibles,
   toggleTipoGrupo,
   type TipoGrupoId,
 } from '@/lib/filtros/filtro-tipo-canonico'
+import {
+  PE_TIPO_DICCIONARIO_OPCIONES,
+  parsePeTipoSelected,
+  togglePeTipoDiccionario,
+  usaDiccionarioPeTipo,
+  type PeTipoDiccionarioId,
+} from '@/lib/filtros/filtro-tipo-pe-diccionario'
 import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
 import { clearSharedCatalogFilters } from '@/lib/catalogoFiltrosCompartidos'
 import type { DatoDuroCpParItem } from '@/lib/datoDuroCpFiltro'
@@ -61,9 +71,10 @@ export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
   colores: [],
   quincenas: [],
   origen_tipo: 'TODOS',
-  ramo_tipo: 'CALZADO',
+  ramo_tipo: '',
   deposito_codigo: '',
   genero_codigo: '',
+  genero_codigos: [],
   tonos: [],
   sin_tono: false,
   buscar: '',
@@ -71,12 +82,13 @@ export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
   material_familias: [],
   color_familias: [],
   dato_duro_cp: [],
+  precio_tope: null,
+  precio_min: null,
+  precio_max: null,
+  lista_precio_id: null,
 }
 
-function cap(s: string) {
-  if (!s) return s
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
-}
+import { labelMarcaCatalogo } from '@/lib/marcaBadge'
 
 function toggleDatoDuroCp(arr: string[], key: string): string[] {
   return arr.includes(key) ? arr.filter(x => x !== key) : [...arr, key]
@@ -92,13 +104,14 @@ function hayFiltrosActivos(f: CatalogoFilterState, empty: CatalogoFilterState): 
     f.tipo_ids.length > 0 ||
     (f.tipo_grupos?.length ?? 0) > 0 ||
     Boolean(f.genero_codigo) ||
+    (f.genero_codigos?.length ?? 0) > 0 ||
     (f.material_familias?.length ?? 0) > 0 ||
     (f.color_familias?.length ?? 0) > 0 ||
     (f.dato_duro_cp?.length ?? 0) > 0 ||
     Boolean(f.buscar?.trim()) ||
     Boolean(f.deposito_codigo) ||
     (f.origen_tipo ?? '') !== (empty.origen_tipo ?? 'TODOS') ||
-    (f.ramo_tipo ?? '') !== (empty.ramo_tipo ?? 'CALZADO')
+    (f.ramo_tipo ?? '') !== (empty.ramo_tipo ?? '')
   )
 }
 
@@ -147,6 +160,12 @@ function AcordeonHeader({
       ) : null}
     </summary>
   )
+}
+
+const MULTI_HINT = ' · multi'
+
+function toggleCodigo(list: string[], codigo: string): string[] {
+  return list.includes(codigo) ? list.filter((c) => c !== codigo) : [...list, codigo]
 }
 
 function MultiSelectGroup({
@@ -271,22 +290,72 @@ function SingleSelectGroup({
   )
 }
 
-function TipoMultiSelectGroup({
+function PeTipoDiccionarioMultiSelectGroup({
   selected,
   onToggle,
   onClear,
 }: {
+  selected: PeTipoDiccionarioId[]
+  onToggle: (id: PeTipoDiccionarioId) => void
+  onClear: () => void
+}) {
+  const n = selected.length
+  return (
+    <details className="group rounded-lg border border-slate-200/90 bg-white">
+      <AcordeonHeader title={`Tipo${MULTI_HINT}`} count={n} onClear={onClear} />
+      <div className="border-t border-slate-100 p-1.5">
+        <p className="px-1 pb-1 text-[10px] uppercase tracking-wide text-slate-500">
+          Diccionario pronta entrega · COD.GRUPO
+        </p>
+        <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="group" aria-label="Tipo · diccionario PE">
+          {PE_TIPO_DICCIONARIO_OPCIONES.map((item) => {
+            const on = selected.includes(item.id)
+            return (
+              <li key={item.id}>
+                <label
+                  className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition ${
+                    on
+                      ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => onToggle(item.id)}
+                    className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-rimec-azul focus:ring-rimec-azul/30"
+                  />
+                  <span className="min-w-0 flex-1 truncate" title={item.label}>
+                    {item.label}
+                  </span>
+                </label>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </details>
+  )
+}
+
+function TipoMultiSelectGroup({
+  selected,
+  opciones,
+  onToggle,
+  onClear,
+}: {
   selected: TipoGrupoId[]
+  opciones: typeof TIPO_GRUPO_OPCIONES
   onToggle: (id: TipoGrupoId) => void
   onClear: () => void
 }) {
   const n = selected.length
   return (
     <details className="group rounded-lg border border-slate-200/90 bg-white">
-      <AcordeonHeader title="Tipo" count={n} onClear={onClear} />
+      <AcordeonHeader title={`Tipo${MULTI_HINT}`} count={n} onClear={onClear} />
       <div className="border-t border-slate-100 p-1.5">
         <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="group" aria-label="Tipo · multi-selección">
-          {TIPO_GRUPO_OPCIONES.map((item) => {
+          {opciones.map((item) => {
             const on = selected.includes(item.id)
             return (
               <li key={item.id}>
@@ -483,6 +552,9 @@ export function CatalogoFiltrosSidebar({
   const ramo = (filtros.ramo_tipo ?? '') as '' | PeRamoTipo
   const deposito = (filtros.deposito_codigo ?? '') as '' | PeDepositoCodigo
   const tipoGrupos = filtros.tipo_grupos ?? []
+  const generoIds =
+    filtros.genero_codigos ??
+    (filtros.genero_codigo ? [filtros.genero_codigo] : [])
   const marcaIds = filtros.marca_ids ??
     (filtros.marca_id ? [Number(filtros.marca_id)] : [])
   const estiloIds = filtros.grupo_estilo_ids ??
@@ -496,7 +568,7 @@ export function CatalogoFiltrosSidebar({
     (filtros.tipo_ids?.length ?? 0) +
     marcaIds.length +
     tipoGrupos.length +
-    (filtros.genero_codigo ? 1 : 0) +
+    generoIds.length +
     (filtros.deposito_codigo ? 1 : 0) +
     (ramo ? 1 : 0) +
     (origen !== 'TODOS' ? 1 : 0) +
@@ -509,6 +581,8 @@ export function CatalogoFiltrosSidebar({
     colorFam.length
 
   const setOrigen = (origen_tipo: string) => {
+    const esCpNext =
+      origen_tipo === 'CP' || origen_tipo === 'TRÁNSITO_PP' || (!origen_tipo && origen !== 'TODOS')
     patch({
       origen_tipo,
       dato_duro_cp:
@@ -517,8 +591,16 @@ export function CatalogoFiltrosSidebar({
           : [],
       quincenas: [],
       preventas: [],
-      ramo_tipo: 'CALZADO',
+      ramo_tipo:
+        origen_tipo === 'PRONTA_ENTREGA'
+          ? 'CALZADO'
+          : origen_tipo === 'CP' || origen_tipo === 'TRÁNSITO_PP'
+            ? ''
+            : '',
       deposito_codigo: origen_tipo === 'PRONTA_ENTREGA' ? filtros.deposito_codigo : '',
+      tipo_grupos: esCpNext
+        ? (filtros.tipo_grupos ?? []).filter((g) => g !== 'comun')
+        : filtros.tipo_grupos,
     })
   }
 
@@ -583,14 +665,14 @@ export function CatalogoFiltrosSidebar({
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
             Stock
           </span>
-          <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={setCompraPrevia}
-              className={`w-full rounded-md px-2.5 py-2 text-left text-[11px] font-semibold ${
+              className={`w-full rounded-lg border px-2.5 py-2.5 text-left text-[11px] font-semibold transition ${
                 esCp
-                  ? 'bg-rimec-azul text-white'
-                  : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  ? 'border-rimec-azul bg-rimec-azul text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
               🚢 Compra previa
@@ -598,101 +680,100 @@ export function CatalogoFiltrosSidebar({
                 ? ` · ${datoDuroSel.length} lote${datoDuroSel.length === 1 ? '' : 's'}`
                 : ''}
             </button>
-
-            {esCp ? (
-              <details open className="group rounded-lg border border-slate-200 bg-white">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 [&::-webkit-details-marker]:hidden">
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-rimec-azul transition group-open:rotate-90" aria-hidden>
-                      ▸
-                    </span>
-                    Llegada · preventa
-                    {datoDuroSel.length > 0 ? (
-                      <span className="rounded-full bg-rimec-azul px-1.5 py-0.5 text-[9px] font-black text-white">
-                        {datoDuroSel.length}
-                      </span>
-                    ) : null}
-                  </span>
-                  {datoDuroSel.length > 0 ? (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="text-[10px] font-semibold normal-case tracking-normal text-red-600 hover:underline"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        patch({ dato_duro_cp: [], quincenas: [], preventas: [] })
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          patch({ dato_duro_cp: [], quincenas: [], preventas: [] })
-                        }
-                      }}
-                    >
-                      Limpiar
-                    </span>
-                  ) : null}
-                </summary>
-                <div className="max-h-52 space-y-1 overflow-y-auto border-t border-slate-100 p-2">
-                  {paresOpts.length === 0 ? (
-                    <p className="px-1 py-1 text-[11px] text-slate-400">Sin lotes disponibles</p>
-                  ) : (
-                    paresOpts.map((par) => {
-                      const on = datoDuroSel.includes(par.key)
-                      return (
-                        <button
-                          key={par.key}
-                          type="button"
-                          onClick={() =>
-                            patch({
-                              dato_duro_cp: toggleDatoDuroCp(datoDuroSel, par.key),
-                              quincenas: [],
-                              preventas: [],
-                            })
-                          }
-                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${
-                            on
-                              ? 'bg-rimec-azul/10 ring-1 ring-rimec-azul/20'
-                              : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          <span
-                            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] ${
-                              on
-                                ? 'border-rimec-azul bg-rimec-azul text-white'
-                                : 'border-slate-300 bg-white'
-                            }`}
-                            aria-hidden
-                          >
-                            {on ? '✓' : ''}
-                          </span>
-                          <DatoDuroCpFilas
-                            preventa={par.preventa}
-                            quincena={par.quincenaLabel}
-                            layout="left"
-                          />
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </details>
-            ) : null}
-
             <button
               type="button"
               onClick={setProntaEntrega}
-              className={`w-full rounded-md px-2.5 py-2 text-left text-[11px] font-semibold ${
+              className={`w-full rounded-lg border px-2.5 py-2.5 text-left text-[11px] font-semibold transition ${
                 esPe
-                  ? 'bg-rimec-azul text-white'
-                  : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  ? 'border-rimec-azul bg-rimec-azul text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
               📦 Pronta entrega
             </button>
           </div>
+
+          {esCp ? (
+            <details open className="group rounded-lg border border-slate-200 bg-white">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-rimec-azul transition group-open:rotate-90" aria-hidden>
+                    ▸
+                  </span>
+                  Llegada · preventa
+                  {datoDuroSel.length > 0 ? (
+                    <span className="rounded-full bg-rimec-azul px-1.5 py-0.5 text-[9px] font-black text-white">
+                      {datoDuroSel.length}
+                    </span>
+                  ) : null}
+                </span>
+                {datoDuroSel.length > 0 ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="text-[10px] font-semibold normal-case tracking-normal text-red-600 hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      patch({ dato_duro_cp: [], quincenas: [], preventas: [] })
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        patch({ dato_duro_cp: [], quincenas: [], preventas: [] })
+                      }
+                    }}
+                  >
+                    Limpiar
+                  </span>
+                ) : null}
+              </summary>
+              <div className="max-h-52 space-y-1 overflow-y-auto border-t border-slate-100 p-2">
+                {paresOpts.length === 0 ? (
+                  <p className="px-1 py-1 text-[11px] text-slate-400">Sin lotes disponibles</p>
+                ) : (
+                  paresOpts.map((par) => {
+                    const on = datoDuroSel.includes(par.key)
+                    return (
+                      <button
+                        key={par.key}
+                        type="button"
+                        onClick={() =>
+                          patch({
+                            dato_duro_cp: toggleDatoDuroCp(datoDuroSel, par.key),
+                            quincenas: [],
+                            preventas: [],
+                          })
+                        }
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${
+                          on
+                            ? 'bg-rimec-azul/10 ring-1 ring-rimec-azul/20'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span
+                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] ${
+                            on
+                              ? 'border-rimec-azul bg-rimec-azul text-white'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                          aria-hidden
+                        >
+                          {on ? '✓' : ''}
+                        </span>
+                        <DatoDuroCpFilas
+                          preventa={par.preventa}
+                          quincena={par.quincenaLabel}
+                          layout="left"
+                        />
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </details>
+          ) : null}
         </div>
 
         {mostrarDeposito ? (
@@ -755,6 +836,17 @@ export function CatalogoFiltrosSidebar({
               >
                 Confecciones
               </button>
+              <button
+                type="button"
+                onClick={() => setRamo('ACCESORIOS')}
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
+                  ramo === 'ACCESORIOS'
+                    ? 'bg-rimec-azul text-white'
+                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {PE_RAMO_CATEGORIA_LABEL.ACCESORIOS}
+              </button>
             </div>
           </div>
 
@@ -770,22 +862,26 @@ export function CatalogoFiltrosSidebar({
         </label>
 
         <MultiSelectGroup
-          title="AB - CR"
-          items={opciones.tipos}
+          title={`${tituloAbcrSidebar(filtros.ramo_tipo)}${MULTI_HINT}`}
+          items={
+            esRamoAccesorios(filtros.ramo_tipo)
+              ? tiposMetaModuloAccesorios(opciones.tipos)
+              : opciones.tipos
+          }
           selected={filtros.tipo_ids}
-          onToggle={(id) =>
+          onToggle={(id) => {
             patch({
               tipo_ids: toggleId(filtros.tipo_ids, id),
               material_familias: [],
               color_familias: [],
             })
-          }
+          }}
           onClear={() => patch({ tipo_ids: [], material_familias: [], color_familias: [] })}
         />
 
         <MultiSelectGroup
-          title="Marca"
-          items={opciones.marcas.map((m) => ({ ...m, label: cap(m.label) }))}
+          title={`Marca${MULTI_HINT}`}
+          items={opciones.marcas.map((m) => ({ ...m, label: labelMarcaCatalogo(m.label) }))}
           selected={marcaIds}
           onToggle={(id) =>
             patch({
@@ -812,22 +908,42 @@ export function CatalogoFiltrosSidebar({
           maxH="max-h-44"
         />
 
+        {usaDiccionarioPeTipo(filtros.origen_tipo) && ramo !== 'ACCESORIOS' ? (
+          <PeTipoDiccionarioMultiSelectGroup
+            selected={parsePeTipoSelected(tipoGrupos)}
+            onToggle={(id) =>
+              patch({
+                tipo_grupos: togglePeTipoDiccionario(parsePeTipoSelected(tipoGrupos), id) as TipoGrupoId[],
+              })
+            }
+            onClear={() => patch({ tipo_grupos: [] })}
+          />
+        ) : tipoGrupoOpcionesVisibles(filtros.ramo_tipo).length > 0 ? (
         <TipoMultiSelectGroup
-          selected={tipoGrupos}
-          onToggle={(id) => patch({ tipo_grupos: toggleTipoGrupo(tipoGrupos, id) })}
+          selected={tipoGrupos.filter((g): g is TipoGrupoId => g !== 'comun')}
+          opciones={tipoGrupoOpcionesVisibles(filtros.ramo_tipo)}
+          onToggle={(id) =>
+            patch({
+              tipo_grupos: sanitizeTipoGruposParaRamo(
+                toggleTipoGrupo(tipoGrupos.filter((g): g is TipoGrupoId => g !== 'comun'), id),
+                filtros.ramo_tipo,
+              ),
+            })
+          }
           onClear={() => patch({ tipo_grupos: [] })}
         />
+        ) : null}
 
         <details className="group rounded-lg border border-slate-200/90 bg-white">
           <AcordeonHeader
-            title="Género"
-            count={filtros.genero_codigo ? 1 : 0}
-            onClear={() => patch({ genero_codigo: '' })}
+            title={`Género${MULTI_HINT}`}
+            count={generoIds.length}
+            onClear={() => patch({ genero_codigo: '', genero_codigos: [] })}
           />
           <div className="border-t border-slate-100 p-1.5">
-            <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="radiogroup" aria-label="Género">
+            <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="group" aria-label="Género · multi-selección">
               {opciones.generos.map((g) => {
-                const on = filtros.genero_codigo === g.codigo
+                const on = generoIds.includes(g.codigo)
                 return (
                   <li key={g.codigo}>
                     <label
@@ -838,13 +954,15 @@ export function CatalogoFiltrosSidebar({
                       }`}
                     >
                       <input
-                        type="radio"
-                        name="catalogo-filtro-genero"
+                        type="checkbox"
                         checked={on}
                         onChange={() =>
-                          patch({ genero_codigo: on ? '' : g.codigo })
+                          patch({
+                            genero_codigo: '',
+                            genero_codigos: toggleCodigo(generoIds, g.codigo),
+                          })
                         }
-                        className="h-3.5 w-3.5 shrink-0 border-slate-300 text-rimec-azul focus:ring-rimec-azul/30"
+                        className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-rimec-azul focus:ring-rimec-azul/30"
                       />
                       <span className="min-w-0 flex-1 truncate">{g.label}</span>
                     </label>
@@ -870,7 +988,7 @@ export function CatalogoFiltrosSidebar({
         </p>
 
         <MultiSelectGroup
-          title="Estilo"
+          title={`Estilo${MULTI_HINT}`}
           items={opciones.estilos}
           selected={estiloIds}
           onToggle={(id) => patch(toggleEstiloCascada(estiloIds, id))}
@@ -879,7 +997,7 @@ export function CatalogoFiltrosSidebar({
         />
 
         <MultiSelectGroup
-          title="Línea"
+          title={`Línea${MULTI_HINT}`}
           items={opciones.lineas}
           selected={filtros.linea_ids}
           onToggle={(id) => patch(toggleLineaCascada(filtros.linea_ids, id))}
@@ -888,7 +1006,7 @@ export function CatalogoFiltrosSidebar({
         />
 
         <FamiliaMultiSelectGroup
-          title="Material"
+          title={`Material${MULTI_HINT}`}
           items={opciones.materialFamilias}
           selected={materialFam}
           onToggle={(key) => patch(toggleMaterialCascada(materialFam, key))}
@@ -897,7 +1015,7 @@ export function CatalogoFiltrosSidebar({
         />
 
         <FamiliaMultiSelectGroup
-          title="Color"
+          title={`Color${MULTI_HINT}`}
           items={opciones.colorFamilias}
           selected={colorFam}
           onToggle={(key) => patch(toggleColorCascada(colorFam, key))}

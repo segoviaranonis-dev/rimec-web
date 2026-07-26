@@ -8,7 +8,14 @@ export const RIMEC_PE_DEPOSITOS = [
 ]
 
 export type PeDepositoCodigo = (typeof RIMEC_PE_DEPOSITOS)[number]['codigo']
-export type PeRamoTipo = 'CALZADO' | 'CONFECCIONES'
+/** ACCESORIOS = categoría UI PE (carteras · accesorios · anteojos) — fuera grupo uno. */
+export type PeRamoTipo = 'CALZADO' | 'CONFECCIONES' | 'ACCESORIOS'
+
+export const PE_RAMO_CATEGORIA_LABEL: Record<PeRamoTipo, string> = {
+  CALZADO: 'Calzado',
+  CONFECCIONES: 'Confecciones',
+  ACCESORIOS: 'Carteras y accesorios',
+}
 
 /** Heurística local hasta `tipo_v2_id` en vista (MIG-139). */
 export function inferPeRamoTipo(row: Pick<StockRow, 'referencia_codigo' | 'linea_codigo' | 'marca_id' | 'nombre' | 'material_code'>): PeRamoTipo {

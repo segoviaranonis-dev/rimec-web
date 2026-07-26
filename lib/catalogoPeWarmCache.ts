@@ -52,13 +52,17 @@ export const CP_DEFAULT_FILTERS: CatalogoFilterState = {
   tipo_grupos: [],
   material_familias: [],
   color_familias: [],
+  precio_tope: null,
+  precio_min: null,
+  precio_max: null,
+  lista_precio_id: null,
 }
 
 /** Modo Todos — CP+PE fusionados por SKU (default catálogo · 2026-07-13). */
 export const TODOS_DEFAULT_FILTERS: CatalogoFilterState = {
   ...CP_DEFAULT_FILTERS,
   origen_tipo: 'TODOS',
-  ramo_tipo: 'CALZADO',
+  ramo_tipo: '',
 }
 
 /** Compra previa explícita (pill CP). */
@@ -123,6 +127,10 @@ function filtersQueryString(filters: CatalogoFilterState) {
   if (filters.preventas?.length) {
     params.set('preventas', filters.preventas.join(','))
   }
+  if (filters.precio_tope != null) params.set('precio_tope', String(filters.precio_tope))
+  if (filters.precio_min != null) params.set('precio_min', String(filters.precio_min))
+  if (filters.precio_max != null) params.set('precio_max', String(filters.precio_max))
+  if (filters.lista_precio_id != null) params.set('lista_precio_id', String(filters.lista_precio_id))
   return params.toString()
 }
 

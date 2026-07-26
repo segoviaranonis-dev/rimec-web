@@ -11,7 +11,7 @@ import { esLiquidacionRow, esPromoRow, type RowTipoSignals } from '@/lib/filtros
 import { claveCasoFi, etiquetaCasoFi, type CasoFragmentable } from '@/lib/facturaCasoClave'
 import { cadenaComercialDesdeCodGrupo } from '@/lib/pilares/codGrupoCadena'
 
-export type CadenaComercialFi = 'LIQUIDACION' | 'PROMOCIONAL' | 'REGULAR'
+export type CadenaComercialFi = 'LIQUIDACION' | 'PROMOCIONAL' | 'REGULAR' | 'COMUN'
 
 export type CelulaFragmentable = CasoFragmentable &
   RowTipoSignals & {
@@ -30,7 +30,8 @@ export function cadenaComercialFi(item: CelulaFragmentable): CadenaComercialFi {
   }
   if (esLiquidacionRow(row)) return 'LIQUIDACION'
   if (esPromoRow(row)) return 'PROMOCIONAL'
-  // Fallback Carlos: dígito cadena en COD.GRUPO (calzado 45=04 · confecciones 67=04)
+  const cadenaRaw = String(item.cadena_comercial ?? '').trim().toUpperCase()
+  if (cadenaRaw === 'COMUN' || cadenaRaw === 'COMÚN') return 'COMUN'
   const desdeGrupo = cadenaComercialDesdeCodGrupo(item.cod_grupo)
   if (desdeGrupo) return desdeGrupo
   return 'REGULAR'
@@ -45,11 +46,52 @@ export function etiquetaCelulaFi(item: CelulaFragmentable): string {
   const caso = etiquetaCasoFi(item)
   const cad = cadenaComercialFi(item)
   if (cad === 'REGULAR') return caso
+  if (cad === 'COMUN') {
+    if (caso === 'Sin caso' || caso.startsWith('Caso #')) return `${caso} · COMUN`
+    const up = caso.toUpperCase()
+    if (up.includes('COMUN')) return caso
+    return `${caso} · COMUN`
+  }
   if (caso === 'Sin caso' || caso.startsWith('Caso #')) return `${caso} · ${cad}`
   // Evitar duplicar si el nombre del caso ya es PROMOCIONAL / LIQUIDACION
   const up = caso.toUpperCase()
   if (up.includes('LIQUID') || up.includes('PROMO')) return caso
   return `${caso} · ${cad}`
+}
+
+/** UI corta PE · no sustituye clave interna de fragmentación. */
+export function etiquetaUiPeCorta(cad: CadenaComercialFi): string {
+  switch (cad) {
+    case 'LIQUIDACION':
+      return 'PE-LIQ'
+    case 'PROMOCIONAL':
+      return 'PE-PROMO'
+    case 'COMUN':
+      return 'PE-COMUN'
+    default:
+      return 'PE-NORMAL'
+  }
+}
+
+/** Badge carrito: PE → PE-LIQ/NORMAL/PROMO/COMUN · CP → etiqueta caso. */
+export function etiquetaCasoUiCarrito(
+  caso: string,
+  item?: CelulaFragmentable | null,
+  esPe?: boolean,
+): string {
+  const raw = String(caso ?? '').trim()
+  const peHint =
+    esPe === true ||
+    /^PE\b/i.test(raw) ||
+    /pe-import/i.test(raw) ||
+    /pronta\s*entrega/i.test(raw)
+  if (!peHint) return raw || 'Sin caso'
+  if (item) return etiquetaUiPeCorta(cadenaComercialFi(item))
+  const up = raw.toUpperCase()
+  if (up.includes('LIQUID')) return 'PE-LIQ'
+  if (up.includes('PROMO')) return 'PE-PROMO'
+  if (up.includes('COMUN') || up.includes('COMÚN')) return 'PE-COMUN'
+  return 'PE-NORMAL'
 }
 
 export function mismasCelulasFi(a: CelulaFragmentable, b: CelulaFragmentable): boolean {

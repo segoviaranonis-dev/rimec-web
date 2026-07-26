@@ -11,6 +11,7 @@ import { getImageCandidatesForUi } from '@/lib/imagen'
 import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
 import { etiquetaDescuentos, normalizarDescuentos4 } from '@/lib/carritoDescuentosFi'
 import { resolverFacturaConfig } from '@/lib/facturaConfigMatch'
+import { etiquetaCasoUiCarrito } from '@/lib/facturaCelulaClave'
 
 const AZUL = '#1E40AF'
 const VERDE = '#10B981'
@@ -673,21 +674,24 @@ export default function CarritoPage() {
                     descuentos_cabecera: descuentos,
                     items_count: fact.items.length,
                   })
+                  const casoUi = etiquetaCasoUiCarrito(fact.caso, null, lote.pp_id < 0)
                   return (
                   <div key={fact.grupo_key} style={{
-                    padding: marca.cantidad_facturas > 1 ? '8px 20px 14px 20px' : '0 20px 12px 20px',
+                    padding: marca.cantidad_facturas > 1 || lote.pp_id < 0 ? '8px 20px 14px 20px' : '0 20px 12px 20px',
                     borderLeft: marca.cantidad_facturas > 1 ? `3px solid ${AZUL}` : 'none',
                     backgroundColor: marca.cantidad_facturas > 1 ? '#FAFAFA' : 'transparent',
                     marginLeft: marca.cantidad_facturas > 1 ? 12 : 0,
                   }}>
                     <div style={{ marginBottom: 12 }}>
-                      {marca.cantidad_facturas > 1 && (
+                      {(marca.cantidad_facturas > 1 || lote.pp_id < 0) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99, backgroundColor: AZUL, color: 'white', letterSpacing: 0.5 }}>
-                            FI {idx + 1}/{marca.cantidad_facturas}
-                          </span>
+                          {marca.cantidad_facturas > 1 && (
+                            <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99, backgroundColor: AZUL, color: 'white', letterSpacing: 0.5 }}>
+                              FI {idx + 1}/{marca.cantidad_facturas}
+                            </span>
+                          )}
                           <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 99, backgroundColor: '#E0E7FF', color: '#3730A3' }}>
-                            Caso: {fact.caso}
+                            {casoUi}
                           </span>
                           <span style={{ fontSize: 12, color: '#64748B', marginLeft: 'auto' }}>
                             {fact.total_pares.toLocaleString('es-PY')} pares · Gs. {fact.total_monto.toLocaleString('es-PY')}
@@ -697,7 +701,16 @@ export default function CarritoPage() {
                       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 14px', backgroundColor: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
                         <span style={{ fontSize: 12, color: '#64748B' }}>
                           <strong>Lista:</strong> {LISTAS.find(l => l.id === facturaConfig.lista_precio_id)?.nombre ?? 'LPN'}
-                          &nbsp;·&nbsp;<strong>Desc.:</strong> {etiquetaDescuentos(facturaConfig.descuentos)}
+                          {(() => {
+                            const d = normalizarDescuentos4(facturaConfig.descuentos)
+                            const sum = d.reduce((s, x) => s + (Number(x) || 0), 0)
+                            if (sum <= 0) return null
+                            return (
+                              <>
+                                &nbsp;·&nbsp;<strong>Desc.:</strong> {etiquetaDescuentos(d)}
+                              </>
+                            )
+                          })()}
                         </span>
                         <button
                           type="button"

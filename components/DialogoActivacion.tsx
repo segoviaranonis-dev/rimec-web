@@ -3,8 +3,18 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSesion, LISTAS, type Cliente, type Plazo, type ListaId } from '@/store/sesionVenta'
+import type { PlazoCarlosOpcion } from '@/lib/carlos/plazoCarlosResolver'
+import {
+  agruparPlazosOrdenados,
+  type PlazoGrupoUi,
+} from '@/lib/carlos/plazoOrdenUi'
 
 const AZUL = '#1E40AF'
+const GRUPO_ACCENT: Record<PlazoGrupoUi, string> = {
+  contado: '#059669',
+  corridos: '#1E40AF',
+  escalonados: '#6D28D9',
+}
 
 interface DialogoProps {
   open: boolean
@@ -22,6 +32,7 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
   const [selCliente, setSelCliente] = useState<Cliente | null>(null)
 
   // Paso B — Plazo + Lista
+  const [plazosRaw, setPlazosRaw] = useState<PlazoCarlosOpcion[]>([])
   const [plazos,    setPlazos]    = useState<Plazo[]>([])
   const [cargPlazos, setCargPlazos] = useState(false)
   const [selPlazo,  setSelPlazo]  = useState<Plazo | null>(null)
@@ -51,10 +62,31 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
     setPaso('B')
     if (plazos.length > 0) return
     setCargPlazos(true)
-    const { data } = await supabase
-      .from('plazo_v2').select('id_plazo, descp_plazo').order('id_plazo')
-    setPlazos((data ?? []) as Plazo[])
-    setCargPlazos(false)
+    try {
+      const res = await fetch('/api/plazos-carlos', { cache: 'no-store' })
+      const json = (await res.json()) as {
+        plazos?: Array<
+          PlazoCarlosOpcion & { label_display?: string; descp_plazo?: string | null }
+        >
+      }
+      const rows = json.plazos ?? []
+      setPlazosRaw(rows.filter((p) => p.id_plazo != null) as PlazoCarlosOpcion[])
+      setPlazos(
+        rows
+          .filter((p) => p.id_plazo != null)
+          .map(
+            (p): Plazo => ({
+              id_plazo: Number(p.id_plazo),
+              descp_plazo:
+                p.label_display ?? p.descp_plazo ?? p.label_ui ?? p.cod_oper_carlos,
+              cod_oper_carlos: p.cod_oper_carlos,
+              label_ui: p.label_display ?? p.label_ui,
+            }),
+          ),
+      )
+    } finally {
+      setCargPlazos(false)
+    }
   }
 
   async function confirmar() {
@@ -116,6 +148,10 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
     onClose()
   }
 
+  const plazosPorGrupo = agruparPlazosOrdenados(
+    plazosRaw.filter((p) => p.id_plazo != null),
+  )
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 100,
@@ -124,7 +160,7 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
     }}>
       <div style={{
         backgroundColor: 'white', borderRadius: 20, padding: 36,
-        width: '100%', maxWidth: 500, boxShadow: '0 24px 64px rgba(0,0,0,0.22)',
+        width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,0.22)',
         maxHeight: '90vh', overflowY: 'auto',
       }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
@@ -214,19 +250,48 @@ export function DialogoActivacion({ open, onClose }: DialogoProps) {
             </div>
 
             <p style={{ fontWeight: 700, fontSize: 15, color: '#1E293B', marginBottom: 8 }}>Plazo de pago</p>
+            <p style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+              Orden cronológico · contado primero, luego días corridos, después escalonados
+            </p>
             {cargPlazos ? (
               <p style={{ color: '#94A3B8', fontSize: 14, marginBottom: 16 }}>Cargando...</p>
             ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-                {plazos.map(p => (
-                  <button key={p.id_plazo} onClick={() => setSelPlazo(p)}
-                    style={{
-                      padding: '8px 16px', borderRadius: 99, fontSize: 14, fontWeight: 600,
-                      border: `2px solid ${selPlazo?.id_plazo === p.id_plazo ? AZUL : '#E2E8F0'}`,
-                      backgroundColor: selPlazo?.id_plazo === p.id_plazo ? '#EFF6FF' : 'white',
-                      color: selPlazo?.id_plazo === p.id_plazo ? AZUL : '#374151',
-                      cursor: 'pointer',
-                    }}>{p.descp_plazo}</button>
+              <div style={{ marginBottom: 20 }}>
+                {plazosPorGrupo.map((grupo) => (
+                  <div key={grupo.grupo} style={{ marginBottom: 14 }}>
+                    <p style={{
+                      fontSize: 11, fontWeight: 800, letterSpacing: '0.06em',
+                      textTransform: 'uppercase', color: GRUPO_ACCENT[grupo.grupo],
+                      marginBottom: 8,
+                    }}>
+                      {grupo.titulo}
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {grupo.plazos.map((p) => {
+                        const plazoUi = plazos.find(
+                          (x) => x.cod_oper_carlos === p.cod_oper_carlos,
+                        )
+                        if (!plazoUi) return null
+                        const sel = selPlazo?.cod_oper_carlos === p.cod_oper_carlos
+                        return (
+                          <button
+                            key={p.cod_oper_carlos}
+                            type="button"
+                            onClick={() => setSelPlazo(plazoUi)}
+                            style={{
+                              padding: '8px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
+                              border: `2px solid ${sel ? AZUL : '#E2E8F0'}`,
+                              backgroundColor: sel ? '#EFF6FF' : 'white',
+                              color: sel ? AZUL : '#374151',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {plazoUi.label_ui ?? plazoUi.descp_plazo}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

@@ -95,6 +95,52 @@ export function stems638(
   return [...stems]
 }
 
+/** FK color legacy 638 (`638_001_*`) — no es código Kyly legible (K0460). */
+export function isKylyColorFkHash(color: string | number | null | undefined): boolean {
+  const s = String(color ?? '').trim()
+  if (!/^\d+$/.test(s)) return false
+  const n = Number(s)
+  return n >= 638_001_000_000 && n <= 638_001_000_000 + 999_999_999
+}
+
+/**
+ * Color legible 638 para etiqueta/imagen: descp (K0460) o stem de imagen_url,
+ * nunca el hash FK 638001….
+ * Si color_code es FK hash, prioriza stem de imagen (fuente Storage correcta).
+ */
+export function colorKylyEtiqueta(input: {
+  color?: string | number | null
+  descpColor?: string | null
+  imagenNombre?: string | null
+}): string {
+  const normalize = (c: string) => {
+    const t = c.trim()
+    if (!t || isKylyColorFkHash(t)) return ''
+    if (/^k/i.test(t)) return `K${t.slice(1)}`
+    if (/^\d+$/.test(t)) return `K${t}`
+    return t
+  }
+
+  let fromImg = ''
+  const rawImg = String(input.imagenNombre ?? '').trim()
+  if (rawImg) {
+    const stem = rawImg
+      .replace(/^.*\//, '')
+      .replace(/^(sm|md|lg|thumbs)\//i, '')
+      .replace(/\.(jpe?g|png|webp)$/i, '')
+    const m = stem.match(/_([A-Za-z0-9]+)$/)
+    if (m?.[1]) fromImg = normalize(m[1])
+  }
+
+  const fromDesc = normalize(String(input.descpColor ?? ''))
+  const fromCode = normalize(String(input.color ?? ''))
+
+  if (isKylyColorFkHash(input.color)) {
+    return fromImg || fromDesc || fromCode
+  }
+  return fromDesc || fromImg || fromCode
+}
+
 /** Stem canónico 654 (sin extensión). */
 export function stem654(
   linea: string | number | null | undefined,
@@ -117,6 +163,8 @@ export function productImagePrimaryStem(input: {
   proveedorImportacionId?: number | null
   tipoV2Id?: number | null
   imagenNombre?: string | null
+  /** Color Kyly legible (K0460) — evita pintar FK hash 638001… */
+  descpColor?: string | null
   linea: string | number | null | undefined
   referencia?: string | number | null | undefined
   material?: string | number | null | undefined
@@ -124,6 +172,13 @@ export function productImagePrimaryStem(input: {
 }): string | null {
   const protocol = input.protocol ?? resolveProductImageProtocol(input)
   if (protocol === '638') {
+    const etiqueta = colorKylyEtiqueta({
+      color: input.color,
+      descpColor: input.descpColor,
+      imagenNombre: input.imagenNombre,
+    })
+    const fromEtiqueta = stems638(input.linea, etiqueta)[0]
+    if (fromEtiqueta) return fromEtiqueta
     return stems638(input.linea, input.color)[0] ?? null
   }
   return stem654(input.linea, input.referencia, input.material, input.color)

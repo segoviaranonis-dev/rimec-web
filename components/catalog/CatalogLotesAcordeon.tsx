@@ -82,6 +82,13 @@ type Props = {
   onNeedSession: () => void
   activeTonoKey: string
   onSelectTonoKey: (tonoKey: string) => void
+  /** Mapa molécula L-R-mat-color → % comercial dictado */
+  descuentoPctPorMol?: Map<string, number> | null
+}
+
+function molKeyLote(lote: TarjetaCatalogo): string {
+  const v = lote.variantes.find(vv => vv.cajas_disponibles > 0) ?? lote.variantes[0]
+  return `${lote.linea_codigo}-${lote.referencia_codigo}-${v?.material_code ?? ''}-${v?.color_code ?? ''}`
 }
 
 export function CatalogLotesAcordeon({
@@ -91,6 +98,7 @@ export function CatalogLotesAcordeon({
   onNeedSession,
   activeTonoKey,
   onSelectTonoKey,
+  descuentoPctPorMol = null,
 }: Props) {
   const { isOpen, toggle } = useCatalogAcordeon()
 
@@ -113,6 +121,12 @@ export function CatalogLotesAcordeon({
           : 'Stock total del lote (todos los colores)'
         const accent = esPe ? 'border-l-emerald-500' : 'border-l-sky-600'
         const precioVal = activa && !esConf ? precioDeLoteCatalogo(lote, listaPrecioId) : null
+        const descPct =
+          esPe
+            ? (lote.descuento_comercial_pct ??
+                descuentoPctPorMol?.get(molKeyLote(lote)) ??
+                null)
+            : null
 
         const datoDuroLabel = esPe ? (
           <span
@@ -161,7 +175,17 @@ export function CatalogLotesAcordeon({
                   {precioVal != null && precioVal > 0 ? (
                     <span className="max-w-[88px] text-right text-[10px] font-bold leading-tight tabular-nums text-orange-600">
                       {formatPrecioGs(precioVal)}
-                      <span className="block text-[7px] font-normal text-slate-400">/ par</span>
+                      <span className="flex items-center justify-end gap-1">
+                        <span className="text-[7px] font-normal text-slate-400">/ par</span>
+                        {descPct != null && descPct > 0 ? (
+                          <span
+                            className="text-[7px] font-medium tabular-nums text-slate-400"
+                            title="Descuento comercial"
+                          >
+                            −{descPct}%
+                          </span>
+                        ) : null}
+                      </span>
                     </span>
                   ) : activa ? (
                     <span className="text-[7px] font-medium text-slate-400">Sin precio</span>

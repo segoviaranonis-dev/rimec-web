@@ -109,6 +109,8 @@ export interface TarjetaCatalogo {
   cadena_comercial?: string | null
   /** COD.GRUPO Carlos — dígito cadena → LIQ/PROMO/REGULAR (R-FI-2) */
   cod_grupo?: string | null
+  /** Descuento comercial dictado PE (BD) · no comisión D1 */
+  descuento_comercial_pct?: number | null
   tipo_v2_id?: number | null
   ramo_tipo?: string | null
   variantes: RimecVariante[]

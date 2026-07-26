@@ -13,6 +13,13 @@ import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
 import { isCatalogoOrigenPe, isCatalogoOrigenTodos, normalizeFilterItems, normalizeOrigenCatalogo } from '@/lib/catalogoFilters'
 import { sortTarjetasLineaRef } from '@/lib/catalogoPaginado'
 import { esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
+import { PE_RAMO_CATEGORIA_LABEL } from '@/lib/rimecPeDeposito'
+import {
+  labelPeTipoDiccionario,
+  usaDiccionarioPeTipo,
+} from '@/lib/filtros/filtro-tipo-pe-diccionario'
+import { TIPO_GRUPO_OPCIONES } from '@/lib/filtros/filtro-tipo-canonico'
+import { tituloAbcrSidebar } from '@/lib/filtros/modulo-accesorios'
 import type { FamiliaPilarItem } from '@/lib/pilares/agrupar-etiqueta-pilar'
 import { buildFamiliaItems, primeraPalabraPilar } from '@/lib/pilares/agrupar-etiqueta-pilar'
 import { readJsonResponse, requestTarjetasPage } from '@/lib/catalogoFetch'
@@ -51,6 +58,7 @@ import { FiltroAplicandoOverlay } from '@/components/catalog/FiltroAplicandoOver
 import { hasSidebarFilters } from '@/lib/catalogoFiltrosEntrada'
 import {
   areAllSyncStagesWarm,
+  isCatalogSyncOverlayEnabled,
   runCatalogSyncStages,
   type CatalogSyncProgress,
 } from '@/lib/catalogoSyncStages'
@@ -75,22 +83,28 @@ function etiquetaCambioFiltro(prev: CatalogoFilterState, next: CatalogoFilterSta
       : next.origen_tipo === 'TODOS' ? 'Todos' : 'Compra previa'
     return `Stock · ${origen}`
   }
-  if (cambio('ramo_tipo')) return `Categoría · ${next.ramo_tipo || 'Todas'}`
+  if (cambio('ramo_tipo')) {
+    const ramo = next.ramo_tipo
+    const label = ramo && ramo in PE_RAMO_CATEGORIA_LABEL
+      ? PE_RAMO_CATEGORIA_LABEL[ramo as keyof typeof PE_RAMO_CATEGORIA_LABEL]
+      : ramo || 'Todas'
+    return `Categoría · ${label}`
+  }
   if (cambio('deposito_codigo')) return `Depósito · ${next.deposito_codigo || 'Todos'}`
   if (cambio('tipo_grupos')) {
-    const nombres = (next.tipo_grupos ?? []).map((x) => ({
-      normal: 'Normal',
-      carteras: 'Carteras',
-      promo: 'Promo',
-      liquidacion: 'Liquidación',
-    })[x])
+    const peUi = usaDiccionarioPeTipo(next.origen_tipo)
+    const nombres = (next.tipo_grupos ?? []).map((x) => {
+      if (peUi) return labelPeTipoDiccionario(x)
+      const cp = TIPO_GRUPO_OPCIONES.find((o) => o.id === x)
+      return cp?.label ?? x
+    })
     return `Tipo · ${nombres.join(', ') || 'Todos'}`
   }
   if (cambio('marca_ids') || cambio('marca_id')) return `Marca${cantidad(next.marca_ids)}`
   if (cambio('grupo_estilo_ids') || cambio('grupo_estilo_id')) return `Estilo${cantidad(next.grupo_estilo_ids)}`
-  if (cambio('genero_codigo')) return `Género · ${next.genero_codigo || 'Todos'}`
+  if (cambio('genero_codigos') || cambio('genero_codigo')) return `Género${cantidad(next.genero_codigos?.length ? next.genero_codigos : next.genero_codigo ? [next.genero_codigo] : [])}`
   if (cambio('linea_ids')) return `Línea${cantidad(next.linea_ids)}`
-  if (cambio('tipo_ids')) return `AB - CR${cantidad(next.tipo_ids)}`
+  if (cambio('tipo_ids')) return `${tituloAbcrSidebar(next.ramo_tipo)}${cantidad(next.tipo_ids)}`
   if (cambio('material_familias')) return `Material${cantidad(next.material_familias)}`
   if (cambio('color_familias') || cambio('colores')) {
     return `Color${cantidad(next.color_familias?.length ? next.color_familias : next.colores)}`
@@ -123,7 +137,8 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   if (filters.origen_tipo) params.set('origen_tipo', filters.origen_tipo)
   if (filters.ramo_tipo) params.set('ramo_tipo', filters.ramo_tipo)
   if (filters.deposito_codigo) params.set('deposito_codigo', filters.deposito_codigo)
-  if (filters.genero_codigo) params.set('genero_codigo', filters.genero_codigo)
+  if (filters.genero_codigos?.length) params.set('genero_codigos', filters.genero_codigos.join(','))
+  else if (filters.genero_codigo) params.set('genero_codigo', filters.genero_codigo)
   if (filters.sin_tono) params.set('sin_tono', '1')
   else if (filters.tonos?.length) params.set('tonos', filters.tonos.join(','))
   if (filters.buscar?.trim()) params.set('buscar', filters.buscar.trim())
@@ -243,7 +258,11 @@ export function CatalogoClient({ initialFilters }: Props) {
     syncStartedRef.current = true
 
     const merged = mergeSharedIntoFilters(initialFilters)
-    if (hasSidebarFilters(merged) || areAllSyncStagesWarm()) {
+    if (
+      !isCatalogSyncOverlayEnabled()
+      || hasSidebarFilters(merged)
+      || areAllSyncStagesWarm()
+    ) {
       ensureDualCatalogWarm(merged)
       return
     }
@@ -330,6 +349,8 @@ export function CatalogoClient({ initialFilters }: Props) {
         }>(r)
         if (cancelled || json.error) return
         const meta = json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] }
+        const mergeFacet = (prev: FilterItem[], next: FilterItem[]) =>
+          normalizeFilterItems([...prev, ...next])
         let nextMeta = {
           todasLineas: normalizeFilterItems(meta.todasLineas ?? []),
           todasMarcas: normalizeFilterItems(
@@ -369,7 +390,21 @@ export function CatalogoClient({ initialFilters }: Props) {
             /* fallback header opcional */
           }
         }
-        setFiltrosMeta(nextMeta)
+        setFiltrosMeta((prev) => ({
+          ...nextMeta,
+          todasMarcas: mergeFacet(prev.todasMarcas, nextMeta.todasMarcas),
+          todosEstilos: mergeFacet(prev.todosEstilos, nextMeta.todosEstilos),
+          todosTipos: mergeFacet(prev.todosTipos, nextMeta.todosTipos),
+          todasLineas: mergeFacet(prev.todasLineas, nextMeta.todasLineas),
+          todosGeneros: (() => {
+            const m = new Map<string, { codigo: string; label: string }>()
+            for (const g of [...prev.todosGeneros, ...nextMeta.todosGeneros]) {
+              const c = String(g.codigo ?? '').trim()
+              if (c) m.set(c, { codigo: c, label: String(g.label ?? c).trim() || c })
+            }
+            return [...m.values()]
+          })(),
+        }))
         setMaterialFamilias(json.materialFamilias ?? [])
         setColorFamilias(json.colorFamilias ?? [])
         setColores(json.colores ?? [])

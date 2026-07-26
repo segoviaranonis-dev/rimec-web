@@ -32,11 +32,16 @@ export function isWarmTarjetasRequest(
     Boolean(filters.cadena_comercial?.trim()) ||
     (filters.tipo_grupos?.length ?? 0) > 0 ||
     (filters.material_familias?.length ?? 0) > 0 ||
-    (filters.color_familias?.length ?? 0) > 0
+    (filters.color_familias?.length ?? 0) > 0 ||
+    filters.precio_tope != null ||
+    filters.precio_min != null ||
+    filters.precio_max != null ||
+    filters.lista_precio_id != null
 
   if (hasExtraFilters) return false
 
   const o = normalizeOrigenCatalogo(filters.origen_tipo)
+  if (o === 'TODOS' && !filters.ramo_tipo) return true
   if (o === 'TODOS' && filters.ramo_tipo === 'CALZADO') return true
   if (o === 'PRONTA_ENTREGA' && filters.ramo_tipo === 'CALZADO') return true
   if (
@@ -61,7 +66,7 @@ const fetchWarmTarjetasInner = unstable_cache(
       limit,
     })
   },
-  ['catalogo-tarjetas-warm-v5'],
+  ['catalogo-tarjetas-warm-v7'],
   { revalidate: WARM_TTL_SEC },
 )
 

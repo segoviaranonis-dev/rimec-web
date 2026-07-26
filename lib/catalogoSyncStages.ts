@@ -220,6 +220,11 @@ export const CATALOG_SYNC_GRID_SLOTS = 9
 
 export const CATALOG_SYNC_MIN_TOTAL_MS = 30_000
 
+/** Prod: overlay 30s CP→PE→Confecciones→Todos. Local: grilla directa. */
+export function isCatalogSyncOverlayEnabled(): boolean {
+  return process.env.NODE_ENV === 'production'
+}
+
 const STAGE_MIN_MS = Math.ceil(CATALOG_SYNC_MIN_TOTAL_MS / CATALOG_SYNC_STAGES.length)
 
 

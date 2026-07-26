@@ -1,20 +1,9 @@
-import type { CSSProperties } from 'react'
-
-/** Verde esperanza — suave, sin saturar la tarjeta. */
-export const PROMO_BADGE_STYLE: CSSProperties = {
-  backgroundColor: '#ECFDF5',
-  color: '#047857',
-  border: '1px solid #6EE7B7',
-  boxShadow: '0 1px 2px rgba(4, 120, 87, 0.08)',
-}
-
 type Props = {
-  /** Tarjeta compacta catálogo vs lightbox / preview. */
   size?: 'compact' | 'md'
   className?: string
 }
 
-/** Pill «PROMO» — caso comercial PROMOCIONAL (LPC03 = LPN). */
+/** Pill PROMO — Compra previa · biblioteca · borde fucsia + texto oscuro legible. */
 export function PromoCasoBadge({ size = 'compact', className = '' }: Props) {
   const sizeClass =
     size === 'compact'
@@ -23,9 +12,8 @@ export function PromoCasoBadge({ size = 'compact', className = '' }: Props) {
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full font-extrabold uppercase leading-none ${sizeClass} ${className}`}
-      style={PROMO_BADGE_STYLE}
-      title="Caso promocional · LPC03 = LPN"
+      className={`catalog-cp-promo-badge inline-flex shrink-0 items-center rounded-full border-2 border-fuchsia-700 bg-fuchsia-100 font-extrabold uppercase leading-none text-fuchsia-950 shadow-sm ${sizeClass} ${className}`}
+      title="Compra previa · caso PROMOCIONAL · biblioteca · LPC03 = LPN"
     >
       PROMO
     </span>

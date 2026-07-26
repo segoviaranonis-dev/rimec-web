@@ -10,8 +10,9 @@
  * clasificaba por descp_caso/BCL y filtraba mal línea promocional (ej. 1395).
  */
 import { lookupCasoLinea, normalizeCasoNombre } from '@/lib/depositos/caso-biblioteca'
+import { esFilaModuloAccesorios, esRamoAccesorios } from '@/lib/filtros/modulo-accesorios'
 
-export type TipoGrupoId = 'normal' | 'carteras' | 'promo' | 'liquidacion'
+export type TipoGrupoId = 'normal' | 'carteras' | 'promo' | 'liquidacion' | 'comun'
 
 export const TIPO_GRUPO_OPCIONES: ReadonlyArray<{ id: TipoGrupoId; label: string }> = [
   { id: 'normal', label: 'Normal' },
@@ -103,6 +104,24 @@ export function toggleTipoGrupo(list: TipoGrupoId[], id: TipoGrupoId): TipoGrupo
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
 }
 
+/** Mario Bros / grupo uno · Calzado → TIPO solo Normal · Promo · Liquidación. ACCESORIOS → sin chip Tipo. */
+export function tipoGrupoOpcionesVisibles(ramo_tipo?: string): typeof TIPO_GRUPO_OPCIONES {
+  const ramo = String(ramo_tipo ?? '').trim().toUpperCase()
+  if (ramo === 'ACCESORIOS') return []
+  if (ramo === 'CALZADO') return TIPO_GRUPO_OPCIONES.filter((o) => o.id !== 'carteras')
+  return TIPO_GRUPO_OPCIONES
+}
+
+export function sanitizeTipoGruposParaRamo(
+  tipo_grupos: readonly TipoGrupoId[] | undefined,
+  ramo_tipo?: string,
+): TipoGrupoId[] {
+  const list = [...(tipo_grupos ?? [])]
+  if (esRamoAccesorios(ramo_tipo)) return []
+  if (String(ramo_tipo ?? '').trim().toUpperCase() !== 'CALZADO') return list
+  return list.filter((g) => g !== 'carteras')
+}
+
 export function esMarcaFantasmaFiltro(label: string): boolean {
   const t = label.trim().toUpperCase()
   return (
@@ -113,6 +132,26 @@ export function esMarcaFantasmaFiltro(label: string): boolean {
     t === '(SIN MARCA)' ||
     t === 'SIN MARCA'
   )
+}
+
+/** @deprecated usar esFilaModuloAccesorios */
+export function esFilaCarteraCatalogo(
+  row: RowTipoSignals & {
+    descp_grupo_estilo?: string | null
+    descp_tipo_1?: string | null
+  },
+  lineaCasoMap?: Map<string, string> | null,
+): boolean {
+  return esFilaModuloAccesorios(row, lineaCasoMap)
+}
+
+/** Calzado por defecto = calzado puro; carteras solo con chip Tipo explícito. */
+export function calzadoExcluyeCarterasPorDefecto(filters: {
+  ramo_tipo?: string
+  tipo_grupos?: readonly TipoGrupoId[]
+}): boolean {
+  if (String(filters.ramo_tipo ?? '').trim().toUpperCase() !== 'CALZADO') return false
+  return !(filters.tipo_grupos ?? []).includes('carteras')
 }
 
 export { normalizeCasoNombre }

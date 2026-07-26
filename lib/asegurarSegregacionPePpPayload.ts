@@ -129,8 +129,12 @@ export async function asegurarSegregacionPePpPayload(
   const ppMap = await loadPpIdPorDetId(sb, peDetIds)
   let spliteadas = 0
 
-  const lotes = p.lotes.map((lote) => {
-    if (!esLotePe(lote)) return lote
+  const lotesOut: LotePayload[] = []
+  for (const lote of p.lotes) {
+    if (!esLotePe(lote)) {
+      lotesOut.push(lote)
+      continue
+    }
     const facturasIn = Array.isArray(lote.facturas) ? lote.facturas : []
     const facturasOut: FacturaPayload[] = []
     for (const f of facturasIn) {
@@ -138,8 +142,46 @@ export async function asegurarSegregacionPePpPayload(
       if (parts.length > 1) spliteadas += parts.length - 1
       facturasOut.push(...parts)
     }
-    return { ...lote, facturas: facturasOut }
-  })
 
-  return { payload: { ...p, lotes }, facturas_spliteadas: spliteadas }
+    // Un lote PE por pp_id real (guardia + ancla Fecha de entrega Real).
+    const byPp = new Map<number, FacturaPayload[]>()
+    const sinPp: FacturaPayload[] = []
+    for (const f of facturasOut) {
+      const tagged = Number((f as { _pe_pp_id?: number })._pe_pp_id)
+      let ppId = Number.isFinite(tagged) && tagged > 0 ? tagged : 0
+      if (!ppId) {
+        for (const it of f.items ?? []) {
+          const resolved = ppMap.get(Number(it.det_id))
+          if (resolved && resolved > 0) {
+            ppId = resolved
+            break
+          }
+        }
+      }
+      if (!ppId) {
+        sinPp.push(f)
+        continue
+      }
+      if (!byPp.has(ppId)) byPp.set(ppId, [])
+      byPp.get(ppId)!.push({ ...f, _pe_pp_id: ppId })
+    }
+    if (sinPp.length) {
+      throw new Error(
+        'PE: hay ítems sin pedido proveedor resuelto. Vacá el carrito y recargá catálogo Pronta entrega.',
+      )
+    }
+    if (byPp.size > 1) spliteadas += byPp.size - 1
+    for (const [ppId, facts] of byPp) {
+      lotesOut.push({
+        ...lote,
+        origen_pe: true,
+        // Sintético negativo para UI/sanitize; RPC MIG-173 resuelve real desde items/_pe_pp_id
+        pp_id: -Math.abs(ppId),
+        _pe_pp_id: ppId,
+        facturas: facts,
+      })
+    }
+  }
+
+  return { payload: { ...p, lotes: lotesOut }, facturas_spliteadas: spliteadas }
 }

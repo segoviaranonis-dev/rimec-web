@@ -15,8 +15,10 @@ import {
   isCatalogoOrigenTodos,
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
+import { applyPrecioSqlFilters } from '@/lib/catalogoPrecioSqlCore'
 import { enrichCatalogoRows, enrichPreventaCatalogoRows, loteEnriquecidoDesdeVista } from '@/lib/catalogoEnrich'
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
+import { calzadoExcluyeCarterasPorDefecto } from '@/lib/filtros/filtro-tipo-canonico'
 
 export const CATALOGO_CARD_PAGE = 30
 const ROW_BATCH = 80
@@ -63,20 +65,23 @@ async function fetchStockBatchFromView(
 
     query =
       view === 'v_stock_pe_rimec'
-        ? applyPeTipoExclusionesSql(
-            applyPeCommercialSqlFilters(
-              applyPeDepositoQuery(
-                applyNonOrigenSqlFilters(query, filtersForPeSql(filters), {
-                  allowLiquidacion: true,
-                  skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
-                }),
+        ? applyPrecioSqlFilters(
+            applyPeTipoExclusionesSql(
+              applyPeCommercialSqlFilters(
+                applyPeDepositoQuery(
+                  applyNonOrigenSqlFilters(query, filtersForPeSql(filters), {
+                    allowLiquidacion: true,
+                    skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
+                  }),
+                  filters,
+                ),
                 filters,
               ),
               filters,
             ),
             filters,
           )
-        : applySqlFiltersToQuery(query, filtersForCpSql(filters))
+        : applyPrecioSqlFilters(applySqlFiltersToQuery(query, filtersForCpSql(filters)), filters)
     // Director: grilla por línea + referencia (no det_id).
     query = query
       .order('linea_codigo', { ascending: true })
@@ -96,12 +101,11 @@ async function fetchStockBatchFromView(
   throw lastError ?? new Error('Error cargando catálogo')
 }
 
-/** CP: quincenas en SQL; sin ramo/depósito PE. */
+/** CP: quincenas en SQL; sin depósito PE. Ramo desde MIG-168 (638/654). */
 function filtersForCpSql(filters: CatalogoFilterStateExtended): CatalogoFilterStateExtended {
   return {
     ...filters,
     origen_tipo: 'TRÁNSITO_PP',
-    ramo_tipo: '',
     deposito_codigo: '',
     cadena_comercial: '',
   }
@@ -116,7 +120,7 @@ function filtersForPeSql(filters: CatalogoFilterStateExtended): CatalogoFilterSt
   }
 }
 
-/** Excluir LIQ/Promo en SQL PE cuando el chip Tipo no los pide (aunque se skip el OR de casos). */
+/** Excluir LIQ/Promo/Común en SQL PE cuando el chip Tipo no los pide (memoria aplica OR multi). */
 function applyPeTipoExclusionesSql(query: any, filters: CatalogoFilterStateExtended): any {
   const sel = filters.tipo_grupos ?? []
   if (!sel.length) return query
@@ -129,6 +133,9 @@ function applyPeTipoExclusionesSql(query: any, filters: CatalogoFilterStateExten
     q = q.or('es_promo.eq.false,es_promo.is.null')
     q = q.neq('cadena_comercial', 'PROMOCIONAL')
   }
+  if (!sel.includes('comun')) {
+    q = q.neq('cadena_comercial', 'COMUN')
+  }
   return q
 }
 
@@ -138,8 +145,7 @@ async function fetchStockBatch(
   rowTo: number,
 ): Promise<StockRow[]> {
   if (isCatalogoOrigenTodos(filters)) {
-    // Confecciones Kyly = solo vista PE — CP no tiene ramo confecciones (MIG-152).
-    if (filters.ramo_tipo === 'CONFECCIONES') {
+    if (filters.ramo_tipo === 'CONFECCIONES' || filters.ramo_tipo === 'ACCESORIOS') {
       return fetchStockBatchFromView('v_stock_pe_rimec', filters, rowFrom, rowTo)
     }
     const [cpRows, peRows] = await Promise.all([
@@ -164,7 +170,9 @@ async function rowsToGrillaAsync(
     enriched = await enrichCatalogoRows(enriched)
   }
   const lineaCasoMap =
-    filters.tipo_grupos?.length ? await getLineaCasoMapCached() : null
+    filters.tipo_grupos?.length || calzadoExcluyeCarterasPorDefecto(filters)
+      ? await getLineaCasoMapCached()
+      : null
   const filtered = applyMemoryFilters(enriched, filters, lineaCasoMap)
   const cards = agruparTarjetasCatalogo(filtered, BUCKET, cajasDisponiblesDeFila)
   const grilla = isCatalogoOrigenTodos(filters) ? fusionarTarjetasPorSku(cards) : cards
@@ -191,6 +199,7 @@ export async function fetchTarjetasPage(opts: {
   const batchSize = isCatalogoOrigenTodos(opts.filters) ? ROW_BATCH_TODOS : ROW_BATCH
 
   while (tarjetas.length < opts.limit && hasMore && scanned < MAX_SCAN_ROWS) {
+    const batchStartRow = rowFrom
     const to = rowFrom + batchSize - 1
     const batch = await fetchStockBatch(opts.filters, rowFrom, to)
     if (!batch.length) {
@@ -199,17 +208,37 @@ export async function fetchTarjetasPage(opts: {
     }
 
     scanned += batch.length
-    rowFrom += batch.length
+    const batchEndRow = rowFrom + batch.length
 
     const grilla = await rowsToGrillaAsync(batch, opts.filters)
 
+    let addedFromBatch = 0
+    let hitLimit = false
     for (const card of grilla) {
       if (excludeSet.has(card.cardKey)) continue
       excludeSet.add(card.cardKey)
       tarjetas.push(card)
-      if (tarjetas.length >= opts.limit) break
+      addedFromBatch++
+      if (tarjetas.length >= opts.limit) {
+        hitLimit = true
+        break
+      }
     }
 
+    if (hitLimit) {
+      // Mismo lote en la siguiente página — exclude evita duplicados (carteras tras calzado).
+      rowFrom = batchStartRow
+      hasMore = true
+      break
+    }
+
+    if (addedFromBatch === 0) {
+      rowFrom = batchEndRow
+      if (batch.length < batchSize) hasMore = false
+      continue
+    }
+
+    rowFrom = batchEndRow
     if (batch.length < batchSize) hasMore = false
   }
 

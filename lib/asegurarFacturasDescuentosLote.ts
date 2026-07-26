@@ -12,6 +12,7 @@ import {
   etiquetaCelulaFi,
 } from '@/lib/facturaCelulaClave'
 import { sintetizarFacturaConfig } from '@/lib/facturaConfigMatch'
+import { aplicarDescuentoDiccionarioPe, fetchPeDiccionarioMap } from '@/lib/peDiccionario'
 
 type ItemRow = {
   det_id: number
@@ -33,6 +34,8 @@ type CellAcc = {
   cadena_comercial: string | null
   cod_grupo: string | null
   count: number
+  /** Moda de descuento comercial dictado (PE) */
+  descuento_comercial_pct: number | null
 }
 
 function matchPrev(
@@ -109,6 +112,8 @@ export async function asegurarFacturasDescuentosLote(
   const listaCab = Number(sesion.lista_precio_id) || 1
   const descCab = normalizarDescuentos4(sesion.descuentos)
 
+  await fetchPeDiccionarioMap()
+
   const stockMap = await fetchCarritoStockByDetIds(
     sb,
     items.map((i) => Number(i.det_id)),
@@ -136,9 +141,16 @@ export async function asegurarFacturasDescuentosLote(
       linea_codigo: stock?.linea_codigo != null ? String(stock.linea_codigo) : null,
     }
     const key = `${Number(raw.pp_id)}|${marca}|${claveCelulaFi(celula)}`
+    const pctDictado = (() => {
+      const n = Number(stock?.descuento_comercial_pct)
+      return Number.isFinite(n) && n > 0 ? n : null
+    })()
     const existing = cells.get(key)
     if (existing) {
       existing.count += 1
+      if (pctDictado != null && existing.descuento_comercial_pct == null) {
+        existing.descuento_comercial_pct = pctDictado
+      }
       continue
     }
     cells.set(key, {
@@ -152,6 +164,7 @@ export async function asegurarFacturasDescuentosLote(
       cadena_comercial: celula.cadena_comercial,
       cod_grupo: celula.cod_grupo,
       count: 1,
+      descuento_comercial_pct: pctDictado,
     })
   }
 
@@ -173,6 +186,21 @@ export async function asegurarFacturasDescuentosLote(
       caso,
       caso_id: cell.caso_id,
     })
+    const esPe = Number(cell.pp_id) < 0
+    const descuentosBase = old?.descuentos ?? descCab
+    let descuentos = aplicarDescuentoDiccionarioPe(normalizarDescuentos4(descuentosBase), {
+      cadena_comercial: cadena,
+      es_liquidacion: cell.es_liquidacion,
+      es_promo: cell.es_promo,
+      esPe,
+    })
+    // Slot comercial: si FI PE sin descuentos editados → cargar % dictado BD
+    if (esPe && !old?.pre_autorizado) {
+      const sum = descuentos.reduce((s, x) => s + (Number(x) || 0), 0)
+      if (sum === 0 && cell.descuento_comercial_pct != null && cell.descuento_comercial_pct > 0) {
+        descuentos = [cell.descuento_comercial_pct, 0, 0, 0]
+      }
+    }
     const base = sintetizarFacturaConfig({
       pp_id: cell.pp_id,
       marca: cell.marca,
@@ -180,7 +208,7 @@ export async function asegurarFacturasDescuentosLote(
       caso,
       caso_id: cell.caso_id,
       lista_precio_id: Number(old?.lista_precio_id) || listaCab,
-      descuentos: old?.descuentos ?? descCab,
+      descuentos,
       items_count: cell.count,
       cadena_comercial: cadena,
     })

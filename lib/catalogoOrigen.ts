@@ -5,7 +5,7 @@
  * Mismo SKU con distinto origen → dos instancias DOM independientes (saldos desacoplados).
  */
 
-import { etiquetaDatoDuroCp } from '@/lib/datoDuroCabecera'
+import { etiquetaDatoDuroCp, formatNumeroPreventaCarlos } from '@/lib/datoDuroCabecera'
 
 export type OrigenTipo =
   | 'TRÁNSITO_PP'
@@ -189,10 +189,11 @@ export function deriveOrigenFromStockRow(row: StockOrigenRow): OrigenMetadatos {
 
   // Si hay quincena definida, usarla como referencia (dato duro siamese)
   if (quincenaId && quincenaDesc) {
-    const label = etiquetaDatoDuroCp(row.numero_preventa, quincenaDesc)
+    const pv = formatNumeroPreventaCarlos(row.numero_preventa)
+    const label = etiquetaDatoDuroCp(pv, quincenaDesc)
     return {
       tipo: 'TRÁNSITO_PP',
-      referenciaId: `q:${quincenaId}:${(String(row.numero_preventa ?? '').trim() || row.pp_id) ?? ''}`,
+      referenciaId: `q:${quincenaId}:${pv || ppId}`,
       label,
       shell: paletaQuincena(`${quincenaId}`),
     }

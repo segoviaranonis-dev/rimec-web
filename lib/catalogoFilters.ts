@@ -8,6 +8,8 @@ import {
 } from '@/lib/datoDuroCpFiltro'
 import { inferPeRamoTipo, type PeDepositoCodigo } from '@/lib/rimecPeDeposito'
 import { etiquetaTonoFromRaw } from '@/lib/pilares/color-canon'
+import { precioVentaDesdeFila } from '@/lib/catalogoPrecioEscalera'
+import type { ListaPrecioId } from '@/lib/precioLista'
 import {
   buildFamiliaClusters,
   buildFamiliaItems,
@@ -17,18 +19,39 @@ import {
 } from '@/lib/pilares/agrupar-etiqueta-pilar'
 import {
   CASOS_TIPO_NORMAL,
+  calzadoExcluyeCarterasPorDefecto,
   esMarcaFantasmaFiltro,
   rowMatchesTipoGrupos,
+  sanitizeTipoGruposParaRamo,
   type TipoGrupoId,
 } from '@/lib/filtros/filtro-tipo-canonico'
+import {
+  parsePeTipoSelected,
+  rowMatchesPeTipoDiccionario,
+} from '@/lib/filtros/filtro-tipo-pe-diccionario'
+import { labelMarcaCatalogo } from '@/lib/marcaBadge'
+import {
+  accesoriosSubtipoFromSyntheticId,
+  applyModuloAccesoriosExcludeSql,
+  applyModuloAccesoriosIncludeSql,
+  esFilaModuloAccesorios,
+  esLabelModuloAccesorios,
+  esRamoAccesorios,
+  rowMatchesAccesoriosSubtipo,
+} from '@/lib/filtros/modulo-accesorios'
+import { esFilaMedias, PE_TIPO1_MEDIAS_ID } from '@/lib/filtros/pe-modulo-medias'
+import { isAbcrSyntheticTipoId } from '@/lib/filtros/modulo-accesorios'
+import { mergePeAbcrTipo1Items } from '@/lib/filtros/pe-abcr-tipo1'
 
 export type { FamiliaPilarItem, TipoGrupoId }
 
 export type CatalogoFilterStateExtended = CatalogoFilterState & {
   origen_tipo?: string
-  ramo_tipo?: '' | 'CALZADO' | 'CONFECCIONES'
+  ramo_tipo?: '' | 'CALZADO' | 'CONFECCIONES' | 'ACCESORIOS'
   deposito_codigo?: '' | PeDepositoCodigo
+  /** Legacy single; usar genero_codigos para multi. */
   genero_codigo?: string
+  genero_codigos?: string[]
   tonos?: string[]
   sin_tono?: boolean
   buscar?: string
@@ -39,6 +62,12 @@ export type CatalogoFilterStateExtended = CatalogoFilterState & {
   /** Familias Material / Color (claves · NN · Napa · Verniz) */
   material_familias?: string[]
   color_familias?: string[]
+  /** Rango LPN (Gs) — legacy */
+  precio_min?: number | null
+  precio_max?: number | null
+  /** Tope comercial (lista sesión) — precio <= tope */
+  precio_tope?: number | null
+  lista_precio_id?: ListaPrecioId | null
   /** Nº preventa Carlos (CP) — legacy; preferir dato_duro_cp */
   preventas?: string[]
   /** Pares casados quincena+preventa — claves q:{id}:PP-NNNN */
@@ -100,13 +129,27 @@ function escapeIlike(q: string): string {
   return q.replace(/[%_,().\\]/g, ' ').trim()
 }
 
+export function generoCodigosActivos(filters: CatalogoFilterStateExtended): string[] {
+  const multi = (filters.genero_codigos ?? []).map((c) => String(c).trim()).filter(Boolean)
+  if (multi.length) return multi
+  const single = String(filters.genero_codigo ?? '').trim()
+  return single ? [single] : []
+}
+
 export function applyGeneroRamoBuscarSql(query: any, filters: CatalogoFilterStateExtended): any {
   let q = query
-  const gen = String(filters.genero_codigo ?? '').trim()
-  if (gen) q = q.eq('genero_codigo', gen)
+  const gens = generoCodigosActivos(filters)
+  if (gens.length === 1) q = q.eq('genero_codigo', gens[0])
+  else if (gens.length > 1) q = q.in('genero_codigo', gens)
 
-  if (filters.ramo_tipo === 'CALZADO' || filters.ramo_tipo === 'CONFECCIONES') {
+  if (esRamoAccesorios(filters.ramo_tipo)) {
+    q = applyModuloAccesoriosIncludeSql(q) as typeof q
+  } else if (filters.ramo_tipo === 'CALZADO' || filters.ramo_tipo === 'CONFECCIONES') {
     q = q.eq('ramo_tipo', filters.ramo_tipo)
+  }
+
+  if (calzadoExcluyeCarterasPorDefecto(filters)) {
+    q = applyModuloAccesoriosExcludeSql(q) as typeof q
   }
 
   const buscar = escapeIlike(String(filters.buscar ?? ''))
@@ -175,7 +218,8 @@ export function applyNonOrigenSqlFilters(
     : filters.quincenas
   if (quincenaSql.length) q = q.in('quincena_arribo_id', quincenaSql)
   if (estiloIds.length) q = q.in('grupo_estilo_id', estiloIds)
-  if (filters.tipo_ids.length) q = q.in('tipo_1_id', filters.tipo_ids)
+  const tipoFkIds = filters.tipo_ids.filter((id) => id > 0)
+  if (tipoFkIds.length) q = q.in('tipo_1_id', tipoFkIds)
   if (filters.colores.length) {
     const cols = filters.colores.map(c => c.trim()).filter(Boolean)
     if (cols.length) q = q.in('descp_color', cols)
@@ -293,6 +337,22 @@ export function applyMemoryFilters(
       const ramoEfectivo =
         ramoRow || (origen === 'PRONTA_ENTREGA' ? inferPeRamoTipo(r) : 'CALZADO')
 
+      if (filters.ramo_tipo === 'ACCESORIOS') {
+        return esFilaModuloAccesorios(
+          {
+            descp_caso: r.descp_caso,
+            caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
+            linea_codigo: r.linea_codigo,
+            descp_grupo_estilo: r.descp_grupo_estilo,
+            descp_tipo_1: r.descp_tipo_1,
+            descp_estilo: r.descp_grupo_estilo,
+            es_liquidacion: r.es_liquidacion,
+            es_promo: r.es_promo,
+            cadena_comercial: r.cadena_comercial,
+          },
+          lineaCasoMap,
+        )
+      }
       if (filters.ramo_tipo === 'CONFECCIONES') {
         return origen === 'PRONTA_ENTREGA' && ramoEfectivo === 'CONFECCIONES'
       }
@@ -304,22 +364,101 @@ export function applyMemoryFilters(
     })
   }
 
-  const tipoGrupos = filters.tipo_grupos ?? []
-  if (tipoGrupos.length) {
+  if (esRamoAccesorios(filters.ramo_tipo) && !isCatalogoOrigenTodos(filters)) {
     out = out.filter((r) =>
-      rowMatchesTipoGrupos(
+      esFilaModuloAccesorios(
         {
           descp_caso: r.descp_caso,
           caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
           linea_codigo: r.linea_codigo,
+          descp_grupo_estilo: r.descp_grupo_estilo,
+          descp_tipo_1: r.descp_tipo_1,
+          descp_estilo: r.descp_grupo_estilo,
           es_liquidacion: r.es_liquidacion,
           es_promo: r.es_promo,
           cadena_comercial: r.cadena_comercial,
         },
-        tipoGrupos,
         lineaCasoMap,
       ),
     )
+  }
+
+  const tipoGrupos = filters.tipo_grupos ?? []
+  if (calzadoExcluyeCarterasPorDefecto(filters)) {
+    out = out.filter(
+      (r) =>
+        !esFilaModuloAccesorios(
+          {
+            descp_caso: r.descp_caso,
+            caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
+            linea_codigo: r.linea_codigo,
+            descp_grupo_estilo: r.descp_grupo_estilo,
+            descp_tipo_1: r.descp_tipo_1,
+            descp_estilo: r.descp_grupo_estilo,
+            es_liquidacion: r.es_liquidacion,
+            es_promo: r.es_promo,
+            cadena_comercial: r.cadena_comercial,
+          },
+          lineaCasoMap,
+        ),
+    )
+  }
+  if (tipoGrupos.length) {
+    const peSel = parsePeTipoSelected(tipoGrupos)
+    const cpSel = tipoGrupos.filter((g): g is TipoGrupoId => g !== 'comun')
+    out = out.filter((r) => {
+      const origen = normalizeOrigenCatalogo(r.origen_tipo)
+      const signals = {
+        descp_caso: r.descp_caso,
+        caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
+        linea_codigo: r.linea_codigo,
+        es_liquidacion: r.es_liquidacion,
+        es_promo: r.es_promo,
+        cadena_comercial: r.cadena_comercial,
+        cod_grupo: r.cod_grupo,
+      }
+      if (origen === 'PRONTA_ENTREGA') {
+        if (!peSel.length) return true
+        return rowMatchesPeTipoDiccionario(signals, peSel)
+      }
+      if (!cpSel.length) return true
+      return rowMatchesTipoGrupos(signals, cpSel, lineaCasoMap)
+    })
+  }
+
+  if (filters.tipo_ids.length) {
+    const synthKeys = filters.tipo_ids
+      .filter((id) => id < 0)
+      .map((id) => accesoriosSubtipoFromSyntheticId(id))
+      .filter((k): k is string => Boolean(k))
+    const fkIds = filters.tipo_ids.filter((id) => id > 0)
+    out = out.filter((r) => {
+      const signals = {
+        descp_caso: r.descp_caso,
+        caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
+        linea_codigo: r.linea_codigo,
+        descp_grupo_estilo: r.descp_grupo_estilo,
+        descp_tipo_1: r.descp_tipo_1,
+        descp_estilo: r.descp_grupo_estilo,
+        tipo_1: r.descp_tipo_1,
+        estilo: r.descp_grupo_estilo,
+        marca: r.descp_marca,
+        sdrm_marca: r.sdrm_marca,
+        cod_grupo: r.cod_grupo,
+        linea_codigo_proveedor: r.linea_codigo,
+        tipo_1_id: r.tipo_1_id,
+        es_liquidacion: r.es_liquidacion,
+        es_promo: r.es_promo,
+        cadena_comercial: r.cadena_comercial,
+      }
+      if (synthKeys.length && !rowMatchesAccesoriosSubtipo(signals, synthKeys)) return false
+      if (!fkIds.length) return synthKeys.length > 0
+      const fkOk = fkIds.some((id) => {
+        if (id === PE_TIPO1_MEDIAS_ID) return esFilaMedias(signals)
+        return Number(r.tipo_1_id) === id
+      })
+      return fkOk
+    })
   }
 
   const matFam = filters.material_familias ?? []
@@ -343,6 +482,27 @@ export function applyMemoryFilters(
       const k = familiaKeyFromDescripcion(r.descp_color, colMap)
       return k != null && want.has(k)
     })
+  }
+
+  const pTope = filters.precio_tope
+  const listaFiltro = (filters.lista_precio_id ?? 1) as ListaPrecioId
+  if (pTope != null && pTope > 0) {
+    out = out.filter((r) => {
+      const p = precioVentaDesdeFila(r, listaFiltro)
+      return p != null && p > 0 && p <= pTope
+    })
+  } else {
+    const pMin = filters.precio_min
+    const pMax = filters.precio_max
+    if (pMin != null || pMax != null) {
+      const lo = pMin ?? 0
+      const hi = pMax ?? Number.MAX_SAFE_INTEGER
+      out = out.filter((r) => {
+        const p = precioVentaDesdeFila(r, listaFiltro)
+        if (p == null || p <= 0) return false
+        return p >= lo && p <= hi
+      })
+    }
   }
 
   return out
@@ -370,7 +530,8 @@ export function dedupeFilterItemsById(items: { id: number; label: string }[]): {
   const byId = new Map<number, { id: number; label: string }>()
   for (const item of items) {
     const id = Number(item.id)
-    if (!Number.isFinite(id) || id <= 0) continue
+    if (!Number.isFinite(id) || id === 0) continue
+    if (id < 0 && !isAbcrSyntheticTipoId(id)) continue
     const label = String(item.label ?? '').trim()
     if (!label) continue
     const prev = byId.get(id)
@@ -397,11 +558,27 @@ export function normalizeFilterItems(items: { id: number; label: string }[]): { 
   )
 }
 
-export function buildFiltrosFromRows(rows: StockRow[]) {
+/** Tipos sidebar calzado — PE AB-CR canónico + extras CP sin pisar PE. */
+export function mergeTiposCatalogoTodos(
+  cpTipos: { id: number; label: string }[],
+  peTipos: { id: number; label: string }[],
+  ramo_tipo?: string,
+): { id: number; label: string }[] {
+  if (!calzadoExcluyeCarterasPorDefecto({ ramo_tipo } as CatalogoFilterStateExtended)) {
+    return normalizeFilterItems([...cpTipos, ...peTipos])
+  }
+  const peAbcr = mergePeAbcrTipo1Items(peTipos.filter((t) => !esLabelModuloAccesorios(t.label)))
+  const peLabels = new Set(peAbcr.map((t) => String(t.label).trim().toUpperCase()))
+  const cpExtra = cpTipos.filter((t) => !peLabels.has(String(t.label).trim().toUpperCase()))
+  return [...peAbcr, ...normalizeFilterItems(cpExtra)]
+}
+
+export function buildFiltrosFromRows(rows: StockRow[], ramo_tipo?: string) {
   const lineas = new Map<number, string>()
   const marcas = new Map<number, string>()
   const estilos = new Map<number, string>()
-  const tipos = new Map<number, string>()
+  const tiposPe = new Map<number, string>()
+  const tiposCp = new Map<number, string>()
   for (const r of rows) {
     if (r.linea_id) {
       lineas.set(r.linea_id, String(r.linea_codigo || '').trim() || `Línea ${r.linea_id}`)
@@ -409,7 +586,7 @@ export function buildFiltrosFromRows(rows: StockRow[]) {
     const marLabel = String(r.descp_marca ?? '').trim()
     if (marLabel && !esMarcaFantasmaFiltro(marLabel)) {
       const marId = Number(r.marca_id ?? 0)
-      if (marId > 0) marcas.set(marId, marLabel)
+      if (marId > 0) marcas.set(marId, labelMarcaCatalogo(marLabel))
     }
     if (r.grupo_estilo_id) {
       const id = Number(r.grupo_estilo_id)
@@ -417,16 +594,24 @@ export function buildFiltrosFromRows(rows: StockRow[]) {
     }
     if (r.tipo_1_id) {
       const id = Number(r.tipo_1_id)
-      tipos.set(id, String(r.descp_tipo_1 || '').trim() || `Tipo ${id}`)
+      const lbl = String(r.descp_tipo_1 || '').trim() || `Tipo ${id}`
+      const dest =
+        normalizeOrigenCatalogo(r.origen_tipo) === 'PRONTA_ENTREGA' ? tiposPe : tiposCp
+      dest.set(id, lbl)
     }
   }
   const toItems = (m: Map<number, string>) =>
     normalizeFilterItems([...m.entries()].map(([id, label]) => ({ id, label })))
+  const todosTipos = mergeTiposCatalogoTodos(
+    toItems(tiposCp),
+    toItems(tiposPe),
+    ramo_tipo,
+  )
   return {
     todasLineas: toItems(lineas),
     todasMarcas: toItems(marcas),
     todosEstilos: toItems(estilos),
-    todosTipos: toItems(tipos),
+    todosTipos,
     todosGeneros: buildGenerosFromRows(rows),
   }
 }
@@ -461,24 +646,59 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
     quincenas: (sp.get('quincenas') ?? '').split(',').filter(Boolean).map(Number),
     origen_tipo: normalizeOrigenCatalogo(sp.get('origen_tipo')),
     ramo_tipo:
-      ramoRaw === 'CONFECCIONES' ? 'CONFECCIONES' : ramoRaw === 'CALZADO' ? 'CALZADO' : '',
+      ramoRaw === 'CONFECCIONES'
+        ? 'CONFECCIONES'
+        : ramoRaw === 'ACCESORIOS'
+          ? 'ACCESORIOS'
+          : ramoRaw === 'CALZADO'
+            ? 'CALZADO'
+            : '',
     deposito_codigo:
       depRaw === 'D1' || depRaw === 'DEP2' || depRaw === 'D3' ? depRaw : '',
     genero_codigo: sp.get('genero_codigo') ?? '',
+    genero_codigos: (sp.get('genero_codigos') ?? '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean),
     tonos: sinTono ? [] : tonosRaw,
     sin_tono: sinTono,
     buscar: sp.get('buscar') ?? '',
     cadena_comercial: sp.get('cadena_comercial') ?? '',
-    tipo_grupos: (sp.get('tipo_grupos') ?? '')
-      .split(',')
-      .filter(Boolean)
-      .filter((x): x is TipoGrupoId =>
-        x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
-      ),
+    tipo_grupos: sanitizeTipoGruposParaRamo(
+      (sp.get('tipo_grupos') ?? '')
+        .split(',')
+        .filter(Boolean)
+        .filter((x): x is TipoGrupoId =>
+          x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
+        ),
+      ramoRaw === 'CALZADO' ? 'CALZADO' : ramoRaw === 'CONFECCIONES' ? 'CONFECCIONES' : ramoRaw === 'ACCESORIOS' ? 'ACCESORIOS' : '',
+    ),
     material_familias: (sp.get('material_familias') ?? '').split(',').filter(Boolean),
     color_familias: (sp.get('color_familias') ?? '').split(',').filter(Boolean),
     preventas: (sp.get('preventas') ?? '').split(',').filter(Boolean),
     dato_duro_cp: (sp.get('dato_duro_cp') ?? '').split(',').filter(Boolean),
+    precio_tope: (() => {
+      const raw = sp.get('precio_tope')
+      if (!raw) return null
+      const n = Number(String(raw).replace(/\D/g, ''))
+      return Number.isFinite(n) && n > 0 ? n : null
+    })(),
+    precio_min: (() => {
+      const raw = sp.get('precio_min')
+      if (!raw) return null
+      const n = Number(String(raw).replace(/\D/g, ''))
+      return Number.isFinite(n) && n > 0 ? n : null
+    })(),
+    precio_max: (() => {
+      const raw = sp.get('precio_max')
+      if (!raw) return null
+      const n = Number(String(raw).replace(/\D/g, ''))
+      return Number.isFinite(n) && n > 0 ? n : null
+    })(),
+    lista_precio_id: (() => {
+      const n = Number(sp.get('lista_precio_id'))
+      return n === 1 || n === 2 || n === 3 || n === 4 ? (n as ListaPrecioId) : null
+    })(),
   }
 }
 

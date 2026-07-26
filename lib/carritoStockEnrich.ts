@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { PE_DET_ID_BASE } from '@/lib/prontaEntregaVenta'
 import { normalizarFilaStockVenta } from '@/lib/disponibilidad'
+import {
+  fetchPeDescuentoComercialMap,
+  moleculeKeyPeDescuento,
+} from '@/lib/peDescuentoComercial'
 
 /** CP (v_stock_rimec) — sin proveedor_importacion_id/tipo_v2_id (solo existen en v_stock_pe_rimec). */
 const CARRITO_STOCK_SELECT_CP =
@@ -200,6 +204,27 @@ export async function fetchCarritoStockByDetIds(
     for (const row of fallback) {
       storeRow(row)
     }
+  }
+
+  try {
+    const descMap = await fetchPeDescuentoComercialMap()
+    if (descMap.size > 0) {
+      for (const row of map.values()) {
+        const k = moleculeKeyPeDescuento(
+          String(row.linea_codigo ?? ''),
+          String(row.referencia_codigo ?? ''),
+          String(row.material_code ?? ''),
+          String(row.color_code ?? ''),
+        )
+        const pct = descMap.get(k)
+        if (pct != null && pct > 0) {
+          ;(row as CarritoStockEnriched & { descuento_comercial_pct?: number }).descuento_comercial_pct =
+            pct
+        }
+      }
+    }
+  } catch {
+    /* tabla ausente · no bloquear carrito */
   }
 
   return map

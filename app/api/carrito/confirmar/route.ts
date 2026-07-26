@@ -9,6 +9,8 @@ import {
   extraerLogisticaPePayload,
   persistirLogisticaPePostConfirmar,
 } from '@/lib/logisticaPeConfirmar'
+import { appendObsLogisticaPeAFacturas } from '@/lib/logisticaObservacionPe'
+import { syncLogisticaOkPostConfirmarPe } from '@/lib/syncLogisticaOkPostConfirmarPe'
 
 /**
  * POST /api/carrito/confirmar
@@ -109,6 +111,22 @@ export async function POST(req: NextRequest) {
         : NaN
     if (Number.isFinite(pedidoId) && pedidoId > 0) {
       await persistirLogisticaPePostConfirmar(sb, pedidoId, logisticaPe)
+      if (logisticaPe.observacion) {
+        await appendObsLogisticaPeAFacturas(sb, pedidoId, {
+            texto: logisticaPe.observacion,
+            usuarioId: session.id_usuario,
+            usuarioNombre: session.name,
+        })
+      }
+      // Puente PE → Logística OK: si PP ya tiene bandera + Fecha de entrega Real
+      const syncLog = await syncLogisticaOkPostConfirmarPe(
+        // Cast: cliente supabase tipado profundo choca con helper RPC
+        sb as unknown as Parameters<typeof syncLogisticaOkPostConfirmarPe>[0],
+        pedidoId,
+      )
+      if (syncLog.ppIds.length) {
+        console.info('[confirmar] sync logística PE', syncLog)
+      }
     }
 
     return NextResponse.json(data)

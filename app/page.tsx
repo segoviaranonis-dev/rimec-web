@@ -18,6 +18,7 @@ export default async function HomePage({
     ramo_tipo?: string
     deposito_codigo?: string
     genero_codigo?: string
+    genero_codigos?: string
     tonos?: string
     sin_tono?: string
     buscar?: string
@@ -25,6 +26,10 @@ export default async function HomePage({
     tipo_grupos?: string
     material_familias?: string
     color_familias?: string
+    precio_min?: string
+    precio_max?: string
+    precio_tope?: string
+    lista_precio_id?: string
   }>
 }) {
   const params = await searchParams
@@ -36,9 +41,15 @@ export default async function HomePage({
     .split(',')
     .filter(Boolean)
     .filter(
-      (x): x is 'normal' | 'carteras' | 'promo' | 'liquidacion' =>
-        x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion',
+      (x): x is 'normal' | 'carteras' | 'promo' | 'liquidacion' | 'comun' =>
+        x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
     )
+
+  const parsePrecio = (raw: string | undefined): number | null => {
+    if (!raw) return null
+    const n = Number(String(raw).replace(/\D/g, ''))
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
 
   return (
     <CatalogoClient
@@ -57,9 +68,10 @@ export default async function HomePage({
         ramo_tipo: (() => {
           const esPe = String(params.origen_tipo ?? '').toUpperCase().includes('PRONTA')
           if (params.ramo_tipo === 'CONFECCIONES') return 'CONFECCIONES' as const
+          if (params.ramo_tipo === 'ACCESORIOS') return 'ACCESORIOS' as const
           if (params.ramo_tipo === 'CALZADO') return 'CALZADO' as const
           if (esPe) return 'CALZADO' as const
-          if (!params.origen_tipo || params.origen_tipo.toUpperCase() === 'TODOS') return 'CALZADO' as const
+          if (!params.origen_tipo || params.origen_tipo.toUpperCase() === 'TODOS') return '' as const
           return '' as const
         })(),
         deposito_codigo: (() => {
@@ -67,6 +79,11 @@ export default async function HomePage({
           return d === 'D1' || d === 'DEP2' || d === 'D3' ? d as 'D1' | 'DEP2' | 'D3' : ''
         })(),
         genero_codigo: params.genero_codigo ?? '',
+        genero_codigos: params.genero_codigos
+          ? params.genero_codigos.split(',').map((c) => c.trim()).filter(Boolean)
+          : params.genero_codigo
+            ? [params.genero_codigo]
+            : [],
         tonos: params.sin_tono === '1' ? [] : (params.tonos ? params.tonos.split(',').filter(Boolean) : []),
         sin_tono: params.sin_tono === '1',
         buscar: params.buscar ?? '',
@@ -78,6 +95,13 @@ export default async function HomePage({
         color_familias: params.color_familias
           ? params.color_familias.split(',').filter(Boolean)
           : [],
+        precio_min: parsePrecio(params.precio_min),
+        precio_max: parsePrecio(params.precio_max),
+        precio_tope: parsePrecio(params.precio_tope),
+        lista_precio_id: (() => {
+          const n = Number(params.lista_precio_id)
+          return n === 1 || n === 2 || n === 3 || n === 4 ? (n as 1 | 2 | 3 | 4) : null
+        })(),
       }}
     />
   )

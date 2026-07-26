@@ -57,7 +57,7 @@ export async function GET() {
     const { data: facturas, error: facturasError } = await supabase
       .from('v_factura_interna_preventa')
       .select(
-        'id, numero_preventa_global, pv_global, nro_factura, pp_id, pedido_id, marca, marca_id, caso, caso_id, total_pares, total_monto, estado, created_at'
+        'id, numero_preventa_global, pv_global, nro_factura, pp_id, pedido_id, marca, marca_id, caso, caso_id, total_pares, total_monto, estado, created_at, lista_precio_id, descuento_1, descuento_2, descuento_3, descuento_4'
       )
       .or(`pedido_id.in.(${pedidoIds.join(',')}),and(pedido_id.is.null,created_at.gte.${minCreated})`)
       .order('id', { ascending: true })

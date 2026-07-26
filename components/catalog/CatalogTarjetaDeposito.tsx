@@ -49,6 +49,8 @@ type Props = {
   headerBadge?: ReactNode
   /** Badge esquina sup. derecha imagen (PE LIQ). */
   imageTopRightBadge?: ReactNode
+  /** Badge esquina sup. izquierda imagen (descuento comercial). */
+  imageTopLeftBadge?: ReactNode
   /** @deprecated Usar headerBadge / imageTopRightBadge */
   imageCornerBadge?: ReactNode
 }
@@ -79,6 +81,7 @@ export function CatalogTarjetaDeposito({
   shellVariant,
   headerBadge,
   imageTopRightBadge,
+  imageTopLeftBadge,
   imageCornerBadge,
 }: Props) {
   const widthClass = compactGrid ? CATALOG_CARD_COMPACT_CLASS : CATALOG_CARD_WIDTH_CLASS
@@ -137,6 +140,7 @@ export function CatalogTarjetaDeposito({
         {onImageClick ? (
           <button type="button" onClick={onImageClick} className={IMAGE_HOST_CLASS} aria-label={alt}>
             {image}
+            {imageTopLeftBadge}
             {imageTopRightBadge}
             {imageCornerBadge}
             {imageOverlay}
@@ -144,6 +148,7 @@ export function CatalogTarjetaDeposito({
         ) : (
           <div className={IMAGE_HOST_CLASS}>
             {image}
+            {imageTopLeftBadge}
             {imageTopRightBadge}
             {imageCornerBadge}
             {imageOverlay}

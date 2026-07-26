@@ -63,6 +63,7 @@ interface PedidoRow {
 interface PreventaRow {
   id:           number
   pv_global:    number
+  nro_factura?: string | null
   pp_id:        number
   pedido_id:    number | null
   marca:        string | null
@@ -73,6 +74,21 @@ interface PreventaRow {
   total_monto:  number
   estado:       string
   created_at:   string
+  lista_precio_id?: number | null
+  descuento_1?: number | null
+  descuento_2?: number | null
+  descuento_3?: number | null
+  descuento_4?: number | null
+}
+
+function fmtDescuentosFi(
+  d1?: number | null,
+  d2?: number | null,
+  d3?: number | null,
+  d4?: number | null,
+): string {
+  const activos = [d1, d2, d3, d4].filter((d) => (d ?? 0) > 0).map((d) => `${d}%`)
+  return activos.length ? activos.join(' + ') : 'Sin descuento'
 }
 
 function fmtMoney(n: number | null | undefined): string {
@@ -216,11 +232,15 @@ function PedidosContent() {
           const es = estadoBadge(p.estado)
           const fis = facturas[p.id] ?? []
           const destacado = destacar && p.nro_pedido === destacar
-          const descs = [p.descuento_1, p.descuento_2, p.descuento_3, p.descuento_4]
-            .filter(d => (d ?? 0) > 0)
-            .map(d => `${d}%`)
-            .join(' + ') || 'Sin descuento'
           const lotes = p.payload_json?.lotes ?? []
+          // Descuentos son por FI (Regla 1) — cabecera del pedido no es fuente de verdad
+          const hayDescPorFi = fis.some(
+            (fi) =>
+              (Number(fi.descuento_1) || 0) > 0 ||
+              (Number(fi.descuento_2) || 0) > 0 ||
+              (Number(fi.descuento_3) || 0) > 0 ||
+              (Number(fi.descuento_4) || 0) > 0,
+          )
 
           return (
             <div
@@ -301,7 +321,18 @@ function PedidosContent() {
                                 textTransform: 'uppercase', letterSpacing: 0.8 }}>
                     Descuentos
                   </div>
-                  <div style={{ color: '#1E293B', fontWeight: 600 }}>{descs}</div>
+                  <div style={{ color: '#64748B', fontWeight: 600, fontSize: 12 }}>
+                    {fis.length > 1 || hayDescPorFi
+                      ? 'Por factura interna ↓'
+                      : fis.length === 1
+                        ? fmtDescuentosFi(
+                            fis[0].descuento_1,
+                            fis[0].descuento_2,
+                            fis[0].descuento_3,
+                            fis[0].descuento_4,
+                          )
+                        : '—'}
+                  </div>
                 </div>
               </div>
 
@@ -361,8 +392,20 @@ function PedidosContent() {
                             </span>
                           </div>
                           <div style={{ color: '#64748B', fontSize: 12, marginBottom: 4 }}>
+                            {fi.nro_factura ? `${fi.nro_factura} · ` : ''}
                             PP {fi.pp_id} · {fi.marca || 'Sin marca'}
                             {fi.caso ? ` · ${fi.caso}` : ''}
+                          </div>
+                          <div style={{
+                            fontSize: 12, marginBottom: 6, color: '#1E293B',
+                            fontWeight: 700,
+                          }}>
+                            Desc.: {fmtDescuentosFi(
+                              fi.descuento_1,
+                              fi.descuento_2,
+                              fi.descuento_3,
+                              fi.descuento_4,
+                            )}
                           </div>
                           <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                             <span><strong>{fmtPares(fi.total_pares)}</strong> pares</span>

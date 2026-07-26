@@ -25,6 +25,8 @@ import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallas
 import { esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
 import { resolvePeVisualBadges } from '@/lib/catalogoPeVisual'
 import { warmPeDiccionarioClient } from '@/lib/peDiccionarioClient'
+import { PeDescComercialBadge } from '@/components/catalog/PeDescComercialBadge'
+import { pctDescuentoDesdeTarjeta } from '@/lib/peDescuentoComercial'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import {
   isTarjetaFusionada,
@@ -366,6 +368,7 @@ function TarjetaProducto({
   const esConf = isConfecciones638Lote(p)
   const vis = shellYBadgesPe(p)
   const esPromoCp = vis.showCpPromoBadge
+  const descPct = pctDescuentoDesdeTarjeta(p, descuentoPctPorMol)
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -390,6 +393,9 @@ function TarjetaProducto({
         shellVariant={vis.shellVariant}
         headerBadge={vis.headerBadge}
         imageTopRightBadge={vis.imageTopRightBadge}
+        imageTopLeftBadge={
+          descPct != null && descPct > 0 ? <PeDescComercialBadge pct={descPct} /> : null
+        }
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
         material={v.material_code}
@@ -406,15 +412,11 @@ function TarjetaProducto({
         onImageClick={() => setLightbox(true)}
         imageOverlay={
           esConf && cantidadTallasConStock(p) > 1 ? (
-            <span className="pointer-events-none absolute top-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
+            <span className="pointer-events-none absolute bottom-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
               {cantidadTallasConStock(p)} tall.
             </span>
           ) : !esConf && variantesConStock.length > 1 ? (
-            <span
-              className={`pointer-events-none absolute top-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm ${
-                vis.imageTopRightBadge ? 'left-2.5' : 'right-2.5'
-              }`}
-            >
+            <span className="pointer-events-none absolute bottom-2.5 right-2.5 z-10 rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 shadow-sm">
               {coloresUnicosEnLote(p).length} col.
             </span>
           ) : null
@@ -487,6 +489,9 @@ function TarjetaProductoFusion({
     esFusion: true,
   })
   const esPromoCp = peVis ? false : esPromoFusion
+  const descPct = lotePeHero
+    ? pctDescuentoDesdeTarjeta(lotePeHero, descuentoPctPorMol)
+    : null
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -511,6 +516,9 @@ function TarjetaProductoFusion({
         shellVariant={shellVariant}
         headerBadge={peVis?.headerBadge ?? null}
         imageTopRightBadge={peVis?.imageTopRightBadge ?? null}
+        imageTopLeftBadge={
+          descPct != null && descPct > 0 ? <PeDescComercialBadge pct={descPct} /> : null
+        }
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
         material={vHero.material_code}

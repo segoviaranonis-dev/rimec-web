@@ -19,10 +19,40 @@ export default function NotificationBell() {
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
-    cargarNotificaciones()
-    // Polling cada 30 segundos
-    const intervalo = setInterval(cargarNotificaciones, 30000)
-    return () => clearInterval(intervalo)
+    const ctrl = new AbortController()
+    let activo = true
+
+    async function cargar(signal: AbortSignal) {
+      if (typeof document !== 'undefined' && document.hidden) return
+      try {
+        const res = await fetch('/api/notificaciones?no_leidas=true', { signal })
+        if (!activo) return
+        if (res.ok) {
+          const data = await res.json()
+          setNotificaciones(data.notificaciones || [])
+          setNoLeidas(data.total || 0)
+        }
+      } catch (error) {
+        if (!activo || (error instanceof DOMException && error.name === 'AbortError')) return
+        // Servidor caído / HMR — no spamear consola (polling reintenta solo)
+      } finally {
+        if (activo) setCargando(false)
+      }
+    }
+
+    void cargar(ctrl.signal)
+    const intervalo = setInterval(() => void cargar(ctrl.signal), 30000)
+    const onVisible = () => {
+      if (!document.hidden) void cargar(ctrl.signal)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      activo = false
+      ctrl.abort()
+      clearInterval(intervalo)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   async function cargarNotificaciones() {
@@ -33,8 +63,8 @@ export default function NotificationBell() {
         setNotificaciones(data.notificaciones || [])
         setNoLeidas(data.total || 0)
       }
-    } catch (error) {
-      console.error('Error cargando notificaciones:', error)
+    } catch {
+      // red caída — ignorar
     } finally {
       setCargando(false)
     }

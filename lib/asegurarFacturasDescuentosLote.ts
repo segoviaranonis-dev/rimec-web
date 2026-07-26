@@ -13,6 +13,7 @@ import {
 } from '@/lib/facturaCelulaClave'
 import { sintetizarFacturaConfig } from '@/lib/facturaConfigMatch'
 import { aplicarDescuentoDiccionarioPe, fetchPeDiccionarioMap } from '@/lib/peDiccionario'
+import { resolverDescuentosFiPe } from '@/lib/resolverDescuentosFiPe'
 
 type ItemRow = {
   det_id: number
@@ -194,12 +195,13 @@ export async function asegurarFacturasDescuentosLote(
       es_promo: cell.es_promo,
       esPe,
     })
-    // Slot comercial: si FI PE sin descuentos editados → cargar % dictado BD
-    if (esPe && !old?.pre_autorizado) {
-      const sum = descuentos.reduce((s, x) => s + (Number(x) || 0), 0)
-      if (sum === 0 && cell.descuento_comercial_pct != null && cell.descuento_comercial_pct > 0) {
-        descuentos = [cell.descuento_comercial_pct, 0, 0, 0]
-      }
+    if (esPe) {
+      descuentos = resolverDescuentosFiPe({
+        listaPrecioId: Number(old?.lista_precio_id) || listaCab,
+        descuentosPrevios: descuentos,
+        dictadoComercialPct: cell.descuento_comercial_pct,
+        preAutorizado: Boolean(old?.pre_autorizado),
+      })
     }
     const base = sintetizarFacturaConfig({
       pp_id: cell.pp_id,

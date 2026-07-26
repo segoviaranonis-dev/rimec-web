@@ -12,6 +12,7 @@ import { isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
 import { etiquetaDescuentos, normalizarDescuentos4 } from '@/lib/carritoDescuentosFi'
 import { resolverFacturaConfig } from '@/lib/facturaConfigMatch'
 import { etiquetaCasoUiCarrito } from '@/lib/facturaCelulaClave'
+import { esDescuentoSoloComisionDiccionario } from '@/lib/resolverDescuentosFiPe'
 
 const AZUL = '#1E40AF'
 const VERDE = '#10B981'
@@ -704,7 +705,8 @@ export default function CarritoPage() {
                           {(() => {
                             const d = normalizarDescuentos4(facturaConfig.descuentos)
                             const sum = d.reduce((s, x) => s + (Number(x) || 0), 0)
-                            if (sum <= 0) return null
+                            // Comisión diccionario (2%/4%) ≠ Desc. comercial — no mostrar
+                            if (sum <= 0 || esDescuentoSoloComisionDiccionario(d)) return null
                             return (
                               <>
                                 &nbsp;·&nbsp;<strong>Desc.:</strong> {etiquetaDescuentos(d)}

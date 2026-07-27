@@ -51,6 +51,7 @@ Son dos ramos con modelo de datos, unidad de venta y UX distintos.
 | Agrupación talla × precio | `lib/confeccionesCatalogo.ts` → `agruparTallasPorPrecio()` |
 | UI botones talla | `components/catalog/CatalogConfeccionesTallas.tsx` |
 | Panel venta | `components/catalog/CatalogPanelOrigen.tsx` — rama `esConf` |
+| Lightbox colores | `app/CatalogoGrid.tsx` → `variantesColorUnicas()` en carrusel — **638 ONLY** |
 | **Subtítulo tarjeta (estilo · color)** | `lib/confeccionesCatalogo.ts` → `subtitulo638Tarjeta()` — **solo 638** · doc `2.2.1.25` |
 | Enrich estilo catálogo | `lib/catalogoEnrich.ts` — pilares + col J / valorizado |
 | Agrupación catálogo | `lib/agruparTarjetasCatalogo.ts` — `tipo_v2_id === 2` no dedupe color |

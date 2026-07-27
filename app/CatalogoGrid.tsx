@@ -21,7 +21,7 @@ import { estiloBadgeMarca, labelMarcaCatalogo } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
 import { productImagePrimaryStem } from '@/lib/productImageProtocol'
-import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock, subtitulo638Tarjeta } from '@/lib/confeccionesCatalogo'
+import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock, subtitulo638Tarjeta, variantesColorUnicas, variantesPorColor, prendasDisponiblesVariante, unidadStockCorta } from '@/lib/confeccionesCatalogo'
 import { esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
 import { resolvePeVisualBadges } from '@/lib/catalogoPeVisual'
 import { warmPeDiccionarioClient } from '@/lib/peDiccionarioClient'
@@ -164,15 +164,58 @@ function ChipEta({
   )
 }
 
-function Lightbox({ producto: p, initialIdx, onClose }: {
-  producto: TarjetaCatalogo; initialIdx: number; onClose: () => void
+function Lightbox({ producto: p, initialIdx, initialTonoKey, onClose }: {
+  producto: TarjetaCatalogo; initialIdx: number; initialTonoKey?: string; onClose: () => void
 }) {
-  const [idx, setIdx] = useState(initialIdx)
+  const esConf = isConfecciones638Lote(p)
+  const variantesStock = p.variantes.filter(v => v.cajas_disponibles > 0)
+  const variantesBase = variantesStock.length ? variantesStock : p.variantes
+  const variantesNav = esConf ? variantesColorUnicas({ ...p, variantes: variantesBase }) : variantesBase
+
+  const resolveInitialIdx = (): number => {
+    if (variantesNav.length === 0) return 0
+    if (initialTonoKey) {
+      const byTono = variantesNav.findIndex(v => tonoKeyDeVariante(v) === initialTonoKey)
+      if (byTono >= 0) return byTono
+    }
+    if (esConf) {
+      const seed = variantesBase[initialIdx] ?? variantesBase[0]
+      const tono = tonoKeyDeVariante(seed)
+      const bySeed = variantesNav.findIndex(v => tonoKeyDeVariante(v) === tono)
+      if (bySeed >= 0) return bySeed
+    }
+    return Math.min(Math.max(0, initialIdx), variantesNav.length - 1)
+  }
+
+  const [idx, setIdx] = useState(resolveInitialIdx)
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  const v = p.variantes[idx]
+
+  const ventaActivaStore = useSesion(s =>
+    s.hydrated && !s.hydrating && s.activa && (s.cliente?.id_cliente ?? 0) > 0,
+  )
+  const ventaActiva = mounted ? ventaActivaStore : false
+
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft')  setIdx(i => (i - 1 + variantesNav.length) % variantesNav.length)
+      if (e.key === 'ArrowRight') setIdx(i => (i + 1) % variantesNav.length)
+    }
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [onClose, variantesNav.length])
+
+  const v = variantesNav[idx] ?? variantesNav[0]
+  if (!v) return null
+  const tonoActivo = tonoKeyDeVariante(v)
+  const stockColor638 = esConf
+    ? variantesPorColor({ ...p, variantes: variantesBase }, tonoActivo)
+        .reduce((s, vv) => s + prendasDisponiblesVariante(vv), 0)
+    : 0
+  const tallasColor638 = esConf ? variantesPorColor({ ...p, variantes: variantesBase }, tonoActivo).length : 0
   const shell = p.shell
-  const esConf = isConfecciones638Lote(p)
   const nombreImagen =
     productImagePrimaryStem({
       linea: p.linea_codigo,
@@ -186,23 +229,6 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
     (esConf
       ? `${p.linea_codigo}_${v.color_code}`
       : [p.linea_codigo, p.referencia_codigo, v.material_code, v.color_code].filter(Boolean).join('-'))
-
-  // Misma regla que TarjetaProducto: carrito_sesion + cliente_v2 (MIG-080), no LPN suelto.
-  const ventaActivaStore = useSesion(s =>
-    s.hydrated && !s.hydrating && s.activa && (s.cliente?.id_cliente ?? 0) > 0,
-  )
-  const ventaActiva = mounted ? ventaActivaStore : false
-
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowLeft')  setIdx(i => (i - 1 + p.variantes.length) % p.variantes.length)
-      if (e.key === 'ArrowRight') setIdx(i => (i + 1) % p.variantes.length)
-    }
-    document.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
-  }, [onClose, p.variantes.length])
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -230,7 +256,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
           </div>
 
           <CatalogCarruselColores
-            variantes={p.variantes}
+            variantes={variantesNav}
             activeIdx={idx}
             onSelect={setIdx}
             linea={p.linea_codigo}
@@ -245,16 +271,16 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
             </svg>
           </button>
 
-          {p.variantes.length > 1 && (
+          {variantesNav.length > 1 && (
             <>
-              <button onClick={() => setIdx(i => (i - 1 + p.variantes.length) % p.variantes.length)}
+              <button onClick={() => setIdx(i => (i - 1 + variantesNav.length) % variantesNav.length)}
                       className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
                       style={{ color: AZUL }}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <button onClick={() => setIdx(i => (i + 1) % p.variantes.length)}
+              <button onClick={() => setIdx(i => (i + 1) % variantesNav.length)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full bg-white/90 hover:bg-white shadow"
                       style={{ color: AZUL }}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -303,17 +329,29 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
           <p className="text-[10px] text-slate-400 truncate mb-2">
             {esConf ? subtitulo638Tarjeta(p, v.descp_color) : `${p.descp_material} · ${v.descp_color}`}
           </p>
-          <p className="text-[10px] font-mono font-bold text-slate-500 mb-3 bg-slate-50 px-2 py-1 rounded">
-            {v.gradas_fmt}
-          </p>
+          {esConf ? (
+            tallasColor638 > 0 ? (
+              <p className="text-[10px] font-mono font-bold text-slate-500 mb-3 bg-slate-50 px-2 py-1 rounded">
+                {tallasColor638} tallas · disp: {stockColor638} {unidadStockCorta(p)}
+              </p>
+            ) : (
+              <div className="mb-3 min-h-[14px]" aria-hidden />
+            )
+          ) : (
+            <p className="text-[10px] font-mono font-bold text-slate-500 mb-3 bg-slate-50 px-2 py-1 rounded">
+              {v.gradas_fmt}
+            </p>
+          )}
 
           <div className="flex items-end justify-end gap-2">
             {!ventaActiva ? (
               <p className="text-[10px] font-semibold text-slate-500 mr-auto">🔒 Activá venta para ver precios</p>
             ) : null}
-            <span className="text-[9px] font-bold px-1.5 py-1 rounded-md" style={{ backgroundColor: '#f0f9ff', color: CELESTE }}>
-              disp: {v.cajas_disponibles} cjs
-            </span>
+            {!esConf ? (
+              <span className="text-[9px] font-bold px-1.5 py-1 rounded-md" style={{ backgroundColor: '#f0f9ff', color: CELESTE }}>
+                disp: {v.cajas_disponibles} cjs
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -429,6 +467,7 @@ function TarjetaProducto({
         <Lightbox
           producto={{ ...p, variantes: variantesConStock }}
           initialIdx={varIdx}
+          initialTonoKey={activeTonoKey}
           onClose={() => setLightbox(false)}
         />
       )}
@@ -549,6 +588,7 @@ function TarjetaProductoFusion({
               .filter(vv => vv.cajas_disponibles > 0)
               .findIndex(vv => vv.det_id === vHero.det_id),
           )}
+          initialTonoKey={activeTonoKey}
           onClose={() => setLightbox(false)}
         />
       )}

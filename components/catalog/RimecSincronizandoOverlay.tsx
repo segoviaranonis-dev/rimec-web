@@ -96,7 +96,7 @@ export function RimecSincronizandoOverlay({
       ((completed.size + (phase === 'start' ? 0.38 : 1)) / CATALOG_SYNC_STAGES.length) * 100,
     ),
   )
-  const progressPct = Math.round(Math.min(timePct, stagePct))
+  const progressPct = Math.round(Math.max(timePct, stagePct))
 
   const label =
     waitingGrid && phase === 'done'

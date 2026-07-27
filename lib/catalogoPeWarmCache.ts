@@ -234,7 +234,7 @@ export function storePageWarmCache(key: string, payload: PageWarmPayload) {
 
 export async function prefetchCatalogPage(
   filters: CatalogoFilterState,
-  opts?: { withFiltros?: boolean; force?: boolean },
+  opts?: { withFiltros?: boolean; force?: boolean; maxAttempts?: number },
 ): Promise<void> {
   const key = catalogWarmCacheKey(filters)
   if (!opts?.force && isCatalogWarmEnough(getPageWarmCache(key))) return
@@ -247,7 +247,7 @@ export async function prefetchCatalogPage(
   let tarjetas: TarjetaGrilla[] = []
   let hasMore = true
   let attempts = 0
-  const MAX_WARM_ATTEMPTS = 8
+  const MAX_WARM_ATTEMPTS = opts?.maxAttempts ?? 8
 
   while (tarjetas.length < MIN_WARM_CARDS && hasMore && attempts < MAX_WARM_ATTEMPTS) {
     attempts++

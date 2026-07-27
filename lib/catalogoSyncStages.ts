@@ -2,7 +2,7 @@
 
  * Etapas visibles «RIMEC sincronizando» — warm secuencial CP → PE → Confecciones → Todos.
 
- * Auditoría bancaria: acumuladores por etapa durante los 30 s de inicio.
+ * Auditoría bancaria: acumuladores por etapa durante el warm de inicio (~12 s).
 
  */
 
@@ -114,7 +114,7 @@ export const CATALOG_SYNC_STAGES: CatalogSyncStageDef[] = [
 
     filters: () => ({ ...effectiveCpWarmFilters(), origen_tipo: 'CP' }),
 
-    withFiltros: true,
+    withFiltros: false,
 
     requiredForGate: false,
 
@@ -136,7 +136,7 @@ export const CATALOG_SYNC_STAGES: CatalogSyncStageDef[] = [
 
     filters: effectivePeWarmFilters,
 
-    withFiltros: true,
+    withFiltros: false,
 
     requiredForGate: false,
 
@@ -158,7 +158,7 @@ export const CATALOG_SYNC_STAGES: CatalogSyncStageDef[] = [
 
     filters: () => PE_CONFECCIONES_FILTERS,
 
-    withFiltros: true,
+    withFiltros: false,
 
     requiredForGate: false,
 
@@ -218,9 +218,9 @@ export const CATALOG_SYNC_GRID_SLOTS = 9
 
 
 
-export const CATALOG_SYNC_MIN_TOTAL_MS = 30_000
+export const CATALOG_SYNC_MIN_TOTAL_MS = 12_000
 
-/** Prod: overlay 30s CP→PE→Confecciones→Todos. Local: grilla directa. */
+/** Prod: overlay warm CP→PE→Confecciones→Todos. Local: grilla directa. */
 export function isCatalogSyncOverlayEnabled(): boolean {
   return process.env.NODE_ENV === 'production'
 }
@@ -273,30 +273,27 @@ export function areAllSyncStagesWarm(): boolean {
 
 
 
-const MAX_GATE_RETRIES = 3
+const MAX_GATE_RETRIES = 2
 
-
+const STAGE_WARM_TIMEOUT_MS = 18_000
 
 async function warmStageWithRetry(stage: CatalogSyncStageDef): Promise<void> {
+  const work = (async () => {
+    for (let i = 0; i < MAX_GATE_RETRIES; i++) {
+      if (isStageWarm(stage)) return
 
-  for (let i = 0; i < MAX_GATE_RETRIES; i++) {
+      await prefetchCatalogPage(stage.filters(), {
+        withFiltros: stage.withFiltros,
+        force: i > 0,
+        maxAttempts: 3,
+      }).catch(() => undefined)
 
-    if (isStageWarm(stage)) return
+      if (isStageWarm(stage)) return
+      await delay(250 * (i + 1))
+    }
+  })()
 
-    await prefetchCatalogPage(stage.filters(), {
-
-      withFiltros: stage.withFiltros,
-
-      force: i > 0,
-
-    }).catch(() => undefined)
-
-    if (isStageWarm(stage)) return
-
-    await delay(400 * (i + 1))
-
-  }
-
+  await Promise.race([work, delay(STAGE_WARM_TIMEOUT_MS)])
 }
 
 
@@ -314,6 +311,9 @@ export async function runCatalogSyncStages(
   const runStartMs = Date.now()
 
   let marqueeTarjetas: TarjetaGrilla[] = []
+
+  /** Warm en paralelo — el overlay no espera CP→PE→Confecciones en serie. */
+  const stageWarmTasks = CATALOG_SYNC_STAGES.map((stage) => warmStageWithRetry(stage))
 
 
 
@@ -361,7 +361,11 @@ export async function runCatalogSyncStages(
 
 
 
-    await warmStageWithRetry(stage)
+    await stageWarmTasks[i]
+
+    if (!isStageWarm(stage)) {
+      await warmStageWithRetry(stage)
+    }
 
 
 
@@ -407,7 +411,11 @@ export async function runCatalogSyncStages(
 
 
 
-    await waitStageMin(stageStartMs)
+    if (!isStageWarm(stage)) {
+      await waitStageMin(stageStartMs)
+    } else {
+      await delay(350)
+    }
 
 
 

@@ -16,7 +16,7 @@ import {
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
 import { applyPrecioSqlFilters } from '@/lib/catalogoPrecioSqlCore'
-import { enrichCatalogoRows, enrichPreventaCatalogoRows, loteEnriquecidoDesdeVista } from '@/lib/catalogoEnrich'
+import { enrichCatalogoRows, enrichPreventaCatalogoRows } from '@/lib/catalogoEnrich'
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 import { calzadoExcluyeCarterasPorDefecto } from '@/lib/filtros/filtro-tipo-canonico'
 
@@ -166,9 +166,7 @@ async function rowsToGrillaAsync(
   const active = rows.filter(r => cajasDisponiblesDeFila(r) > 0)
   // Preventa Carlos siempre — la vista puede traer género/tono sin nro_pedido_externo (MIG-151).
   let enriched = await enrichPreventaCatalogoRows(active)
-  if (!loteEnriquecidoDesdeVista(enriched)) {
-    enriched = await enrichCatalogoRows(enriched)
-  }
+  enriched = await enrichCatalogoRows(enriched)
   const lineaCasoMap =
     filters.tipo_grupos?.length || calzadoExcluyeCarterasPorDefecto(filters)
       ? await getLineaCasoMapCached()

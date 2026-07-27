@@ -50,6 +50,8 @@ Son dos ramos con modelo de datos, unidad de venta y UX distintos.
 | Agrupación talla × precio | `lib/confeccionesCatalogo.ts` → `agruparTallasPorPrecio()` |
 | UI botones talla | `components/catalog/CatalogConfeccionesTallas.tsx` |
 | Panel venta | `components/catalog/CatalogPanelOrigen.tsx` — rama `esConf` |
+| **Subtítulo tarjeta (estilo · color)** | `lib/confeccionesCatalogo.ts` → `subtitulo638Tarjeta()` — **solo 638** · doc `2.2.1.25` |
+| Enrich estilo catálogo | `lib/catalogoEnrich.ts` — pilares + col J / valorizado |
 | Agrupación catálogo | `lib/agruparTarjetasCatalogo.ts` — `tipo_v2_id === 2` no dedupe color |
 | Venta carrito | `lib/prontaEntregaVenta.ts` → `isGradaAbiertaConfecciones()` → 1 prenda/click |
 

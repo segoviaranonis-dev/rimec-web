@@ -1,6 +1,12 @@
 import type { StockRow } from '@/app/catalogo-types'
 import { formatNumeroPreventaCarlos } from './datoDuroCabecera'
-import { cargarMetaLineasDesdePilar, enriquecerMetaConLinea } from './atributosLinea'
+import {
+  cargarAtributosDesdePilar,
+  cargarMetaLineasDesdePilar,
+  enriquecerMetaConLinea,
+  enriquecerMetaConPilar,
+} from './atributosLinea'
+import { esEstilo638Generico, esCodigoKyly638 } from './confeccionesCatalogo'
 import { supabase } from './supabase'
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -90,14 +96,54 @@ export async function enrichPreventaCatalogoRows(rows: StockRow[]): Promise<Stoc
   })
 }
 
+function filaEsConfecciones638(row: StockRow): boolean {
+  return row.tipo_v2_id === 2 || String(row.ramo_tipo ?? '').toUpperCase() === 'CONFECCIONES'
+}
+
+function filaNecesitaEstilo638(row: StockRow): boolean {
+  if (!filaEsConfecciones638(row)) return false
+  const ge = String(row.descp_grupo_estilo ?? '').trim()
+  if (!ge) return true
+  if (/^\d{4,}$/.test(ge) || /^K\d+$/i.test(ge)) return true
+  if (esEstilo638Generico(ge)) return true
+  const dm = String(row.descp_material ?? '').trim()
+  if (dm && !esCodigoKyly638(dm) && !esEstilo638Generico(dm)) return false
+  return true
+}
+
 /**
  * Género + tono_canon — MIG-151 expone columnas en vista.
- * Solo consulta pilares si faltan datos (filas legacy / vista vieja).
+ * 638: estilo desde linea_referencia si la vista trae código línea en descp_material.
  */
 export async function enrichCatalogoRows(rows: StockRow[]): Promise<StockRow[]> {
   if (!rows.length) return rows
 
   let enriched = await enrichPreventaCatalogoRows(rows)
+
+  const needsEstilo638 = enriched.some(filaNecesitaEstilo638)
+  if (needsEstilo638) {
+    const pares = enriched
+      .filter(filaNecesitaEstilo638)
+      .map(r => ({
+        linea_codigo: String(r.linea_codigo ?? '').trim(),
+        referencia_codigo: String(r.referencia_codigo ?? '').trim(),
+      }))
+      .filter(p => p.linea_codigo && p.referencia_codigo)
+    if (pares.length) {
+      const pilar = await cargarAtributosDesdePilar({ paresCodigo: pares })
+      enriched = enriquecerMetaConPilar(enriched, pilar)
+    }
+  }
+
+  enriched = enriched.map(row => {
+    if (!filaEsConfecciones638(row)) return row
+    const ge = String(row.descp_grupo_estilo ?? '').trim()
+    const dm = String(row.descp_material ?? '').trim()
+    if (esEstilo638Generico(ge) && dm && !esCodigoKyly638(dm) && !esEstilo638Generico(dm)) {
+      return { ...row, descp_grupo_estilo: dm }
+    }
+    return row
+  })
 
   const needsGenero = enriched.some(
     r => !String(r.genero_codigo ?? '').trim() && Number(r.linea_id) > 0,

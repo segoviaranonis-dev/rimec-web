@@ -21,7 +21,7 @@ import { estiloBadgeMarca, labelMarcaCatalogo } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
 import { productImagePrimaryStem } from '@/lib/productImageProtocol'
-import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock } from '@/lib/confeccionesCatalogo'
+import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock, subtitulo638Tarjeta } from '@/lib/confeccionesCatalogo'
 import { esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
 import { resolvePeVisualBadges } from '@/lib/catalogoPeVisual'
 import { warmPeDiccionarioClient } from '@/lib/peDiccionarioClient'
@@ -301,7 +301,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
           </span>
 
           <p className="text-[10px] text-slate-400 truncate mb-2">
-            {p.descp_material} · {v.descp_color}
+            {esConf ? subtitulo638Tarjeta(p, v.descp_color) : `${p.descp_material} · ${v.descp_color}`}
           </p>
           <p className="text-[10px] font-mono font-bold text-slate-500 mb-3 bg-slate-50 px-2 py-1 rounded">
             {v.gradas_fmt}

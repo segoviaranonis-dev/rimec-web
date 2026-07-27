@@ -11,22 +11,45 @@ import { etiquetaTalleDesdeGrada, sortTalleKey } from '@/lib/gradaAbierta638'
  * Doc: rimec-web/docs/CONFECCIONES_638_VS_CALZADO_654.md
  */
 
-/** Estilo comercial 638 (col J) — no código K{linea}. */
-export function estilo638Tarjeta(lote: Pick<TarjetaCatalogo, 'descp_grupo_estilo' | 'descp_material' | 'nombre'>): string {
-  for (const raw of [lote.descp_grupo_estilo, lote.descp_material, lote.nombre]) {
+/** Código Kyly / línea — no es estilo comercial (col J). */
+export function esCodigoKyly638(raw: string | null | undefined): boolean {
+  const t = String(raw ?? '').trim()
+  if (!t) return true
+  if (/^K\d+$/i.test(t)) return true
+  if (/^\d{4,}$/.test(t)) return true
+  if (/^\d+\s+\S/.test(t)) return true
+  return false
+}
+
+/** Estilos 638 genéricos — bucket ramo, no col J / ULT-PREC- valorizado. Paridad Report PE. */
+export const ESTILOS_638_GENERICOS = new Set([
+  'CONFECCIONES',
+  'CALZADO',
+  'SIN ESTILO',
+  '(SIN ESTILO)',
+  'REF K',
+])
+
+export function esEstilo638Generico(raw: string | null | undefined): boolean {
+  const u = String(raw ?? '').trim().toUpperCase()
+  return !u || ESTILOS_638_GENERICOS.has(u)
+}
+
+/** Estilo 638 — CP col J · PE valorizado ULT-PREC- · mismo dato filtro ESTILO sidebar. */
+export function estilo638Tarjeta(
+  lote: Pick<TarjetaCatalogo, 'descp_grupo_estilo' | 'descp_material'>,
+): string {
+  for (const raw of [lote.descp_grupo_estilo, lote.descp_material]) {
     const t = String(raw ?? '').trim()
-    if (!t) continue
-    const u = t.toUpperCase()
-    if (u === 'CONFECCIONES' || u === 'CALZADO' || u === 'SIN ESTILO') continue
-    if (/^K\d+$/i.test(t)) continue
+    if (!t || esCodigoKyly638(t) || esEstilo638Generico(t)) continue
     return t
   }
   return ''
 }
 
-/** Fila 2 tarjeta 638 — estilo (col J) · nombre color (col M). Doc 2.3.1.33 §2.2 */
+/** Fila 2 tarjeta 638 — estilo · nombre color (col M). Doc 2.3.1.33 §2.2 */
 export function subtitulo638Tarjeta(
-  lote: Pick<TarjetaCatalogo, 'descp_grupo_estilo' | 'descp_material' | 'nombre'>,
+  lote: Pick<TarjetaCatalogo, 'descp_grupo_estilo' | 'descp_material'>,
   descpColor: string | null | undefined,
 ): string {
   const est = estilo638Tarjeta(lote)

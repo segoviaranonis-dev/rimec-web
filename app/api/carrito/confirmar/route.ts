@@ -10,6 +10,7 @@ import {
   persistirLogisticaPePostConfirmar,
 } from '@/lib/logisticaPeConfirmar'
 import { appendObsLogisticaPeAFacturas } from '@/lib/logisticaObservacionPe'
+import { notificarAprobadoresPedidoWeb } from '@/lib/notificarAprobadoresPedidoWeb'
 
 /**
  * POST /api/carrito/confirmar
@@ -116,6 +117,22 @@ export async function POST(req: NextRequest) {
             usuarioId: session.id_usuario,
             usuarioNombre: session.name,
         })
+      }
+      try {
+        let clienteNombre: string | null = null
+        const { data: clienteRow } = await sb
+          .from('cliente_v2')
+          .select('descp_cliente')
+          .eq('id_cliente', p_cliente_id)
+          .maybeSingle()
+        clienteNombre = clienteRow?.descp_cliente ?? null
+        await notificarAprobadoresPedidoWeb(sb, {
+          pedidoId,
+          vendedorNombre: session.name,
+          clienteNombre,
+        })
+      } catch (notifErr) {
+        console.error('[confirmar] alerta aprobadores:', notifErr)
       }
       // Logística OK solo tras FI CONFIRMADA en Aprobaciones — no pre-sync Web (RESERVADA)
       // Puente PE → Logística: syncLogisticaTrasConfirmarFi en Report al confirmar FI

@@ -261,6 +261,15 @@ export async function prefetchCatalogPage(
     rowFrom = chunk.nextRowFrom
     exclude = chunk.excludeCardKeys
     hasMore = chunk.hasMore
+
+    // Publicar parcial YA — el overlay CP puede mostrar fotos desde el 1.er chunk.
+    storePageWarmCache(key, {
+      tarjetas: [...tarjetas],
+      nextRowFrom: rowFrom,
+      hasMore,
+      excludeCardKeys: exclude,
+      fetchedAt: Date.now(),
+    })
   }
 
   if (!tarjetas.length) return

@@ -63,7 +63,7 @@ export const CATALOG_SYNC_STAGES: CatalogSyncStageDef[] = [
     accent: '#0EA5E9',
     tint: 'rgba(224, 242, 254, 0.72)',
     glow: 'rgba(14, 165, 233, 0.35)',
-    filters: () => ({ ...effectiveCpWarmFilters(), origen_tipo: 'CP', ramo_tipo: 'CALZADO' }),
+    filters: () => ({ ...effectiveCpWarmFilters(), ramo_tipo: 'CALZADO' }),
     withFiltros: false,
     requiredForGate: false,
   },
@@ -227,7 +227,35 @@ export async function runCatalogSyncStages(
       ),
     })
 
-    await stageWarmTasks[i]
+    // Poll cache mientras warm corre — fotos en cuanto llega el 1.er chunk.
+    const warmPromise = stageWarmTasks[i]
+    let warmDone = false
+    void warmPromise.finally(() => {
+      warmDone = true
+    })
+
+    while (!warmDone && Date.now() - stageStartMs < STAGE_MIN_MS) {
+      const mid = emitPreviewFromCache(stage, marqueeTarjetas)
+      if (mid.preview.length > 0) {
+        marqueeTarjetas = mid.marquee
+        emit({
+          stageIndex: i,
+          stage,
+          phase: 'start',
+          completedIds: [...completedIds],
+          previewTarjetas: mid.preview,
+          marqueeTarjetas: [...marqueeTarjetas],
+          audit: buildIntegrityLedger(
+            auditEntries,
+            getPageWarmCache(catalogWarmCacheKey(effectiveTodosWarmFilters())),
+          ),
+        })
+        break
+      }
+      await delay(280)
+    }
+
+    await warmPromise
     if (!isStageWarm(stage)) {
       await warmStageWithRetry(stage)
     }
@@ -252,7 +280,6 @@ export async function runCatalogSyncStages(
       })
     }
 
-    // Siempre respetar cupo de etapa — da tiempo a ver fotos (no atajo 350 ms).
     await waitStageMin(stageStartMs)
 
     completedIds.push(stage.id)

@@ -83,7 +83,9 @@ export default function Header({ data: _data }: { data: HeaderData }) {
         <HeaderShell
           esPe={false}
           esCp={false}
+          esTodos={true}
           esEstadisticas={false}
+          hrefTodos="/?origen_tipo=TODOS&ramo_tipo=CALZADO"
           hrefCp="/?origen_tipo=CP&ramo_tipo=CALZADO"
           hrefPe="/?origen_tipo=PRONTA_ENTREGA&ramo_tipo=CALZADO"
         />
@@ -117,7 +119,7 @@ const FILTROS_COMPARTIDOS_URL = [
 ] as const
 
 function hrefOrigen(
-  origen: 'CP' | 'PRONTA_ENTREGA',
+  origen: 'TODOS' | 'CP' | 'PRONTA_ENTREGA',
   searchParams: URLSearchParams,
   pathname: string,
 ): string {
@@ -133,7 +135,9 @@ function hrefOrigen(
   const ramo = searchParams.get('ramo_tipo')
   if (ramo) next.set('ramo_tipo', ramo)
   else next.set('ramo_tipo', 'CALZADO')
-  if (origen === 'CP') {
+  if (origen === 'TODOS') {
+    // Home canónico — sin quincenas/depósito estrechos
+  } else if (origen === 'CP') {
     const q = searchParams.get('quincenas')
     if (q) next.set('quincenas', q)
   } else {
@@ -148,15 +152,19 @@ function HeaderInner() {
   const pathname = usePathname()
   const origen = (searchParams.get('origen_tipo') ?? 'TODOS').toUpperCase()
   const esPe = origen.includes('PRONTA')
-  const esCp = origen === 'CP' || origen.includes('COMPRA')
+  const esCp = origen === 'CP' || origen.includes('COMPRA') || origen === 'TRÁNSITO_PP' || origen === 'TRANSITO_PP'
+  const esTodos = origen === 'TODOS' || (!esPe && !esCp)
   const esEstadisticas = pathname === '/estadisticas'
+  const hrefTodos = hrefOrigen('TODOS', searchParams, pathname)
   const hrefCp = hrefOrigen('CP', searchParams, pathname)
   const hrefPe = hrefOrigen('PRONTA_ENTREGA', searchParams, pathname)
   return (
     <HeaderShell
       esPe={esPe}
       esCp={esCp}
+      esTodos={esTodos}
       esEstadisticas={esEstadisticas}
+      hrefTodos={hrefTodos}
       hrefCp={hrefCp}
       hrefPe={hrefPe}
     />
@@ -202,13 +210,17 @@ function OrigenNavBtn({
 function HeaderShell({
   esPe,
   esCp,
+  esTodos,
   esEstadisticas,
+  hrefTodos,
   hrefCp,
   hrefPe,
 }: {
   esPe: boolean
   esCp: boolean
+  esTodos: boolean
   esEstadisticas: boolean
+  hrefTodos: string
   hrefCp: string
   hrefPe: string
 }) {
@@ -261,7 +273,7 @@ function HeaderShell({
     ? 'Pronta entrega · stock en depósito local'
     : esCp
       ? 'Compra previa · stock en tránsito y depósito'
-      : 'Stock en tránsito y depósito · Catálogo mayorista'
+      : 'Todos · Compra previa + Pronta entrega · Catálogo mayorista'
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 transition-all duration-300">
@@ -278,7 +290,7 @@ function HeaderShell({
             <div className="flex items-center justify-between h-16 gap-4">
               <div className="flex items-center gap-4 shrink-0">
                 <Link
-                  href="/"
+                  href="/?origen_tipo=TODOS&ramo_tipo=CALZADO"
                   className="font-serif text-2xl font-bold tracking-wide select-none"
                   style={{ color: RIMEC_BLUE }}
                 >
@@ -292,8 +304,10 @@ function HeaderShell({
                 </span>
               </div>
 
-              {/* Sustituye Damas/Niñas/Niños/Caballeros/Catálogo — conserva filtros al vender */}
               <nav className="flex flex-1 items-center justify-center gap-2 sm:gap-3" aria-label="Origen de stock">
+                <OrigenNavBtn href={hrefTodos} active={esTodos}>
+                  ⧉ Todos
+                </OrigenNavBtn>
                 <OrigenNavBtn href={hrefCp} active={esCp}>
                   🚢 Compra previa
                 </OrigenNavBtn>
@@ -353,10 +367,13 @@ function HeaderShell({
 
       {navOculto && (
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 flex items-center justify-between h-11 gap-3">
-          <Link href="/" className="font-serif text-lg font-bold" style={{ color: RIMEC_BLUE }}>
+          <Link href="/?origen_tipo=TODOS&ramo_tipo=CALZADO" className="font-serif text-lg font-bold" style={{ color: RIMEC_BLUE }}>
             RIMEC
           </Link>
           <nav className="flex items-center gap-2" aria-label="Origen de stock">
+            <OrigenNavBtn href={hrefTodos} active={esTodos}>
+              ⧉ Todos
+            </OrigenNavBtn>
             <OrigenNavBtn href={hrefCp} active={esCp}>
               🚢 Compra previa
             </OrigenNavBtn>

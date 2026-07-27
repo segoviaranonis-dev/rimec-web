@@ -663,11 +663,22 @@ export function CatalogoFiltrosSidebar({
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
             Stock
           </span>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOrigen('TODOS')}
+              className={`w-full rounded-lg border px-2 py-2.5 text-left text-[11px] font-semibold transition ${
+                esTodos
+                  ? 'border-rimec-azul bg-rimec-azul text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              ⧉ Todos
+            </button>
             <button
               type="button"
               onClick={setCompraPrevia}
-              className={`w-full rounded-lg border px-2.5 py-2.5 text-left text-[11px] font-semibold transition ${
+              className={`w-full rounded-lg border px-2 py-2.5 text-left text-[11px] font-semibold transition ${
                 esCp
                   ? 'border-rimec-azul bg-rimec-azul text-white'
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -681,7 +692,7 @@ export function CatalogoFiltrosSidebar({
             <button
               type="button"
               onClick={setProntaEntrega}
-              className={`w-full rounded-lg border px-2.5 py-2.5 text-left text-[11px] font-semibold transition ${
+              className={`w-full rounded-lg border px-2 py-2.5 text-left text-[11px] font-semibold transition ${
                 esPe
                   ? 'border-rimec-azul bg-rimec-azul text-white'
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'

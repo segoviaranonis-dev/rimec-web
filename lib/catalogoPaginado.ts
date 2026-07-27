@@ -234,68 +234,79 @@ export async function fetchTarjetasPage(opts: {
   hasMore: boolean
   excludeCardKeys: string[]
 }> {
+  // Orden L+R+M+C numérico global — el ORDER BY texto de PostgREST pone "10000"/"1122" antes que "520".
+  const sorted = await loadSortedCatalogCards(opts.filters)
   const excludeSet = new Set(opts.excludeCardKeys)
-  const tarjetas: TarjetaGrilla[] = []
-  let rowFrom = Math.max(0, opts.rowFrom)
-  let scanned = 0
-  let hasMore = true
-
-  const batchSize = isCatalogoOrigenTodos(opts.filters) ? ROW_BATCH_TODOS : ROW_BATCH
-
-  while (tarjetas.length < opts.limit && hasMore && scanned < MAX_SCAN_ROWS) {
-    const batchStartRow = rowFrom
-    const to = rowFrom + batchSize - 1
-    const batch = await fetchStockBatch(opts.filters, rowFrom, to)
-    if (!batch.length) {
-      hasMore = false
-      break
-    }
-
-    scanned += batch.length
-    const batchEndRow = rowFrom + batch.length
-
-    const grilla = await rowsToGrillaAsync(batch, opts.filters)
-
-    let addedFromBatch = 0
-    let hitLimit = false
-    for (const card of grilla) {
-      if (excludeSet.has(card.cardKey)) continue
-      excludeSet.add(card.cardKey)
-      tarjetas.push(card)
-      addedFromBatch++
-      if (tarjetas.length >= opts.limit) {
-        hitLimit = true
-        break
-      }
-    }
-
-    if (hitLimit) {
-      // Mismo lote en la siguiente página — exclude evita duplicados (carteras tras calzado).
-      rowFrom = batchStartRow
-      hasMore = true
-      break
-    }
-
-    if (addedFromBatch === 0) {
-      rowFrom = batchEndRow
-      if (batch.length < batchSize) hasMore = false
-      continue
-    }
-
-    rowFrom = batchEndRow
-    if (batch.length < batchSize) hasMore = false
-  }
-
-  if (scanned >= MAX_SCAN_ROWS && tarjetas.length < opts.limit) {
-    hasMore = false
-  }
+  const fresh = sorted.filter((c) => !excludeSet.has(c.cardKey))
+  const page = fresh.slice(0, opts.limit)
+  for (const c of page) excludeSet.add(c.cardKey)
 
   return {
-    tarjetas: sortTarjetasLineaRef(tarjetas),
-    nextRowFrom: rowFrom,
-    hasMore,
+    tarjetas: page,
+    nextRowFrom: opts.excludeCardKeys.length + page.length,
+    hasMore: fresh.length > opts.limit,
     excludeCardKeys: [...excludeSet],
   }
+}
+
+const NUMERIC_SCAN_BATCH = 900
+const SORT_CACHE_TTL_MS = 3 * 60 * 1000
+const sortedCatalogCache = new Map<string, { cards: TarjetaGrilla[]; at: number }>()
+
+function sortedCatalogCacheKey(filters: CatalogoFilterStateExtended): string {
+  return JSON.stringify({
+    o: filters.origen_tipo ?? '',
+    r: filters.ramo_tipo ?? '',
+    d: filters.deposito_codigo ?? '',
+    m: filters.marca_ids ?? [],
+    e: filters.grupo_estilo_ids ?? [],
+    l: filters.linea_ids ?? [],
+    t: filters.tipo_ids ?? [],
+    tg: filters.tipo_grupos ?? [],
+    g: filters.genero_codigos ?? filters.genero_codigo ?? '',
+    c: filters.colores ?? [],
+    q: filters.quincenas ?? [],
+    b: filters.buscar ?? '',
+    ton: filters.tonos ?? [],
+    st: filters.sin_tono ? 1 : 0,
+    mf: filters.material_familias ?? [],
+    cf: filters.color_familias ?? [],
+    dd: filters.dato_duro_cp ?? [],
+    pv: filters.preventas ?? [],
+    pmin: filters.precio_min ?? null,
+    pmax: filters.precio_max ?? null,
+    lp: filters.lista_precio_id ?? null,
+  })
+}
+
+/** Escaneo + sort numérico L→R→M→C (cache corto servidor). */
+async function loadSortedCatalogCards(
+  filters: CatalogoFilterStateExtended,
+): Promise<TarjetaGrilla[]> {
+  const key = sortedCatalogCacheKey(filters)
+  const hit = sortedCatalogCache.get(key)
+  if (hit && Date.now() - hit.at < SORT_CACHE_TTL_MS) return hit.cards
+
+  const seen = new Map<string, TarjetaGrilla>()
+  let rowFrom = 0
+  let scanned = 0
+
+  while (scanned < MAX_SCAN_ROWS) {
+    const to = rowFrom + NUMERIC_SCAN_BATCH - 1
+    const batch = await fetchStockBatch(filters, rowFrom, to)
+    if (!batch.length) break
+    scanned += batch.length
+    rowFrom += batch.length
+    const grilla = await rowsToGrillaAsync(batch, filters)
+    for (const card of grilla) {
+      if (!seen.has(card.cardKey)) seen.set(card.cardKey, card)
+    }
+    if (batch.length < NUMERIC_SCAN_BATCH) break
+  }
+
+  const cards = sortTarjetasLineaRef([...seen.values()])
+  sortedCatalogCache.set(key, { cards, at: Date.now() })
+  return cards
 }
 
 export type { TarjetaGrilla }

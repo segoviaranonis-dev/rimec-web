@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { RIMEC_PE_DEPOSITOS, PE_RAMO_CATEGORIA_LABEL, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { RIMEC_PE_DEPOSITOS, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
 import { tituloAbcrSidebar, tiposMetaModuloAccesorios, esRamoAccesorios } from '@/lib/filtros/modulo-accesorios'
 import {
   cascadaEstilo,
@@ -71,7 +71,7 @@ export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
   colores: [],
   quincenas: [],
   origen_tipo: 'TODOS',
-  ramo_tipo: '',
+  ramo_tipo: 'CALZADO',
   deposito_codigo: '',
   genero_codigo: '',
   genero_codigos: [],
@@ -591,12 +591,7 @@ export function CatalogoFiltrosSidebar({
           : [],
       quincenas: [],
       preventas: [],
-      ramo_tipo:
-        origen_tipo === 'PRONTA_ENTREGA'
-          ? 'CALZADO'
-          : origen_tipo === 'CP' || origen_tipo === 'TRÁNSITO_PP'
-            ? ''
-            : '',
+      ramo_tipo: 'CALZADO',
       deposito_codigo: origen_tipo === 'PRONTA_ENTREGA' ? filtros.deposito_codigo : '',
       tipo_grupos: esCpNext
         ? (filtros.tipo_grupos ?? []).filter((g) => g !== 'comun')
@@ -622,11 +617,14 @@ export function CatalogoFiltrosSidebar({
   }
 
   const setRamo = (next: '' | PeRamoTipo) => {
+    // Home = Calzado + Todos. Nunca vaciar ramo (universo mixto / confecciones).
     if (ramo === next) {
-      patch({ ramo_tipo: '' })
+      if (next === 'CONFECCIONES') {
+        patch({ ramo_tipo: 'CALZADO', ...resetCascadaAlCambiarRamo() })
+      }
       return
     }
-    patch({ ramo_tipo: next, ...resetCascadaAlCambiarRamo() })
+    patch({ ramo_tipo: next || 'CALZADO', ...resetCascadaAlCambiarRamo() })
   }
 
   const paresOpts = opciones.paresDatoDuro ?? []
@@ -818,7 +816,7 @@ export function CatalogoFiltrosSidebar({
                 type="button"
                 onClick={() => setRamo('CALZADO')}
                 className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
-                  ramo === 'CALZADO'
+                  ramo === 'CALZADO' || !ramo
                     ? 'bg-rimec-azul text-white'
                     : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                 }`}
@@ -835,17 +833,6 @@ export function CatalogoFiltrosSidebar({
                 }`}
               >
                 Confecciones
-              </button>
-              <button
-                type="button"
-                onClick={() => setRamo('ACCESORIOS')}
-                className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
-                  ramo === 'ACCESORIOS'
-                    ? 'bg-rimec-azul text-white'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {PE_RAMO_CATEGORIA_LABEL.ACCESORIOS}
               </button>
             </div>
           </div>

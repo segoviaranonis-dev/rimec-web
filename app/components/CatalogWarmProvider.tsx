@@ -1,17 +1,17 @@
 'use client'
 
 import { useEffect } from 'react'
-import { usePathname } from 'next/navigation'
 import { ensureDualCatalogWarm, ensurePeCatalogWarm } from '@/lib/catalogoPeWarmCache'
 import { subscribeSharedCatalogFilters } from '@/lib/catalogoFiltrosCompartidos'
 
-/** Canon 30 tarjetas PE — refresh cada 10 min para no expirar TTL 15 min. */
+/** Canon 30 tarjetas PE — refresh silencioso cada 10 min (sin overlay). */
 const PE_REFRESH_MS = 10 * 60 * 1000
 
-/** Mantiene ≥30 tarjetas CP+PE en memoria en toda la sesión (catálogo, estadísticas, carrito…). */
+/**
+ * Warm en memoria una sola vez al montar la app + refresh periódico.
+ * No re-warm en cada cambio de ruta (carrito ↔ catálogo / pestañas).
+ */
 export function CatalogWarmProvider() {
-  const pathname = usePathname()
-
   useEffect(() => {
     ensurePeCatalogWarm()
     ensureDualCatalogWarm()
@@ -32,11 +32,6 @@ export function CatalogWarmProvider() {
       window.clearInterval(interval)
     }
   }, [])
-
-  useEffect(() => {
-    ensurePeCatalogWarm()
-    ensureDualCatalogWarm()
-  }, [pathname])
 
   return null
 }

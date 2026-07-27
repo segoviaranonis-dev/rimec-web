@@ -648,11 +648,7 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
     ramo_tipo:
       ramoRaw === 'CONFECCIONES'
         ? 'CONFECCIONES'
-        : ramoRaw === 'ACCESORIOS'
-          ? 'ACCESORIOS'
-          : ramoRaw === 'CALZADO'
-            ? 'CALZADO'
-            : '',
+        : 'CALZADO', // ACCESORIOS pill retirada — carteras vía tipo_grupos (tipo_v2)
     deposito_codigo:
       depRaw === 'D1' || depRaw === 'DEP2' || depRaw === 'D3' ? depRaw : '',
     genero_codigo: sp.get('genero_codigo') ?? '',
@@ -671,7 +667,7 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
         .filter((x): x is TipoGrupoId =>
           x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
         ),
-      ramoRaw === 'CALZADO' ? 'CALZADO' : ramoRaw === 'CONFECCIONES' ? 'CONFECCIONES' : ramoRaw === 'ACCESORIOS' ? 'ACCESORIOS' : '',
+      ramoRaw === 'CONFECCIONES' ? 'CONFECCIONES' : 'CALZADO',
     ),
     material_familias: (sp.get('material_familias') ?? '').split(',').filter(Boolean),
     color_familias: (sp.get('color_familias') ?? '').split(',').filter(Boolean),

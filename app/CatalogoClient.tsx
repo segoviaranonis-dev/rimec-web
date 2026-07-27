@@ -62,6 +62,10 @@ import {
   runCatalogSyncStages,
   type CatalogSyncProgress,
 } from '@/lib/catalogoSyncStages'
+import {
+  markCatalogSyncOverlayDoneThisDocument,
+  wasCatalogSyncOverlayDoneThisDocument,
+} from '@/lib/catalogoSyncGate'
 
 type FilterItem = { id: number; label: string }
 type GeneroItem = { codigo: string; label: string }
@@ -252,18 +256,21 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [syncStartedAt, setSyncStartedAt] = useState<number | null>(null)
   const syncStartedRef = useRef(false)
 
-  // Warm secuencial CP → PE → Confecciones con overlay «RIMEC sincronizando».
+  // Overlay «RIMEC sincronizando» solo en entrada real (F5 / documento nuevo).
+  // Carrito ↔ catálogo remonta el cliente pero NO reabre el overlay.
   useEffect(() => {
     if (syncStartedRef.current) return
     syncStartedRef.current = true
 
     const merged = mergeSharedIntoFilters(initialFilters)
     if (
-      !isCatalogSyncOverlayEnabled()
+      wasCatalogSyncOverlayDoneThisDocument()
+      || !isCatalogSyncOverlayEnabled()
       || hasSidebarFilters(merged)
       || areAllSyncStagesWarm()
     ) {
       ensureDualCatalogWarm(merged)
+      markCatalogSyncOverlayDoneThisDocument()
       return
     }
 
@@ -272,6 +279,7 @@ export function CatalogoClient({ initialFilters }: Props) {
     setSyncRunning(true)
     void runCatalogSyncStages((p) => setSyncProgress(p))
       .finally(() => {
+        markCatalogSyncOverlayDoneThisDocument()
         setSyncRunning(false)
         setSyncOverlayVisible(false)
         setSyncProgress(null)

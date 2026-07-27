@@ -91,7 +91,6 @@ export async function fetchPrecioMinMaxSql(
           : {
               ...scope,
               origen_tipo: 'TRÁNSITO_PP',
-              ramo_tipo: '',
               deposito_codigo: '',
             }
       const [lo, hi] = await Promise.all([

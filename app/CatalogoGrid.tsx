@@ -27,6 +27,7 @@ import { resolvePeVisualBadges } from '@/lib/catalogoPeVisual'
 import { warmPeDiccionarioClient } from '@/lib/peDiccionarioClient'
 import { PeDescComercialBadge } from '@/components/catalog/PeDescComercialBadge'
 import { pctDescuentoDesdeTarjeta } from '@/lib/peDescuentoComercial'
+import { hayDescuentoPeCatalogo } from '@/lib/pePrecioNetoCatalogo'
 import type { RimecVariante, TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import {
   isTarjetaFusionada,
@@ -407,6 +408,9 @@ function TarjetaProducto({
   const vis = shellYBadgesPe(p)
   const esPromoCp = vis.showCpPromoBadge
   const descPct = pctDescuentoDesdeTarjeta(p, descuentoPctPorMol)
+  const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
+  const showDescBadge =
+    esPe && hayDescuentoPeCatalogo(listaPrecioId, descPct)
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -432,7 +436,9 @@ function TarjetaProducto({
         headerBadge={vis.headerBadge}
         imageTopRightBadge={vis.imageTopRightBadge}
         imageTopLeftBadge={
-          descPct != null && descPct > 0 ? <PeDescComercialBadge pct={descPct} /> : null
+          showDescBadge ? (
+            <PeDescComercialBadge pct={descPct ?? 0} listaPrecioId={listaPrecioId} />
+          ) : null
         }
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
@@ -532,6 +538,8 @@ function TarjetaProductoFusion({
   const descPct = lotePeHero
     ? pctDescuentoDesdeTarjeta(lotePeHero, descuentoPctPorMol)
     : null
+  const showDescBadge =
+    lotePeHero != null && hayDescuentoPeCatalogo(listaPrecioId, descPct)
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -557,7 +565,9 @@ function TarjetaProductoFusion({
         headerBadge={peVis?.headerBadge ?? null}
         imageTopRightBadge={peVis?.imageTopRightBadge ?? null}
         imageTopLeftBadge={
-          descPct != null && descPct > 0 ? <PeDescComercialBadge pct={descPct} /> : null
+          showDescBadge ? (
+            <PeDescComercialBadge pct={descPct ?? 0} listaPrecioId={listaPrecioId} />
+          ) : null
         }
         linea={p.linea_codigo}
         referencia={p.referencia_codigo}
@@ -661,7 +671,8 @@ export function CatalogoGrid({
   )
   React.useEffect(() => {
     let cancelled = false
-    void (async () => {
+
+    const cargarMapa = async () => {
       try {
         const res = await fetch('/api/pe-descuento-comercial', { cache: 'no-store' })
         const json = (await res.json()) as { ok?: boolean; descuentos?: Record<string, number> }
@@ -670,9 +681,17 @@ export function CatalogoGrid({
       } catch {
         /* sin mapa · UI sigue */
       }
-    })()
+    }
+
+    void cargarMapa()
+    const poll = window.setInterval(() => void cargarMapa(), 30_000)
+    const onFocus = () => void cargarMapa()
+    document.addEventListener('visibilitychange', onFocus)
+
     return () => {
       cancelled = true
+      window.clearInterval(poll)
+      document.removeEventListener('visibilitychange', onFocus)
     }
   }, [])
 

@@ -65,14 +65,10 @@ export default async function HomePage({
         colores: params.colores ? params.colores.split(',').filter(Boolean) : [],
         quincenas: params.quincenas?.split(',').filter(Boolean).map(Number) ?? [],
         origen_tipo: params.origen_tipo ?? 'TODOS',
+        // Home canónico: Calzado + Todos (CP+PE fusión). Nunca arrancar en Confecciones ni sin ramo.
         ramo_tipo: (() => {
-          const esPe = String(params.origen_tipo ?? '').toUpperCase().includes('PRONTA')
           if (params.ramo_tipo === 'CONFECCIONES') return 'CONFECCIONES' as const
-          if (params.ramo_tipo === 'ACCESORIOS') return 'ACCESORIOS' as const
-          if (params.ramo_tipo === 'CALZADO') return 'CALZADO' as const
-          if (esPe) return 'CALZADO' as const
-          if (!params.origen_tipo || params.origen_tipo.toUpperCase() === 'TODOS') return '' as const
-          return '' as const
+          return 'CALZADO' as const
         })(),
         deposito_codigo: (() => {
           const d = String(params.deposito_codigo ?? '').toUpperCase()

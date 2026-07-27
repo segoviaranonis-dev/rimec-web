@@ -8,8 +8,8 @@ type Props = {
   onDone: (eventoId: number) => void
 }
 
-const PASO_MS = 260
-const TOTAL_MS = 2100
+const PASO_MS = 400
+const TOTAL_MS = 3000
 
 /** Respuesta visual inmediata al tocar un filtro; no bloquea la multiselección. */
 export function FiltroAplicandoOverlay({ eventoId, filtro, onDone }: Props) {

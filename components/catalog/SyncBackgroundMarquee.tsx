@@ -2,7 +2,7 @@
 
 import { ProductImage } from '@/components/ProductImage'
 import type { TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
-import { heroLoteDeGrilla, tarjetaGrillaKey, tarjetaTieneImagen } from '@/lib/catalogoSyncPreview'
+import { heroLoteDeGrilla, tarjetaGrillaKey } from '@/lib/catalogoSyncPreview'
 
 type Props = {
   tarjetas: TarjetaGrilla[]
@@ -87,9 +87,10 @@ function MarqueeRow({
 }
 
 export function SyncBackgroundMarquee({ tarjetas, accent }: Props) {
-  const withImages = tarjetas.filter(tarjetaTieneImagen)
-  const hasReal = withImages.length > 0
-  const pool = hasReal ? withImages : Array.from({ length: 10 })
+  // Mostrar tarjetas reales aunque el API aún no trajo URL (ProductImage resuelve stem).
+  const reales = tarjetas.filter((t) => heroLoteDeGrilla(t))
+  const hasReal = reales.length > 0
+  const pool = hasReal ? reales : Array.from({ length: 10 })
 
   const rowA = pool.map((t, i) =>
     hasReal ? (

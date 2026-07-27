@@ -33,8 +33,24 @@ export function EditorDescuentosFi({
   useEffect(() => {
     if (!abierto) return
     setListaId(factura.lista_precio_id)
-    setSlots(normalizarDescuentos4(factura.descuentos).map((d) => descuentoInputDisplay(d)))
-  }, [abierto, factura])
+    const norm = normalizarDescuentos4(factura.descuentos)
+    if (esPeLote && factura.lista_precio_id === 3 && Number(norm[0]) !== 10) {
+      norm[0] = 10
+    }
+    setSlots(norm.map((d) => descuentoInputDisplay(d)))
+  }, [abierto, factura, esPeLote])
+
+  useEffect(() => {
+    if (!abierto || !esPeLote) return
+    if (listaId === 3) {
+      setSlots((prev) => {
+        if (prev[0] === '10') return prev
+        const next = [...prev]
+        next[0] = '10'
+        return next
+      })
+    }
+  }, [abierto, esPeLote, listaId])
 
   useEffect(() => {
     if (!abierto) return
@@ -100,6 +116,11 @@ export function EditorDescuentosFi({
         <p style={{ fontSize: 12, fontWeight: 700, color: '#475569', margin: '16px 0 8px' }}>
           Descuentos cascada (%)
         </p>
+        {esPeLote && listaId === 3 ? (
+          <p style={{ fontSize: 11, color: '#059669', margin: '0 0 8px', fontWeight: 600 }}>
+            LPC03: D1 = 10% fijo · D2 = descuento comercial dictado (Guido)
+          </p>
+        ) : null}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
           {[0, 1, 2, 3].map((i) => (
             <label key={i} style={{ fontSize: 10, fontWeight: 700, color: '#64748B' }}>
@@ -108,7 +129,7 @@ export function EditorDescuentosFi({
                 type="text"
                 inputMode="decimal"
                 placeholder=""
-                disabled={guardando}
+                disabled={guardando || (esPeLote && listaId === 3 && i === 0)}
                 value={slots[i]}
                 onChange={(e) => {
                   const next = [...slots]

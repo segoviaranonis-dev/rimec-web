@@ -38,9 +38,10 @@ export function priorizarTarjetasConImagen(
   tarjetas: TarjetaGrilla[],
   limit: number,
 ): TarjetaGrilla[] {
+  // Primero con foto / stem; si faltan, rellenar con el resto (ProductImage resuelve por códigos).
   const conImagen = tarjetas.filter(tarjetaTieneImagen)
-  const pool = conImagen.length >= Math.min(3, limit) ? conImagen : tarjetas
-  return pool.slice(0, limit)
+  const sinImagen = tarjetas.filter((t) => !tarjetaTieneImagen(t))
+  return [...conImagen, ...sinImagen].slice(0, limit)
 }
 
 export function mergeMarqueeTarjetas(
@@ -50,11 +51,14 @@ export function mergeMarqueeTarjetas(
 ): TarjetaGrilla[] {
   const seen = new Set(pool.map(tarjetaGrillaKey))
   const out = [...pool]
-  for (const t of incoming) {
+  const prefer = [
+    ...incoming.filter(tarjetaTieneImagen),
+    ...incoming.filter((t) => !tarjetaTieneImagen(t)),
+  ]
+  for (const t of prefer) {
     if (out.length >= max) break
     const key = tarjetaGrillaKey(t)
     if (seen.has(key)) continue
-    if (!tarjetaTieneImagen(t)) continue
     seen.add(key)
     out.push(t)
   }

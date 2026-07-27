@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { agruparTarjetasCatalogo } from '@/lib/agruparTarjetasCatalogo'
-import { fusionarTarjetasPorSku, type TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
+import { fusionarTarjetasPorSku, isTarjetaFusionada, type TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
 import { catalogoStockSelect } from '@/lib/catalogoData'
 import type { StockRow } from '@/app/catalogo-types'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
@@ -19,6 +19,7 @@ import { applyPrecioSqlFilters } from '@/lib/catalogoPrecioSqlCore'
 import { enrichCatalogoRows, enrichPreventaCatalogoRows } from '@/lib/catalogoEnrich'
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 import { calzadoExcluyeCarterasPorDefecto } from '@/lib/filtros/filtro-tipo-canonico'
+import { enrichTarjetasPeDescuentoComercial } from '@/lib/peDescuentoComercial'
 
 export const CATALOGO_CARD_PAGE = 30
 const ROW_BATCH = 80
@@ -30,22 +31,56 @@ const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/stor
 
 type StockView = 'v_stock_rimec' | 'v_stock_pe_rimec'
 
-/** Orden canónico grilla: línea → referencia (numérico natural). */
-export function compareLineaReferencia(
-  a: { linea_codigo?: string | null; referencia_codigo?: string | null },
-  b: { linea_codigo?: string | null; referencia_codigo?: string | null },
+/** Orden canónico grilla: Línea → Referencia → Material → Color (ascendente). */
+export function compareLineaRefMatColor(
+  a: {
+    linea_codigo?: string | null
+    referencia_codigo?: string | null
+    material_code?: string | null
+  },
+  b: {
+    linea_codigo?: string | null
+    referencia_codigo?: string | null
+    material_code?: string | null
+  },
+  colorA = '',
+  colorB = '',
 ): number {
-  const la = String(a.linea_codigo ?? '').trim()
-  const lb = String(b.linea_codigo ?? '').trim()
-  const c = la.localeCompare(lb, 'es', { numeric: true, sensitivity: 'base' })
-  if (c !== 0) return c
-  const ra = String(a.referencia_codigo ?? '').trim()
-  const rb = String(b.referencia_codigo ?? '').trim()
-  return ra.localeCompare(rb, 'es', { numeric: true, sensitivity: 'base' })
+  const cmp = (x: string, y: string) =>
+    x.localeCompare(y, 'es', { numeric: true, sensitivity: 'base' })
+  const cL = cmp(String(a.linea_codigo ?? '').trim(), String(b.linea_codigo ?? '').trim())
+  if (cL !== 0) return cL
+  const cR = cmp(String(a.referencia_codigo ?? '').trim(), String(b.referencia_codigo ?? '').trim())
+  if (cR !== 0) return cR
+  const cM = cmp(String(a.material_code ?? '').trim(), String(b.material_code ?? '').trim())
+  if (cM !== 0) return cM
+  return cmp(String(colorA).trim(), String(colorB).trim())
+}
+
+/** @deprecated alias — preferir compareLineaRefMatColor */
+export function compareLineaReferencia(
+  a: { linea_codigo?: string | null; referencia_codigo?: string | null; material_code?: string | null },
+  b: { linea_codigo?: string | null; referencia_codigo?: string | null; material_code?: string | null },
+): number {
+  return compareLineaRefMatColor(a, b)
+}
+
+function colorCodigoDeTarjeta(t: TarjetaGrilla): string {
+  if (isTarjetaFusionada(t)) {
+    for (const lote of t.lotes) {
+      const v = lote.variantes.find((x) => x.cajas_disponibles > 0) ?? lote.variantes[0]
+      if (v?.color_code) return String(v.color_code)
+    }
+    return ''
+  }
+  const v = t.variantes.find((x) => x.cajas_disponibles > 0) ?? t.variantes[0]
+  return String(v?.color_code ?? '')
 }
 
 function sortTarjetasLineaRef(tarjetas: TarjetaGrilla[]): TarjetaGrilla[] {
-  return [...tarjetas].sort(compareLineaReferencia)
+  return [...tarjetas].sort((a, b) =>
+    compareLineaRefMatColor(a, b, colorCodigoDeTarjeta(a), colorCodigoDeTarjeta(b)),
+  )
 }
 
 export { sortTarjetasLineaRef }
@@ -82,10 +117,12 @@ async function fetchStockBatchFromView(
             filters,
           )
         : applyPrecioSqlFilters(applySqlFiltersToQuery(query, filtersForCpSql(filters)), filters)
-    // Director: grilla por línea + referencia (no det_id).
+    // Director: grilla L → R → M → C (ascendente).
     query = query
       .order('linea_codigo', { ascending: true })
       .order('referencia_codigo', { ascending: true })
+      .order('material_code', { ascending: true })
+      .order('color_code', { ascending: true })
       .order('det_id', { ascending: true })
       .range(rowFrom, rowTo)
 
@@ -174,7 +211,16 @@ async function rowsToGrillaAsync(
   const filtered = applyMemoryFilters(enriched, filters, lineaCasoMap)
   const cards = agruparTarjetasCatalogo(filtered, BUCKET, cajasDisponiblesDeFila)
   const grilla = isCatalogoOrigenTodos(filters) ? fusionarTarjetasPorSku(cards) : cards
-  return sortTarjetasLineaRef(grilla)
+  const sorted = sortTarjetasLineaRef(grilla)
+  const tienePe = sorted.some((t) =>
+    isTarjetaFusionada(t)
+      ? t.lotes.some((l) => l.origen_tipo === 'PRONTA_ENTREGA')
+      : t.origen_tipo === 'PRONTA_ENTREGA',
+  )
+  if (tienePe) {
+    await enrichTarjetasPeDescuentoComercial(sorted)
+  }
+  return sorted
 }
 
 export async function fetchTarjetasPage(opts: {

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { RIMEC_PE_DEPOSITOS, PE_RAMO_CATEGORIA_LABEL, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
+import { RIMEC_PE_DEPOSITOS, type PeDepositoCodigo, type PeRamoTipo } from '@/lib/rimecPeDeposito'
 import { tituloAbcrSidebar, tiposMetaModuloAccesorios, esRamoAccesorios } from '@/lib/filtros/modulo-accesorios'
 import { clearSharedCatalogFilters, persistSharedCatalogFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { FiltroTonoCabecera } from '@/components/catalog/FiltroTonoCabecera'
@@ -362,14 +362,14 @@ export function FiltrosCatalogo({
     const limpiarFiltros = () => {
       const empty: CatalogoFilterState = {
         grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
-        origen_tipo: 'TODOS', ramo_tipo: '', deposito_codigo: '',
+        origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
         genero_codigo: '', genero_codigos: [], tonos: [], sin_tono: false, buscar: '',
         tipo_grupos: [], material_familias: [], color_familias: [],
         precio_tope: null, precio_min: null, precio_max: null, lista_precio_id: null,
       }
       clearSharedCatalogFilters()
       if (onChange) onChange(empty)
-      else router.push('/?origen_tipo=TODOS')
+      else router.push('/?origen_tipo=TODOS&ramo_tipo=CALZADO')
     }
 
     return (
@@ -482,7 +482,7 @@ export function FiltrosCatalogo({
             onClick={() => {
               const empty: CatalogoFilterState = {
                 grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
-                origen_tipo: 'TODOS', ramo_tipo: '', deposito_codigo: '',
+                origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
                 genero_codigo: '', genero_codigos: [], tonos: [], sin_tono: false, buscar: '',
                 tipo_grupos: [], material_familias: [], color_familias: [],
               }
@@ -491,7 +491,7 @@ export function FiltrosCatalogo({
                 onChange(empty)
               } else {
                 clearSharedCatalogFilters()
-                router.push('/?origen_tipo=TODOS')
+                router.push('/?origen_tipo=TODOS&ramo_tipo=CALZADO')
               }
             }}
             className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl
@@ -517,13 +517,13 @@ export function FiltrosCatalogo({
           <div className="flex flex-wrap gap-2">
             <MarcaPill
               active={esTodos}
-              onClick={() => aplicar({ origen_tipo: 'TODOS', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
+              onClick={() => aplicar({ origen_tipo: 'TODOS', quincenas: [], ramo_tipo: 'CALZADO', deposito_codigo: '' })}
             >
               ⊞ Todos
             </MarcaPill>
             <MarcaPill
               active={esCpSolo}
-              onClick={() => aplicar({ origen_tipo: 'CP', quincenas: [], ramo_tipo: '', deposito_codigo: '' })}
+              onClick={() => aplicar({ origen_tipo: 'CP', quincenas: [], ramo_tipo: 'CALZADO', deposito_codigo: '' })}
             >
               🚢 Compra previa
             </MarcaPill>
@@ -548,10 +548,10 @@ export function FiltrosCatalogo({
                 aria-label="Calzado o Confecciones"
               >
                 <CategoriaBtn
-                  active={ramoActual === 'CALZADO'}
+                  active={ramoActual === 'CALZADO' || !ramoActual}
                   dimmed={!!ramoActual && ramoActual !== 'CALZADO'}
                   onClick={() => aplicar({
-                    ramo_tipo: ramoActual === 'CALZADO' ? '' : 'CALZADO',
+                    ramo_tipo: 'CALZADO',
                     ...(ramoActual === 'CALZADO' ? {} : resetCascadaAlCambiarRamo()),
                   })}
                 >
@@ -561,22 +561,11 @@ export function FiltrosCatalogo({
                   active={ramoActual === 'CONFECCIONES'}
                   dimmed={!!ramoActual && ramoActual !== 'CONFECCIONES'}
                   onClick={() => aplicar({
-                    ramo_tipo: ramoActual === 'CONFECCIONES' ? '' : 'CONFECCIONES',
-                    ...(ramoActual === 'CONFECCIONES' ? {} : resetCascadaAlCambiarRamo()),
+                    ramo_tipo: ramoActual === 'CONFECCIONES' ? 'CALZADO' : 'CONFECCIONES',
+                    ...resetCascadaAlCambiarRamo(),
                   })}
                 >
                   👕 Confecciones
-                </CategoriaBtn>
-                <CategoriaBtn
-                  active={ramoActual === 'ACCESORIOS'}
-                  dimmed={!!ramoActual && ramoActual !== 'ACCESORIOS'}
-                  onClick={() => aplicar({
-                    ramo_tipo: ramoActual === 'ACCESORIOS' ? '' : 'ACCESORIOS',
-                    tipo_grupos: [],
-                    ...(ramoActual === 'ACCESORIOS' ? {} : resetCascadaAlCambiarRamo()),
-                  })}
-                >
-                  👜 {PE_RAMO_CATEGORIA_LABEL.ACCESORIOS}
                 </CategoriaBtn>
               </div>
             </div>

@@ -66,7 +66,7 @@ const CP_BASE_FILTERS: CatalogoFilterStateExtended = {
   colores: [],
   quincenas: [],
   origen_tipo: 'TRÁNSITO_PP',
-  ramo_tipo: '',
+  ramo_tipo: 'CALZADO',
   deposito_codigo: '',
   genero_codigo: '',
   tonos: [],

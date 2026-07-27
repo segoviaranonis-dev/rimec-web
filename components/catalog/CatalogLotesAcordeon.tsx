@@ -10,6 +10,11 @@ import { DatoDuroCpFilas } from '@/components/catalog/DatoDuroCpFilas'
 import { etiquetaDatoDuroCp, partesDatoDuroCp } from '@/lib/datoDuroCabecera'
 import { formatPrecioGs } from '@/lib/formatPrecioGs'
 import { precioDeLoteCatalogo } from '@/lib/precioLoteCatalogo'
+import {
+  etiquetaDescuentosPeCatalogo,
+  hayDescuentoPeCatalogo,
+  precioNetoPeCatalogo,
+} from '@/lib/pePrecioNetoCatalogo'
 import { indiceVariantePorTonoKey } from '@/lib/catalogoTonoActivo'
 import {
   isConfecciones638Lote,
@@ -137,6 +142,14 @@ export function CatalogLotesAcordeon({
                 descuentoPctPorMol?.get(molKeyLote(lote)) ??
                 null)
             : null
+        const precioNetoPe =
+          esPe && precioVal != null && precioVal > 0 && activa
+            ? precioNetoPeCatalogo(precioVal, listaPrecioId, descPct)
+            : null
+        const etiquetaDescPe =
+          esPe && hayDescuentoPeCatalogo(listaPrecioId, descPct)
+            ? etiquetaDescuentosPeCatalogo(listaPrecioId, descPct)
+            : null
 
         const datoDuroLabel = esPe ? (
           <span
@@ -184,16 +197,25 @@ export function CatalogLotesAcordeon({
                     </span>
                   ) : null}
                   {precioVal != null && precioVal > 0 ? (
-                    <span className="max-w-[88px] text-right text-[10px] font-bold leading-tight tabular-nums text-orange-600">
-                      {formatPrecioGs(precioVal)}
+                    <span className="max-w-[96px] text-right text-[10px] font-bold leading-tight tabular-nums text-orange-600">
+                      {precioNetoPe != null && precioNetoPe < precioVal ? (
+                        <>
+                          <span className="block text-[8px] font-normal tabular-nums text-slate-400 line-through">
+                            {formatPrecioGs(precioVal)}
+                          </span>
+                          <span className="block">{formatPrecioGs(precioNetoPe)}</span>
+                        </>
+                      ) : (
+                        formatPrecioGs(precioVal)
+                      )}
                       <span className="flex items-center justify-end gap-1">
                         <span className="text-[7px] font-normal text-slate-400">/ par</span>
-                        {descPct != null && descPct > 0 ? (
+                        {etiquetaDescPe ? (
                           <span
-                            className="text-[7px] font-medium tabular-nums text-slate-400"
-                            title="Descuento comercial"
+                            className="text-[7px] font-medium tabular-nums text-emerald-700"
+                            title="Descuentos cascada FI PE"
                           >
-                            −{descPct}%
+                            {etiquetaDescPe}
                           </span>
                         ) : null}
                       </span>

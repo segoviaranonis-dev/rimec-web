@@ -43,7 +43,7 @@ export const CP_DEFAULT_FILTERS: CatalogoFilterState = {
   colores: [],
   quincenas: [],
   origen_tipo: '',
-  ramo_tipo: '',
+  ramo_tipo: 'CALZADO',
   deposito_codigo: '',
   genero_codigo: '',
   tonos: [],
@@ -62,7 +62,6 @@ export const CP_DEFAULT_FILTERS: CatalogoFilterState = {
 export const TODOS_DEFAULT_FILTERS: CatalogoFilterState = {
   ...CP_DEFAULT_FILTERS,
   origen_tipo: 'TODOS',
-  ramo_tipo: '',
 }
 
 /** Compra previa explícita (pill CP). */
@@ -330,12 +329,46 @@ export function effectivePeWarmFilters(): CatalogoFilterState {
  * Mantiene CP y PE con ≥30 tarjetas en cache — prefetch paralelo, sin espera.
  * Corre en layout global (no solo catálogo) para cambio instantáneo tras estadísticas.
  */
+let peConfInflight: Promise<void> | null = null
+let cpConfInflight: Promise<void> | null = null
+
+/** PE Confecciones ≥30 — cambio Calzado↔Confecciones ~3 s. */
+export function ensurePeConfeccionesWarm(): void {
+  if (typeof window === 'undefined') return
+  const f: CatalogoFilterState = {
+    ...PE_DEFAULT_FILTERS,
+    ramo_tipo: 'CONFECCIONES',
+  }
+  const key = catalogWarmCacheKey(f)
+  if (isCatalogWarmEnough(getPageWarmCache(key)) || peConfInflight) return
+  peConfInflight = prefetchCatalogPage(f, { withFiltros: false })
+    .catch(() => undefined)
+    .finally(() => { peConfInflight = null })
+}
+
+/** CP Confecciones ≥30. */
+export function ensureCpConfeccionesWarm(): void {
+  if (typeof window === 'undefined') return
+  const f: CatalogoFilterState = {
+    ...CP_DEFAULT_FILTERS,
+    origen_tipo: 'CP',
+    ramo_tipo: 'CONFECCIONES',
+  }
+  const key = catalogWarmCacheKey(f)
+  if (isCatalogWarmEnough(getPageWarmCache(key)) || cpConfInflight) return
+  cpConfInflight = prefetchCatalogPage(f, { withFiltros: false })
+    .catch(() => undefined)
+    .finally(() => { cpConfInflight = null })
+}
+
 export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): void {
   if (typeof window === 'undefined') return
 
   // Todos primero — grilla fusionada CP+PE (Director · 2026-07-13)
   ensureTodosCatalogWarm()
   ensurePeCatalogWarm()
+  ensurePeConfeccionesWarm()
+  ensureCpConfeccionesWarm()
 
   const cpFilters = effectiveCpWarmFilters()
   const cpKey = catalogWarmCacheKey(cpFilters)

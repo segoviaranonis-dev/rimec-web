@@ -88,15 +88,12 @@ export function RimecSincronizandoOverlay({
   const phase = progress?.phase ?? 'start'
   const completed = new Set<CatalogSyncStageId>(progress?.completedIds ?? [])
 
+  // % solo por reloj (~30 s) — no saltar a 100% porque las etapas warm terminaron antes.
   const elapsedMs = startedAt ? Math.max(0, nowMs - startedAt) : 0
-  const timePct = Math.min(100, (elapsedMs / CATALOG_SYNC_MIN_TOTAL_MS) * 100)
-  const stagePct = Math.min(
-    100,
-    Math.round(
-      ((completed.size + (phase === 'start' ? 0.38 : 1)) / CATALOG_SYNC_STAGES.length) * 100,
-    ),
-  )
-  const progressPct = Math.round(Math.max(timePct, stagePct))
+  const rawPct = (elapsedMs / CATALOG_SYNC_MIN_TOTAL_MS) * 100
+  const progressPct = waitingGrid
+    ? 100
+    : Math.min(99, Math.max(1, Math.round(rawPct)))
 
   const label =
     waitingGrid && phase === 'done'

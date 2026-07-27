@@ -3,6 +3,8 @@
  * ≠ comisión D1 del diccionario.
  */
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
+import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import { isTarjetaFusionada, type TarjetaGrilla } from '@/lib/fusionTarjetasCatalogo'
 
 export function moleculeKeyPeDescuento(
   linea: string,
@@ -28,9 +30,9 @@ export async function fetchPeDescuentoComercialMap(opts?: {
   for (;;) {
     let q = sb
       .from('pe_descuento_comercial_molecula')
-      .select('batch_label, linea_codigo, referencia_codigo, material_code, color_code, descuento_pct')
+      .select('batch_label, linea_codigo, referencia_codigo, material_code, color_code, descuento_pct, updated_at')
+      .order('updated_at', { ascending: false })
       .order('batch_label', { ascending: false })
-      .order('id', { ascending: true })
       .range(from, from + PAGE - 1)
 
     if (batch) {
@@ -53,9 +55,8 @@ export async function fetchPeDescuentoComercialMap(opts?: {
       )
       const pct = Number(r.descuento_pct)
       if (!Number.isFinite(pct) || pct <= 0) continue
-      const hasBatch = Boolean(String(r.batch_label ?? '').trim())
-      // No pisar un match con batch por uno global vacío
-      if (!map.has(k) || hasBatch) map.set(k, pct)
+      // Orden updated_at DESC → primera fila = última asignación Guido
+      if (!map.has(k)) map.set(k, pct)
     }
 
     if (data.length < PAGE) break
@@ -119,4 +120,26 @@ export function pctDescuentoDesdeTarjeta(
       v0.color_code,
     ),
   ) ?? null
+}
+
+function enrichLotePeDescuento(lote: TarjetaCatalogo, map: Map<string, number>): void {
+  if (lote.origen_tipo !== 'PRONTA_ENTREGA') return
+  const pct = pctDescuentoDesdeTarjeta(lote, map)
+  if (pct != null && pct > 0) lote.descuento_comercial_pct = pct
+}
+
+/** Inyecta % dictado Guido en tarjetas PE (server-side catálogo). */
+export async function enrichTarjetasPeDescuentoComercial(
+  tarjetas: TarjetaGrilla[],
+  map?: Map<string, number>,
+): Promise<void> {
+  const descMap = map ?? (await fetchPeDescuentoComercialMap())
+  if (!descMap.size) return
+  for (const t of tarjetas) {
+    if (isTarjetaFusionada(t)) {
+      for (const l of t.lotes) enrichLotePeDescuento(l, descMap)
+    } else {
+      enrichLotePeDescuento(t, descMap)
+    }
+  }
 }

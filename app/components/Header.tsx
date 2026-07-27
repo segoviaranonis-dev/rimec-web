@@ -84,7 +84,7 @@ export default function Header({ data: _data }: { data: HeaderData }) {
           esPe={false}
           esCp={false}
           esEstadisticas={false}
-          hrefCp="/?origen_tipo=CP"
+          hrefCp="/?origen_tipo=CP&ramo_tipo=CALZADO"
           hrefPe="/?origen_tipo=PRONTA_ENTREGA&ramo_tipo=CALZADO"
         />
       }
@@ -132,7 +132,7 @@ function hrefOrigen(
   next.set('origen_tipo', origen)
   const ramo = searchParams.get('ramo_tipo')
   if (ramo) next.set('ramo_tipo', ramo)
-  else if (origen === 'PRONTA_ENTREGA') next.set('ramo_tipo', 'CALZADO')
+  else next.set('ramo_tipo', 'CALZADO')
   if (origen === 'CP') {
     const q = searchParams.get('quincenas')
     if (q) next.set('quincenas', q)

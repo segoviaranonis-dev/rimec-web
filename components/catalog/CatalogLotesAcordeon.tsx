@@ -119,7 +119,17 @@ export function CatalogLotesAcordeon({
         const stockBadgeTitle = open
           ? 'Stock del color seleccionado'
           : 'Stock total del lote (todos los colores)'
-        const accent = esPe ? 'border-l-emerald-500' : 'border-l-sky-600'
+        const accent = esPe
+          ? 'border-l-emerald-500'
+          : esConf
+            ? 'border-l-amber-400'
+            : 'border-l-sky-600'
+        /** CP confecciones: amarillo pastel (familia LIQ oro). Calzado: blanco/sky. */
+        const headerBg = esPe
+          ? 'bg-white'
+          : esConf
+            ? 'bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50/70'
+            : 'bg-white'
         const precioVal = activa && !esConf ? precioDeLoteCatalogo(lote, listaPrecioId) : null
         const descPct =
           esPe
@@ -141,6 +151,7 @@ export function CatalogLotesAcordeon({
             quincena={cpPartes.quincena}
             fallbackLabel={labelFallback}
             layout="center"
+            ramo={esConf ? 'confecciones' : 'calzado'}
           />
         )
 
@@ -151,7 +162,7 @@ export function CatalogLotesAcordeon({
                 type="button"
                 onClick={() => toggle(lote.cardKey)}
                 aria-expanded={open}
-                className={`flex w-full items-center gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-2 text-left shadow-sm transition hover:bg-slate-50/80 ${accent}`}
+                className={`flex w-full items-center gap-1 border border-slate-200/90 border-l-[3px] px-1.5 py-2 text-left shadow-sm transition hover:brightness-[0.98] ${accent} ${headerBg}`}
               >
                 <span
                   className="shrink-0 text-[11px] font-bold leading-none text-slate-400"
@@ -194,7 +205,7 @@ export function CatalogLotesAcordeon({
               </button>
             ) : (
               <div
-                className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] bg-white px-1.5 py-1.5 ${accent}`}
+                className={`flex w-full items-start gap-1 border border-slate-200/90 border-l-[3px] px-1.5 py-1.5 ${accent} ${headerBg}`}
               >
                 <span className="min-w-0 flex-1" title={labelFallback}>
                   {datoDuroLabel}

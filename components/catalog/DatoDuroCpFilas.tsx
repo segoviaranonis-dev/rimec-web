@@ -3,6 +3,7 @@ import {
   parseEtiquetaDatoDuroCp,
   type DatoDuroCpPartes,
 } from '@/lib/datoDuroCabecera'
+import { cromaticaCp, type RamoCpVisual } from '@/lib/cromaticaCpConfecciones'
 
 type Props = {
   /** CP: partes explícitas. */
@@ -15,6 +16,8 @@ type Props = {
   className?: string
   /** Catálogo acordeón — centrado y tipografía grande. */
   layout?: 'left' | 'center'
+  /** Confecciones → quincena amarillo pastel; calzado → sky. */
+  ramo?: RamoCpVisual
 }
 
 function resolverPartes(props: Props): DatoDuroCpPartes & { esCp: boolean; fallback: string } {
@@ -40,7 +43,7 @@ function resolverPartes(props: Props): DatoDuroCpPartes & { esCp: boolean; fallb
 
 /**
  * Dato duro CP — OBLIGATORIO dos filas · colores distintos (Director 2026-07-20).
- * Fila 1: PP-NNNN naranja · Fila 2: quincena azul pizarra.
+ * Fila 1: PP-NNNN naranja · Fila 2: quincena sky (calzado) o ámbar pastel (confecciones).
  */
 export function DatoDuroCpFilas({
   preventa,
@@ -49,6 +52,7 @@ export function DatoDuroCpFilas({
   labelCombinada,
   className = '',
   layout = 'left',
+  ramo = 'calzado',
 }: Props) {
   const { preventa: pv, quincena: q, esCp, fallback } = resolverPartes({
     preventa,
@@ -56,17 +60,18 @@ export function DatoDuroCpFilas({
     fallbackLabel,
     labelCombinada,
   })
+  const croma = cromaticaCp(ramo)
 
   const centered = layout === 'center'
   const colClass = centered
     ? 'flex w-full flex-col items-center justify-center gap-1 text-center'
     : 'flex min-w-0 flex-col gap-0.5'
   const preventaClass = centered
-    ? 'whitespace-nowrap text-[13px] font-black tabular-nums leading-none tracking-tight text-orange-600'
-    : 'whitespace-nowrap text-[11px] font-black tabular-nums leading-none tracking-tight text-orange-600'
+    ? `whitespace-nowrap text-[13px] font-black tabular-nums leading-none tracking-tight ${croma.textPreventa}`
+    : `whitespace-nowrap text-[11px] font-black tabular-nums leading-none tracking-tight ${croma.textPreventa}`
   const quincenaClass = centered
-    ? 'whitespace-nowrap text-[12px] font-bold leading-none text-sky-800'
-    : 'whitespace-nowrap text-[10px] font-bold leading-none text-sky-800'
+    ? `whitespace-nowrap text-[12px] font-bold leading-none ${croma.textQuincena}`
+    : `whitespace-nowrap text-[10px] font-bold leading-none ${croma.textQuincena}`
 
   if (!esCp) {
     return (

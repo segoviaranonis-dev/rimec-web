@@ -62,6 +62,8 @@ export interface RimecVariante {
   gradas_fmt: string
   /** Nombre crudo BD / Excel — input para resolver tiers. */
   imagen_nombre: string | null
+  /** Color Excel Kyly (K6824) — stem imagen 638, no descripción color. */
+  imagen_color_excel?: string | null
   /** @deprecated Usar imagen_url_thumb */
   imagen_url: string
   imagen_url_thumb: string | null
@@ -216,6 +218,7 @@ export function agruparTarjetasCatalogo(
           ? gradasFmtFromRow({ grada: item.grada, grades_json: null }) || gradasFmtFromRow(item)
           : gradasFmtFromRow(item),
       imagen_nombre: item.imagen_url,
+      imagen_color_excel: item.imagen_color_excel ?? null,
       imagen_url: imgs.imagen_url_thumb ?? imgs.imagen_url_flat ?? '',
       imagen_url_thumb: imgs.imagen_url_thumb,
       imagen_url_hero: imgs.imagen_url_hero,

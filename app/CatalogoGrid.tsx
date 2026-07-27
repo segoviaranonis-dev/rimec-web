@@ -180,7 +180,7 @@ function Lightbox({ producto: p, initialIdx, onClose }: {
       material: v.material_code,
       color: v.color_code,
       imagenNombre: v.imagen_nombre,
-      descpColor: v.descp_color,
+      imagenColorExcel: v.imagen_color_excel,
       tipoV2Id: esConf ? 2 : 1,
     }) ??
     (esConf
@@ -401,6 +401,7 @@ function TarjetaProducto({
         material={v.material_code}
         color={v.color_code}
         imagenNombre={v.imagen_nombre}
+        imagenColorExcel={v.imagen_color_excel}
         descpColor={v.descp_color}
         thumbSrc={v.imagen_url_thumb}
         flatSrc={v.imagen_url_flat}
@@ -524,6 +525,7 @@ function TarjetaProductoFusion({
         material={vHero.material_code}
         color={vHero.color_code}
         imagenNombre={vHero.imagen_nombre}
+        imagenColorExcel={vHero.imagen_color_excel}
         descpColor={vHero.descp_color}
         thumbSrc={vHero.imagen_url_thumb}
         flatSrc={vHero.imagen_url_flat}

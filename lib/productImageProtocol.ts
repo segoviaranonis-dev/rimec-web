@@ -157,13 +157,45 @@ export function stem654(
   return parts.slice(0, 2).join('-') || null
 }
 
+/**
+ * Color numérico para stem 638 (`linea_6824`) — nunca descripción (AZUL MARINHO).
+ * Paridad Report · CHUSAR_IMAGENES_DUAL 654_638 · 2.3.1.33
+ */
+export function color638ParaStem(input: {
+  color?: string | number | null
+  imagenNombre?: string | null
+  imagenColorExcel?: string | null
+}): string | null {
+  const rawImg = String(input.imagenNombre ?? '').trim()
+  if (rawImg) {
+    const stem = rawImg
+      .replace(/^.*\//, '')
+      .replace(/^(sm|md|lg|thumbs)\//i, '')
+      .replace(/\.(jpe?g|png|webp)$/i, '')
+    const m = stem.match(/_([A-Za-z0-9]+)$/)
+    if (m?.[1] && !isKylyColorFkHash(m[1])) {
+      return color638StemVariants(m[1])[0] ?? m[1]
+    }
+  }
+  const excel = String(input.imagenColorExcel ?? '').trim()
+  if (excel && !isKylyColorFkHash(excel)) {
+    return color638StemVariants(excel)[0] ?? excel
+  }
+  const code = String(input.color ?? '').trim()
+  if (code && !isKylyColorFkHash(code)) {
+    return color638StemVariants(code)[0] ?? code
+  }
+  return null
+}
+
 /** Nombre archivo principal según protocolo. */
 export function productImagePrimaryStem(input: {
   protocol?: ProductImageProtocol
   proveedorImportacionId?: number | null
   tipoV2Id?: number | null
   imagenNombre?: string | null
-  /** Color Kyly legible (K0460) — evita pintar FK hash 638001… */
+  imagenColorExcel?: string | null
+  /** @deprecated No usar en stem 638 — solo resolución legacy */
   descpColor?: string | null
   linea: string | number | null | undefined
   referencia?: string | number | null | undefined
@@ -172,13 +204,12 @@ export function productImagePrimaryStem(input: {
 }): string | null {
   const protocol = input.protocol ?? resolveProductImageProtocol(input)
   if (protocol === '638') {
-    const etiqueta = colorKylyEtiqueta({
+    const colorStem = color638ParaStem({
       color: input.color,
-      descpColor: input.descpColor,
       imagenNombre: input.imagenNombre,
+      imagenColorExcel: input.imagenColorExcel,
     })
-    const fromEtiqueta = stems638(input.linea, etiqueta)[0]
-    if (fromEtiqueta) return fromEtiqueta
+    if (colorStem) return stems638(input.linea, colorStem)[0] ?? null
     return stems638(input.linea, input.color)[0] ?? null
   }
   return stem654(input.linea, input.referencia, input.material, input.color)

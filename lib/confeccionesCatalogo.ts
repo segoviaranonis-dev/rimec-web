@@ -11,6 +11,30 @@ import { etiquetaTalleDesdeGrada, sortTalleKey } from '@/lib/gradaAbierta638'
  * Doc: rimec-web/docs/CONFECCIONES_638_VS_CALZADO_654.md
  */
 
+/** Estilo comercial 638 (col J) — no código K{linea}. */
+export function estilo638Tarjeta(lote: Pick<TarjetaCatalogo, 'descp_grupo_estilo' | 'descp_material' | 'nombre'>): string {
+  for (const raw of [lote.descp_grupo_estilo, lote.descp_material, lote.nombre]) {
+    const t = String(raw ?? '').trim()
+    if (!t) continue
+    const u = t.toUpperCase()
+    if (u === 'CONFECCIONES' || u === 'CALZADO' || u === 'SIN ESTILO') continue
+    if (/^K\d+$/i.test(t)) continue
+    return t
+  }
+  return ''
+}
+
+/** Fila 2 tarjeta 638 — estilo (col J) · nombre color (col M). Doc 2.3.1.33 §2.2 */
+export function subtitulo638Tarjeta(
+  lote: Pick<TarjetaCatalogo, 'descp_grupo_estilo' | 'descp_material' | 'nombre'>,
+  descpColor: string | null | undefined,
+): string {
+  const est = estilo638Tarjeta(lote)
+  const col = String(descpColor ?? '').trim()
+  if (est && col) return `${est} · ${col}`
+  return est || col || '—'
+}
+
 export function isConfecciones638Lote(lote: TarjetaCatalogo): boolean {
   if (lote.tipo_v2_id === 2) return true
   if (lote.ramo_tipo === 'CONFECCIONES') return true

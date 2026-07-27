@@ -20,6 +20,7 @@ import { indiceVariantePorTonoKey, tonoKeyDeVariante } from '@/lib/catalogoTonoA
 import {
   isConfecciones638Lote,
   stockEnLote,
+  subtitulo638Tarjeta,
   unidadStockCorta,
   variantesColorUnicas,
 } from '@/lib/confeccionesCatalogo'
@@ -166,7 +167,9 @@ export function CatalogPanelOrigen({
   })
   const panelBg = esPe
     ? 'rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2'
-    : 'rounded-xl border border-blue-200/80 bg-blue-50/45 p-2'
+    : esConf
+      ? 'rounded-xl border border-amber-200/90 bg-gradient-to-b from-amber-50/90 via-yellow-50/50 to-white p-2'
+      : 'rounded-xl border border-blue-200/80 bg-blue-50/45 p-2'
 
   return (
     <div className={stacked && !hideOrigenChip ? panelBg : undefined}>
@@ -182,13 +185,18 @@ export function CatalogPanelOrigen({
             </span>
           ) : (
             <span
-              className="inline-flex max-w-[75%] rounded-lg border border-blue-200/80 bg-white px-2 py-1"
+              className={`inline-flex max-w-[75%] rounded-lg border px-2 py-1 ${
+                esConf
+                  ? 'border-amber-200/90 bg-yellow-50/90'
+                  : 'border-blue-200/80 bg-white'
+              }`}
               title={etiquetaDatoDuroCp(v.numero_preventa, v.quincena_desc)}
             >
               <DatoDuroCpFilas
                 preventa={partesDatoDuroCp(v.numero_preventa, v.quincena_desc).preventa}
                 quincena={partesDatoDuroCp(v.numero_preventa, v.quincena_desc).quincena}
                 fallbackLabel="Compra previa"
+                ramo={esConf ? 'confecciones' : 'calzado'}
               />
             </span>
           )}
@@ -200,7 +208,7 @@ export function CatalogPanelOrigen({
         </div>
       ) : null}
       <p className="mb-1 line-clamp-2 text-[10px] leading-snug text-slate-600">
-        {p.descp_material} · {v.descp_color}
+        {esConf ? subtitulo638Tarjeta(p, v.descp_color) : `${p.descp_material} · ${v.descp_color}`}
       </p>
       {v.gradas_fmt && !esConf ? (
         <p className="mb-2 font-mono text-[9px] font-bold text-slate-500">{v.gradas_fmt}</p>

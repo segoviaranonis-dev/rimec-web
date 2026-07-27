@@ -26,7 +26,8 @@ type Props = {
   material: string
   color: string
   imagenNombre?: string | null
-  /** Color Kyly legible (K0460) — etiqueta bajo imagen 638 */
+  imagenColorExcel?: string | null
+  /** Color Kyly legible — no usar en stem 638 */
   descpColor?: string | null
   thumbSrc?: string | null
   flatSrc?: string | null
@@ -65,6 +66,7 @@ export function CatalogTarjetaDeposito({
   material,
   color,
   imagenNombre,
+  imagenColorExcel,
   descpColor,
   thumbSrc,
   flatSrc,
@@ -93,6 +95,7 @@ export function CatalogTarjetaDeposito({
       material,
       color,
       imagenNombre,
+      imagenColorExcel,
       descpColor,
       tipoV2Id: esConfecciones ? 2 : 1,
     }) ??

@@ -38,6 +38,7 @@ Son dos ramos con modelo de datos, unidad de venta y UX distintos.
 3. Usar **+/- cajas** para venta unitaria por prenda.
 4. Asumir **un solo precio** por tarjeta cuando LPN varía por talle.
 5. Dedupe de variantes por `color_code` en agrupación (Report/Web) — en 638 **no** fusionar tallas.
+6. Lightbox / carrusel **COLORES** iterando `variantes[]` crudo — en 638 usar `variantesColorUnicas()` (error `4.01.04.005`).
 
 ---
 

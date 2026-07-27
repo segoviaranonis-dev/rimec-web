@@ -64,9 +64,10 @@ const fetchWarmTarjetasInner = unstable_cache(
       rowFrom: 0,
       excludeCardKeys: [],
       limit,
+      quick: true,
     })
   },
-  ['catalogo-tarjetas-warm-v7'],
+  ['catalogo-tarjetas-warm-v8-quick'],
   { revalidate: WARM_TTL_SEC },
 )
 

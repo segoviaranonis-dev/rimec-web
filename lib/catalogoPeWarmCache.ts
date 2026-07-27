@@ -213,6 +213,7 @@ async function fetchTarjetasPageClient(
       fromRow,
       limit: CARD_PAGE_LIMIT,
       exclude,
+      quick: true,
     })
     return {
       tarjetas: (res.tarjetas ?? []) as TarjetaGrilla[],

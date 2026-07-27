@@ -140,6 +140,18 @@ function stagePreviewTarjetas(stage: CatalogSyncStageDef): TarjetaGrilla[] {
   return priorizarTarjetasConImagen(cache?.tarjetas ?? [], CATALOG_SYNC_GRID_SLOTS)
 }
 
+/** Fotos de entretención: etapa actual, o PE/CP ya calientes si el lote aún no llegó. */
+function entertainmentPreview(stage: CatalogSyncStageDef): TarjetaGrilla[] {
+  const own = stagePreviewTarjetas(stage)
+  if (own.length > 0) return own
+  for (const alt of CATALOG_SYNC_STAGES) {
+    if (alt.id === stage.id) continue
+    const cards = stagePreviewTarjetas(alt)
+    if (cards.length > 0) return cards
+  }
+  return []
+}
+
 export function isStageWarm(stage: CatalogSyncStageDef): boolean {
   return isCatalogWarmEnough(getPageWarmCache(catalogWarmCacheKey(stage.filters())))
 }
@@ -183,7 +195,7 @@ function emitPreviewFromCache(
   if (payload?.tarjetas.length) {
     warmCatalogImages(payload.tarjetas, CARD_PAGE_LIMIT)
   }
-  const preview = stagePreviewTarjetas(stage)
+  const preview = entertainmentPreview(stage)
   if (preview.length > 0) {
     warmCatalogImages(preview, CATALOG_SYNC_GRID_SLOTS)
     return {
@@ -202,17 +214,55 @@ export async function runCatalogSyncStages(
   const runStartMs = Date.now()
   let marqueeTarjetas: TarjetaGrilla[] = []
 
-  // Warm en paralelo — el overlay recorre etapas a ritmo fijo (~7.5 s c/u).
-  const stageWarmTasks = CATALOG_SYNC_STAGES.map((stage) => warmStageWithRetry(stage))
-
   const emit = (
     partial: Omit<CatalogSyncProgress, 'audit'> & { audit?: CatalogIntegrityLedger },
   ) => {
     onProgress({ ...partial, audit: partial.audit })
   }
 
+  const cpStage = CATALOG_SYNC_STAGES[0]!
+  const peStage = CATALOG_SYNC_STAGES[1]!
+
+  // Seed fotos YA (ruta quick) — el usuario debe ver imágenes desde ~10 %.
+  emit({
+    stageIndex: 0,
+    stage: cpStage,
+    phase: 'start',
+    completedIds: [],
+    marqueeTarjetas: [],
+  })
+
+  const seedCp = prefetchCatalogPage(cpStage.filters(), { maxAttempts: 1 }).catch(() => undefined)
+  const seedPe = prefetchCatalogPage(peStage.filters(), { maxAttempts: 1 }).catch(() => undefined)
+
+  // Poll agresivo los primeros ~4 s hasta tener preview con fotos.
+  const seedDeadline = Date.now() + 4_500
+  while (Date.now() < seedDeadline) {
+    const mid = emitPreviewFromCache(cpStage, marqueeTarjetas)
+    if (mid.preview.length > 0) {
+      marqueeTarjetas = mid.marquee
+      emit({
+        stageIndex: 0,
+        stage: cpStage,
+        phase: 'start',
+        completedIds: [],
+        previewTarjetas: mid.preview,
+        marqueeTarjetas: [...marqueeTarjetas],
+      })
+      break
+    }
+    await delay(200)
+  }
+
+  // Warm completo en paralelo (incluye stages restantes).
+  const stageWarmTasks = CATALOG_SYNC_STAGES.map((stage, idx) => {
+    if (idx === 0) return seedCp.then(() => warmStageWithRetry(stage))
+    if (idx === 1) return seedPe.then(() => warmStageWithRetry(stage))
+    return warmStageWithRetry(stage)
+  })
+
   for (let i = 0; i < CATALOG_SYNC_STAGES.length; i++) {
-    const stageStartMs = Date.now()
+    const stageStartMs = i === 0 ? runStartMs : Date.now()
     const stage = CATALOG_SYNC_STAGES[i]
 
     emit({
@@ -221,20 +271,21 @@ export async function runCatalogSyncStages(
       phase: 'start',
       completedIds: [...completedIds],
       marqueeTarjetas: [...marqueeTarjetas],
+      previewTarjetas: entertainmentPreview(stage),
       audit: buildIntegrityLedger(
         auditEntries,
         getPageWarmCache(catalogWarmCacheKey(effectiveTodosWarmFilters())),
       ),
     })
 
-    // Poll cache mientras warm corre — fotos en cuanto llega el 1.er chunk.
     const warmPromise = stageWarmTasks[i]
     let warmDone = false
     void warmPromise.finally(() => {
       warmDone = true
     })
 
-    while (!warmDone && Date.now() - stageStartMs < STAGE_MIN_MS) {
+    // Seguir emitiendo fotos durante toda la etapa (no cortar al primer preview).
+    while (Date.now() - stageStartMs < STAGE_MIN_MS) {
       const mid = emitPreviewFromCache(stage, marqueeTarjetas)
       if (mid.preview.length > 0) {
         marqueeTarjetas = mid.marquee
@@ -250,8 +301,8 @@ export async function runCatalogSyncStages(
             getPageWarmCache(catalogWarmCacheKey(effectiveTodosWarmFilters())),
           ),
         })
-        break
       }
+      if (warmDone) break
       await delay(280)
     }
 
@@ -263,15 +314,15 @@ export async function runCatalogSyncStages(
     const payload = getPageWarmCache(catalogWarmCacheKey(stage.filters()))
     auditEntries.push(auditWarmPayload(stage.id, stage.filters(), payload))
 
-    const mid = emitPreviewFromCache(stage, marqueeTarjetas)
-    marqueeTarjetas = mid.marquee
-    if (mid.preview.length > 0) {
+    const midFinal = emitPreviewFromCache(stage, marqueeTarjetas)
+    marqueeTarjetas = midFinal.marquee
+    if (midFinal.preview.length > 0) {
       emit({
         stageIndex: i,
         stage,
         phase: 'start',
         completedIds: [...completedIds],
-        previewTarjetas: mid.preview,
+        previewTarjetas: midFinal.preview,
         marqueeTarjetas: [...marqueeTarjetas],
         audit: buildIntegrityLedger(
           auditEntries,

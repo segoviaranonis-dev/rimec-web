@@ -16,6 +16,7 @@ type TarjetasBody = {
   limit?: number
   exclude?: string[]
   filters?: CatalogoFilterStateExtended
+  quick?: boolean
 }
 
 async function runTarjetasQuery(opts: {
@@ -23,8 +24,18 @@ async function runTarjetasQuery(opts: {
   rowFrom: number
   limit: number
   exclude: string[]
+  quick?: boolean
 }) {
-  const { filters, rowFrom, limit, exclude } = opts
+  const { filters, rowFrom, limit, exclude, quick } = opts
+  if (quick) {
+    return fetchTarjetasPage({
+      filters,
+      rowFrom,
+      excludeCardKeys: exclude,
+      limit,
+      quick: true,
+    })
+  }
   return isWarmTarjetasRequest(filters, rowFrom, exclude)
     ? await fetchWarmTarjetasCached(filters, limit)
     : await fetchTarjetasPage({
@@ -40,14 +51,15 @@ function parseFromSearchParams(sp: URLSearchParams) {
   const limit = Math.min(60, Math.max(1, Number(sp.get('limit') ?? CATALOGO_CARD_PAGE) || CATALOGO_CARD_PAGE))
   const exclude = (sp.get('exclude') ?? '').split(',').filter(Boolean)
   const filters = parseCatalogoFiltersFromSearchParams(sp)
-  return { rowFrom, limit, exclude, filters }
+  const quick = sp.get('quick') === '1'
+  return { rowFrom, limit, exclude, filters, quick }
 }
 
 /** GET — grilla paginada catálogo (página 1 · exclude corto). */
 export async function GET(req: NextRequest) {
   try {
-    const { rowFrom, limit, exclude, filters } = parseFromSearchParams(req.nextUrl.searchParams)
-    const result = await runTarjetasQuery({ filters, rowFrom, limit, exclude })
+    const { rowFrom, limit, exclude, filters, quick } = parseFromSearchParams(req.nextUrl.searchParams)
+    const result = await runTarjetasQuery({ filters, rowFrom, limit, exclude, quick })
     return NextResponse.json(result)
   } catch (err) {
     console.error('[catalogo/tarjetas]', err)
@@ -72,8 +84,9 @@ export async function POST(req: NextRequest) {
     const exclude = Array.isArray(body.exclude)
       ? body.exclude.filter(Boolean)
       : (sp.get('exclude') ?? '').split(',').filter(Boolean)
+    const quick = Boolean(body.quick) || sp.get('quick') === '1'
 
-    const result = await runTarjetasQuery({ filters, rowFrom, limit, exclude })
+    const result = await runTarjetasQuery({ filters, rowFrom, limit, exclude, quick })
     return NextResponse.json(result)
   } catch (err) {
     console.error('[catalogo/tarjetas POST]', err)

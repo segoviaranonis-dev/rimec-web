@@ -34,9 +34,12 @@ export async function requestTarjetasPage(opts: {
   fromRow: number
   limit: number
   exclude: string[]
+  /** Warm/sync: respuesta rápida con fotos (sin escaneo total). */
+  quick?: boolean
 }): Promise<TarjetasPageJson> {
   const usePost = opts.exclude.length > 0
-  const url = `/api/catalogo/tarjetas?${opts.filtersQuery}`
+  const quickQs = opts.quick ? '&quick=1' : ''
+  const url = `/api/catalogo/tarjetas?${opts.filtersQuery}${quickQs}`
 
   const res = usePost
     ? await fetch(url, {
@@ -48,6 +51,7 @@ export async function requestTarjetasPage(opts: {
           limit: opts.limit,
           exclude: opts.exclude,
           filters: opts.filters,
+          quick: Boolean(opts.quick),
         }),
       })
     : await fetch(

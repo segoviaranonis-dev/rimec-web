@@ -34,14 +34,28 @@ const medias = await get('origen_tipo=TODOS&ramo_tipo=CALZADO&tipo_ids=4&limit=3
 const badMedias = medias.filter((t) => Number(t.tipo_1_id) !== 4 && !String(t.tipo_1 ?? '').toUpperCase().includes('MEDIA'))
 
 const acc = await get('origen_tipo=TODOS&ramo_tipo=ACCESORIOS&tipo_ids=-1&limit=30')
+const calzadoCarteras = await get('origen_tipo=TODOS&ramo_tipo=CALZADO&marca_ids=2&tipo_ids=-1&limit=60')
+const anteojos = await get('origen_tipo=TODOS&ramo_tipo=CALZADO&marca_ids=2&tipo_ids=-2&limit=30')
 const calzado = await get('origen_tipo=TODOS&ramo_tipo=CALZADO&limit=5')
 
 console.log({
   medias: medias.length,
   badMedias: badMedias.length,
   accesoriosSynth: acc.length,
+  calzadoCarterasVizzano: calzadoCarteras.length,
+  anteojosVizzano: anteojos.length,
   calzadoSample: calzado.length,
 })
+
+if (calzadoCarteras.length < 10) {
+  console.error('FAIL: Vizzano CARTERAS en pill Calzado debe traer decenas de tarjetas')
+  process.exit(1)
+}
+
+if (anteojos.length < 2) {
+  console.error('FAIL: Vizzano ANTEOJOS (-2) debe traer línea 90000 vía traductor')
+  process.exit(1)
+}
 
 if (badMedias.length) {
   console.error('FAIL: filas no-MEDIAS con tipo_ids=4')

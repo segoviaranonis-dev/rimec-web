@@ -37,7 +37,9 @@ import {
   esFilaModuloAccesorios,
   esLabelModuloAccesorios,
   esRamoAccesorios,
+  peTieneSubfamiliaAccesorios,
   rowMatchesAccesoriosSubtipo,
+  type FilaAccesoriosSignals,
 } from '@/lib/filtros/modulo-accesorios'
 import { esFilaMedias, PE_TIPO1_MEDIAS_ID } from '@/lib/filtros/pe-modulo-medias'
 import { isAbcrSyntheticTipoId } from '@/lib/filtros/modulo-accesorios'
@@ -148,7 +150,10 @@ export function applyGeneroRamoBuscarSql(query: any, filters: CatalogoFilterStat
     q = q.eq('ramo_tipo', filters.ramo_tipo)
   }
 
-  if (calzadoExcluyeCarterasPorDefecto(filters)) {
+  const subfamiliaAbcr = peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
+  if (subfamiliaAbcr) {
+    q = applyModuloAccesoriosIncludeSql(q) as typeof q
+  } else if (calzadoExcluyeCarterasPorDefecto(filters)) {
     q = applyModuloAccesoriosExcludeSql(q) as typeof q
   }
 
@@ -262,6 +267,25 @@ export function catalogoStockView(
     : 'v_stock_rimec'
 }
 
+/** Señales accesorios AB-CR — traductor PE + pilares (paridad Report). */
+function accesoriosSignalsFromRow(r: StockRow): FilaAccesoriosSignals {
+  return {
+    descp_caso: r.descp_caso,
+    caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
+    linea_codigo: r.linea_codigo,
+    referencia_codigo: r.referencia_codigo,
+    linea_codigo_proveedor: r.linea_codigo,
+    referencia_codigo_proveedor: r.referencia_codigo,
+    proveedor_importacion_id: r.proveedor_importacion_id,
+    descp_grupo_estilo: r.descp_grupo_estilo,
+    descp_tipo_1: r.descp_tipo_1,
+    descp_estilo: r.descp_grupo_estilo,
+    es_liquidacion: r.es_liquidacion,
+    es_promo: r.es_promo,
+    cadena_comercial: r.cadena_comercial,
+  }
+}
+
 /** Filtros solo memoria — tono JSON · origen Todos · quincenas/depósito cruzados · Tipo+BCL. */
 export function applyMemoryFilters(
   rows: StockRow[],
@@ -330,6 +354,15 @@ export function applyMemoryFilters(
       return String(r.cadena_comercial ?? '').toUpperCase() === cadena
     })
   }
+  const subfamiliaAbcr = peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
+  if (subfamiliaAbcr || esRamoAccesorios(filters.ramo_tipo)) {
+    out = out.filter((r) => esFilaModuloAccesorios(accesoriosSignalsFromRow(r), lineaCasoMap))
+  } else if (calzadoExcluyeCarterasPorDefecto(filters)) {
+    out = out.filter(
+      (r) => !esFilaModuloAccesorios(accesoriosSignalsFromRow(r), lineaCasoMap),
+    )
+  }
+
   if (filters.ramo_tipo && isCatalogoOrigenTodos(filters)) {
     out = out.filter(r => {
       const origen = normalizeOrigenCatalogo(r.origen_tipo)
@@ -338,20 +371,7 @@ export function applyMemoryFilters(
         ramoRow || (origen === 'PRONTA_ENTREGA' ? inferPeRamoTipo(r) : 'CALZADO')
 
       if (filters.ramo_tipo === 'ACCESORIOS') {
-        return esFilaModuloAccesorios(
-          {
-            descp_caso: r.descp_caso,
-            caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
-            linea_codigo: r.linea_codigo,
-            descp_grupo_estilo: r.descp_grupo_estilo,
-            descp_tipo_1: r.descp_tipo_1,
-            descp_estilo: r.descp_grupo_estilo,
-            es_liquidacion: r.es_liquidacion,
-            es_promo: r.es_promo,
-            cadena_comercial: r.cadena_comercial,
-          },
-          lineaCasoMap,
-        )
+        return esFilaModuloAccesorios(accesoriosSignalsFromRow(r), lineaCasoMap)
       }
       if (filters.ramo_tipo === 'CONFECCIONES') {
         return origen === 'PRONTA_ENTREGA' && ramoEfectivo === 'CONFECCIONES'
@@ -366,43 +386,11 @@ export function applyMemoryFilters(
 
   if (esRamoAccesorios(filters.ramo_tipo) && !isCatalogoOrigenTodos(filters)) {
     out = out.filter((r) =>
-      esFilaModuloAccesorios(
-        {
-          descp_caso: r.descp_caso,
-          caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
-          linea_codigo: r.linea_codigo,
-          descp_grupo_estilo: r.descp_grupo_estilo,
-          descp_tipo_1: r.descp_tipo_1,
-          descp_estilo: r.descp_grupo_estilo,
-          es_liquidacion: r.es_liquidacion,
-          es_promo: r.es_promo,
-          cadena_comercial: r.cadena_comercial,
-        },
-        lineaCasoMap,
-      ),
+      esFilaModuloAccesorios(accesoriosSignalsFromRow(r), lineaCasoMap),
     )
   }
 
   const tipoGrupos = filters.tipo_grupos ?? []
-  if (calzadoExcluyeCarterasPorDefecto(filters)) {
-    out = out.filter(
-      (r) =>
-        !esFilaModuloAccesorios(
-          {
-            descp_caso: r.descp_caso,
-            caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
-            linea_codigo: r.linea_codigo,
-            descp_grupo_estilo: r.descp_grupo_estilo,
-            descp_tipo_1: r.descp_tipo_1,
-            descp_estilo: r.descp_grupo_estilo,
-            es_liquidacion: r.es_liquidacion,
-            es_promo: r.es_promo,
-            cadena_comercial: r.cadena_comercial,
-          },
-          lineaCasoMap,
-        ),
-    )
-  }
   if (tipoGrupos.length) {
     const peSel = parsePeTipoSelected(tipoGrupos)
     const cpSel = tipoGrupos.filter((g): g is TipoGrupoId => g !== 'comun')
@@ -434,27 +422,25 @@ export function applyMemoryFilters(
     const fkIds = filters.tipo_ids.filter((id) => id > 0)
     out = out.filter((r) => {
       const signals = {
-        descp_caso: r.descp_caso,
-        caso_precio: (r as StockRow & { caso_precio?: string | null }).caso_precio ?? r.descp_caso,
-        linea_codigo: r.linea_codigo,
-        descp_grupo_estilo: r.descp_grupo_estilo,
-        descp_tipo_1: r.descp_tipo_1,
-        descp_estilo: r.descp_grupo_estilo,
+        ...accesoriosSignalsFromRow(r),
         tipo_1: r.descp_tipo_1,
         estilo: r.descp_grupo_estilo,
         marca: r.descp_marca,
         sdrm_marca: r.sdrm_marca,
         cod_grupo: r.cod_grupo,
-        linea_codigo_proveedor: r.linea_codigo,
-        tipo_1_id: r.tipo_1_id,
-        es_liquidacion: r.es_liquidacion,
-        es_promo: r.es_promo,
-        cadena_comercial: r.cadena_comercial,
       }
       if (synthKeys.length && !rowMatchesAccesoriosSubtipo(signals, synthKeys)) return false
       if (!fkIds.length) return synthKeys.length > 0
       const fkOk = fkIds.some((id) => {
-        if (id === PE_TIPO1_MEDIAS_ID) return esFilaMedias(signals)
+        if (id === PE_TIPO1_MEDIAS_ID) {
+          return esFilaMedias({
+            marca: r.descp_marca,
+            sdrm_marca: r.sdrm_marca,
+            cod_grupo: r.cod_grupo,
+            linea_codigo: r.linea_codigo,
+            descp_tipo_1: r.descp_tipo_1,
+          })
+        }
         return Number(r.tipo_1_id) === id
       })
       return fkOk

@@ -4,6 +4,11 @@
 import type { RowTipoSignals } from '@/lib/filtros/filtro-tipo-canonico'
 import { canonPeTipo1Valorizado } from '@/lib/filtros/pe-valorizado-tipo1'
 import { esFilaMedias, type FilaMediasSignals } from '@/lib/filtros/pe-modulo-medias'
+import {
+  lookupPeTraductorByBarras,
+  lookupPeTraductorByLineaRef,
+  subtipoAbcrDesdeTraductor,
+} from '@/lib/filtros/pe-traductor-tipo1'
 
 export const MODULO_ACCESORIOS_LABELS = [
   'CARTERAS',
@@ -63,6 +68,13 @@ export type FilaAccesoriosSignals = RowTipoSignals & {
   descp_grupo_estilo?: string | null
   descp_tipo_1?: string | null
   descp_estilo?: string | null
+  codigo_barras?: string | null
+  proveedor_id?: number | null
+  proveedor_importacion_id?: number | null
+  linea_codigo_proveedor?: string | number | null
+  referencia_codigo_proveedor?: string | number | null
+  linea_codigo?: string | number | null
+  referencia_codigo?: string | number | null
 }
 
 export function esFilaModuloAccesorios(
@@ -142,6 +154,28 @@ export function tiposMetaModuloAccesorios(
 export type AccesoriosSubtipoKey = 'CARTERAS' | 'LENTES'
 
 export function subtipoAccesoriosKey(row: FilaAccesoriosSignals): AccesoriosSubtipoKey | null {
+  const proveedorId =
+    row.proveedor_id ?? row.proveedor_importacion_id ?? 654
+  const tr =
+    lookupPeTraductorByBarras(row.codigo_barras) ??
+    lookupPeTraductorByLineaRef(
+      proveedorId,
+      row.linea_codigo_proveedor != null
+        ? String(row.linea_codigo_proveedor)
+        : row.linea_codigo != null
+          ? String(row.linea_codigo)
+          : null,
+      row.referencia_codigo_proveedor != null
+        ? String(row.referencia_codigo_proveedor)
+        : row.referencia_codigo != null
+          ? String(row.referencia_codigo)
+          : null,
+    )
+  if (tr) {
+    const fromTr = subtipoAbcrDesdeTraductor(tr)
+    if (fromTr) return fromTr
+  }
+
   const scan = [row.tipo_1, row.descp_tipo_1, row.estilo, row.descp_grupo_estilo, row.descp_estilo]
   for (const raw of scan) {
     const t = normTipo1Token(raw)

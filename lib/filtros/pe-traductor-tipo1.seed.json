@@ -1,0 +1,108 @@
+{
+  "version": "2026-07-25",
+  "fuente": "Stock valorizado 07-07-26 · VIZZANO LENTES · Director",
+  "reglas_alias_tipo1": {
+    "ACCESORIOS": "ACT ROPAS",
+    "ACT ROPAS": "ACT ROPAS",
+    "ACT. ROPAS": "ACT ROPAS",
+    "CARTERA": "CARTERAS",
+    "CARTERAS": "CARTERAS",
+    "LENTES": "LENTES",
+    "ANTEOJOS": "LENTES",
+    "OCULOS": "LENTES",
+    "ÓCULOS": "LENTES"
+  },
+  "articulos": [
+    {
+      "cod_art_carlos": "654-196046",
+      "codigo_barras": "654.196046",
+      "proveedor_id": 654,
+      "linea": "90000",
+      "referencia": "4",
+      "tipo0": "CALZADOS",
+      "tipo1_excel": "LENTES",
+      "tipo1_canon": "LENTES",
+      "filtro_ab_cr": "ANTEOJOS",
+      "marca": "VIZZANO",
+      "descripcion": "OCULOS NEW YORK/N SF CROCO MACAU B PRETO/CAC"
+    },
+    {
+      "cod_art_carlos": "654-196043",
+      "codigo_barras": "654.196043",
+      "proveedor_id": 654,
+      "linea": "90000",
+      "referencia": "2",
+      "tipo0": "CALZADOS",
+      "tipo1_excel": "LENTES",
+      "tipo1_canon": "LENTES",
+      "filtro_ab_cr": "ANTEOJOS",
+      "marca": "VIZZANO",
+      "descripcion": "OCULOS RIO/VERNIZ SOFT BRILHO BAG N NEGRO/PI"
+    },
+    {
+      "cod_art_carlos": "654-190220",
+      "codigo_barras": "654.190220",
+      "proveedor_id": 654,
+      "linea": "90000",
+      "referencia": "1",
+      "tipo0": "CALZADOS",
+      "tipo1_excel": "LENTES",
+      "tipo1_canon": "LENTES",
+      "filtro_ab_cr": "ANTEOJOS",
+      "marca": "VIZZANO",
+      "descripcion": "OCULOS MILAO/NAPA LEZARD PARIS NEGRO/NEGRO"
+    },
+    {
+      "cod_art_carlos": "654-196047",
+      "codigo_barras": "654.196047",
+      "proveedor_id": 654,
+      "linea": "90000",
+      "referencia": "4",
+      "tipo0": "CALZADOS",
+      "tipo1_excel": "LENTES",
+      "tipo1_canon": "LENTES",
+      "filtro_ab_cr": "ANTEOJOS",
+      "marca": "VIZZANO",
+      "descripcion": "OCULOS NEW YORK/N SF CROCO MACAU B PRETO-TAR"
+    },
+    {
+      "cod_art_carlos": "654-196042",
+      "codigo_barras": "654.196042",
+      "proveedor_id": 654,
+      "linea": "90000",
+      "referencia": "2",
+      "tipo0": "CALZADOS",
+      "tipo1_excel": "LENTES",
+      "tipo1_canon": "LENTES",
+      "filtro_ab_cr": "ANTEOJOS",
+      "marca": "VIZZANO",
+      "descripcion": "OCULOS RIO/VERNIZ SOFT BRILHO BAG N LILA/PIN"
+    },
+    {
+      "cod_art_carlos": "654-190211",
+      "codigo_barras": "654.190211",
+      "proveedor_id": 654,
+      "linea": "90000",
+      "referencia": "3",
+      "tipo0": "CALZADOS",
+      "tipo1_excel": "LENTES",
+      "tipo1_canon": "LENTES",
+      "filtro_ab_cr": "ANTEOJOS",
+      "marca": "VIZZANO",
+      "descripcion": "OCULOS PARIS/NP METAL SOFT STR B N NEGRO/DOR"
+    },
+    {
+      "cod_art_carlos": "654-196044",
+      "codigo_barras": "654.196044",
+      "proveedor_id": 654,
+      "linea": "90000",
+      "referencia": "2",
+      "tipo0": "CALZADOS",
+      "tipo1_excel": "LENTES",
+      "tipo1_canon": "LENTES",
+      "filtro_ab_cr": "ANTEOJOS",
+      "marca": "VIZZANO",
+      "descripcion": "OCULOS RIO/VERNIZ SOFT BRILHO BAG N ROSA/PIN"
+    }
+  ]
+}

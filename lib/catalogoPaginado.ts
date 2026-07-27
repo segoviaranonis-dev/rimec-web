@@ -19,6 +19,7 @@ import { applyPrecioSqlFilters } from '@/lib/catalogoPrecioSqlCore'
 import { enrichCatalogoRows, enrichPreventaCatalogoRows } from '@/lib/catalogoEnrich'
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 import { calzadoExcluyeCarterasPorDefecto } from '@/lib/filtros/filtro-tipo-canonico'
+import { peTieneSubfamiliaAccesorios } from '@/lib/filtros/modulo-accesorios'
 import { enrichTarjetasPeDescuentoComercial } from '@/lib/peDescuentoComercial'
 
 export const CATALOGO_CARD_PAGE = 30
@@ -182,7 +183,11 @@ async function fetchStockBatch(
   rowTo: number,
 ): Promise<StockRow[]> {
   if (isCatalogoOrigenTodos(filters)) {
-    if (filters.ramo_tipo === 'CONFECCIONES' || filters.ramo_tipo === 'ACCESORIOS') {
+    if (
+      filters.ramo_tipo === 'CONFECCIONES' ||
+      filters.ramo_tipo === 'ACCESORIOS' ||
+      peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
+    ) {
       return fetchStockBatchFromView('v_stock_pe_rimec', filters, rowFrom, rowTo)
     }
     const [cpRows, peRows] = await Promise.all([
@@ -228,12 +233,21 @@ export async function fetchTarjetasPage(opts: {
   rowFrom: number
   excludeCardKeys: string[]
   limit: number
+  /**
+   * true = warm/sync overlay: 1–2 lotes rápidos con fotos (no escaneo total).
+   * false = grilla UI: orden L+R+M+C numérico global (520 antes que 1122).
+   */
+  quick?: boolean
 }): Promise<{
   tarjetas: TarjetaGrilla[]
   nextRowFrom: number
   hasMore: boolean
   excludeCardKeys: string[]
 }> {
+  if (opts.quick) {
+    return fetchTarjetasPageQuick(opts)
+  }
+
   // Orden L+R+M+C numérico global — el ORDER BY texto de PostgREST pone "10000"/"1122" antes que "520".
   const sorted = await loadSortedCatalogCards(opts.filters)
   const excludeSet = new Set(opts.excludeCardKeys)
@@ -245,6 +259,52 @@ export async function fetchTarjetasPage(opts: {
     tarjetas: page,
     nextRowFrom: opts.excludeCardKeys.length + page.length,
     hasMore: fresh.length > opts.limit,
+    excludeCardKeys: [...excludeSet],
+  }
+}
+
+/** Warm / overlay sync — respuesta en ~1–3 s con tarjetas + imagen. */
+async function fetchTarjetasPageQuick(opts: {
+  filters: CatalogoFilterStateExtended
+  rowFrom: number
+  excludeCardKeys: string[]
+  limit: number
+}): Promise<{
+  tarjetas: TarjetaGrilla[]
+  nextRowFrom: number
+  hasMore: boolean
+  excludeCardKeys: string[]
+}> {
+  const excludeSet = new Set(opts.excludeCardKeys)
+  const tarjetas: TarjetaGrilla[] = []
+  let rowFrom = Math.max(0, opts.rowFrom)
+  let scanned = 0
+  let hasMore = true
+  const batchSize = isCatalogoOrigenTodos(opts.filters) ? ROW_BATCH_TODOS : ROW_BATCH
+
+  while (tarjetas.length < opts.limit && hasMore && scanned < MAX_SCAN_ROWS) {
+    const to = rowFrom + batchSize - 1
+    const batch = await fetchStockBatch(opts.filters, rowFrom, to)
+    if (!batch.length) {
+      hasMore = false
+      break
+    }
+    scanned += batch.length
+    const grilla = await rowsToGrillaAsync(batch, opts.filters)
+    for (const card of grilla) {
+      if (excludeSet.has(card.cardKey)) continue
+      excludeSet.add(card.cardKey)
+      tarjetas.push(card)
+      if (tarjetas.length >= opts.limit) break
+    }
+    rowFrom += batch.length
+    if (batch.length < batchSize) hasMore = false
+  }
+
+  return {
+    tarjetas: sortTarjetasLineaRef(tarjetas),
+    nextRowFrom: rowFrom,
+    hasMore: hasMore || tarjetas.length >= opts.limit,
     excludeCardKeys: [...excludeSet],
   }
 }

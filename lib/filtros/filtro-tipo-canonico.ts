@@ -6,11 +6,12 @@
  * 2. promo — es_promo / cadena PROMOCIONAL / caso PROMOCIONAL
  * 3. carteras | normal — casos biblioteca (snapshot o BCL línea→caso)
  *
- * Vulnerabilidad 2026-07-20: PE mostraba badge PROMO (es_promo) pero «Normal»
+ * ⛔ PE / DPE: NO usar esPromoRow — `cadena-dpe-triunvirato.ts` (solo COD.GRUPO).
+ * BCL aplica programado + compra previa únicamente.
  * clasificaba por descp_caso/BCL y filtraba mal línea promocional (ej. 1395).
  */
 import { lookupCasoLinea, normalizeCasoNombre } from '@/lib/depositos/caso-biblioteca'
-import { esFilaModuloAccesorios, esRamoAccesorios } from '@/lib/filtros/modulo-accesorios'
+import { esFilaModuloAccesorios, esRamoAccesorios, peTieneSubfamiliaAccesorios } from '@/lib/filtros/modulo-accesorios'
 
 export type TipoGrupoId = 'normal' | 'carteras' | 'promo' | 'liquidacion' | 'comun'
 
@@ -145,13 +146,16 @@ export function esFilaCarteraCatalogo(
   return esFilaModuloAccesorios(row, lineaCasoMap)
 }
 
-/** Calzado por defecto = calzado puro; carteras solo con chip Tipo explícito. */
+/** Calzado por defecto = calzado puro; carteras/anteojos con chip AB-CR (tipo_ids -1/-2) o tipo_grupos carteras. */
 export function calzadoExcluyeCarterasPorDefecto(filters: {
   ramo_tipo?: string
   tipo_grupos?: readonly TipoGrupoId[]
+  tipo_ids?: readonly number[]
 }): boolean {
   if (String(filters.ramo_tipo ?? '').trim().toUpperCase() !== 'CALZADO') return false
-  return !(filters.tipo_grupos ?? []).includes('carteras')
+  if ((filters.tipo_grupos ?? []).includes('carteras')) return false
+  if (peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])) return false
+  return true
 }
 
 export { normalizeCasoNombre }

@@ -23,7 +23,8 @@ const mapCache = new Map<string, MapCacheEntry>()
 const mapInflight = new Map<string, Promise<Map<string, number>>>()
 
 function cacheKeyForBatch(batch: string): string {
-  return batch || '__all__'
+  // v2: paginación estable por id (evita cache de mapas truncados).
+  return `${batch || '__all__'}::v2`
 }
 
 async function fetchPeDescuentoComercialMapUncached(batch: string): Promise<Map<string, number>> {
@@ -34,11 +35,16 @@ async function fetchPeDescuentoComercialMapUncached(batch: string): Promise<Map<
   // Paginación — PostgREST limita ~1000 por request.
   let from = 0
   for (;;) {
+    // id DESC al final — sin tie-break único, range() con updated_at empatado
+    // (UPSERT masivo Guido) salta moléculas → badge solo LPC03 10% sin el %.
     let q = sb
       .from('pe_descuento_comercial_molecula')
-      .select('batch_label, linea_codigo, referencia_codigo, material_code, color_code, descuento_pct, updated_at')
+      .select(
+        'id, batch_label, linea_codigo, referencia_codigo, material_code, color_code, descuento_pct, updated_at',
+      )
       .order('updated_at', { ascending: false })
       .order('batch_label', { ascending: false })
+      .order('id', { ascending: false })
       .range(from, from + PAGE - 1)
 
     if (batch) {

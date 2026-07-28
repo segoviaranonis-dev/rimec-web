@@ -43,7 +43,10 @@ export function isWarmTarjetasRequest(
   const o = normalizeOrigenCatalogo(filters.origen_tipo)
   if (o === 'TODOS' && !filters.ramo_tipo) return true
   if (o === 'TODOS' && filters.ramo_tipo === 'CALZADO') return true
+  if (o === 'TODOS' && filters.ramo_tipo === 'CONFECCIONES') return true
+  if (o === 'TODOS' && filters.ramo_tipo === 'ACCESORIOS') return true
   if (o === 'PRONTA_ENTREGA' && filters.ramo_tipo === 'CALZADO') return true
+  if (o === 'PRONTA_ENTREGA' && filters.ramo_tipo === 'CONFECCIONES') return true
   if (
     (o === 'TRÁNSITO_PP' || o === '') &&
     !filters.marca_id &&

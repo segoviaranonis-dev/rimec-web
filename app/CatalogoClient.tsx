@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, useDeferredValue } from 'react'
 import { CatalogoGrid } from './CatalogoGrid'
+import { CatalogoGrillaSkeleton } from '@/components/catalog/CatalogoGrillaSkeleton'
 import { FiltrosCatalogo, type CatalogoFilterState } from './components/FiltrosCatalogo'
 import {
   CatalogoFiltrosSidebar,
@@ -27,13 +28,19 @@ import {
   catalogWarmCacheKey,
   CP_DEFAULT_FILTERS,
   TODOS_DEFAULT_FILTERS,
+  CARD_PAGE_LIMIT,
   ensureDualCatalogWarm,
   ensurePeCatalogWarm,
+  enableCatalogBackgroundWarm,
+  ensureRamoParWarm,
+  ensureTodosConfeccionesWarm,
   ensureTodosCatalogWarm,
   getPageWarmCache,
   getScrollWarmCache,
   isCatalogWarmEnough,
-  prefetchScrollPageWhenIdle,
+  markCatalogPrimaryFetchStart,
+  markCatalogPrimaryFetchEnd,
+  prefetchScrollPageSoon,
   runWhenIdle,
   storePageWarmCache,
   warmCatalogImages,
@@ -159,6 +166,19 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   return params
 }
 
+function mensajeErrorCatalogo(err: unknown): string {
+  const raw = err instanceof Error ? err.message : 'Error cargando catálogo'
+  if (/statement timeout|57014|canceling statement|schema cache|transaction is aborted/i.test(raw)) {
+    return 'Catálogo lento — reintentando. Esperá unos segundos.'
+  }
+  return raw
+}
+
+function esTimeoutCatalogo(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err ?? '')
+  return /statement timeout|57014|canceling statement|schema cache|transaction is aborted/i.test(raw)
+}
+
 function filtersMatchDefault(a: CatalogoFilterState, b: CatalogoFilterState) {
   return catalogWarmCacheKey(a) === catalogWarmCacheKey(b)
 }
@@ -248,6 +268,7 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [excludeKeys, setExcludeKeys] = useState<string[]>([])
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [syncProgress, setSyncProgress] = useState<CatalogSyncProgress | null>(null)
@@ -281,11 +302,48 @@ export function CatalogoClient({ initialFilters }: Props) {
       .finally(() => {
         markCatalogSyncOverlayDoneThisDocument()
         setSyncRunning(false)
-        setSyncOverlayVisible(false)
-        setSyncProgress(null)
         ensureDualCatalogWarm(merged)
       })
   }, [initialFilters])
+
+  /** Overlay: máx 10 s sin grilla → ceder paso al skeleton (BD lenta). */
+  useEffect(() => {
+    if (!syncOverlayVisible) return
+    const t = window.setTimeout(() => {
+      if (productos.length < CARD_PAGE_LIMIT) {
+        setSyncOverlayVisible(false)
+        setSyncRunning(false)
+      }
+    }, 10_000)
+    return () => window.clearTimeout(t)
+  }, [syncOverlayVisible, productos.length])
+
+  /** Overlay cierra en cuanto hay ≥30 tarjetas — sync sigue en segundo plano. */
+  useEffect(() => {
+    if (!syncOverlayVisible) return
+    if (productos.length >= CARD_PAGE_LIMIT && !loading) {
+      setSyncOverlayVisible(false)
+      setSyncProgress(null)
+      setSyncStartedAt(null)
+    }
+  }, [syncOverlayVisible, loading, productos.length])
+
+  /** Hidratar grilla desde warm Todos en cuanto el sync lo deposite (paridad overlay ↔ home). */
+  useEffect(() => {
+    if (!syncOverlayVisible || productos.length > 0) return
+    const merged = mergeSharedIntoFilters(initialFilters)
+    const active = filtersConOrigenInmediato(merged, filters)
+    const cached = getPageWarmCache(catalogWarmCacheKey(active))
+    if (!isCatalogWarmEnough(cached)) return
+    if (!tarjetasRespetanOrigen(cached!.tarjetas, active.origen_tipo)) return
+    setProductos(sortTarjetasLineaRef(cached!.tarjetas))
+    setRowFrom(cached!.nextRowFrom)
+    setExcludeKeys(cached!.excludeCardKeys)
+    setHasMore(cached!.hasMore)
+    warmCatalogImages(cached!.tarjetas)
+    setLoading(false)
+    setError(null)
+  }, [syncOverlayVisible, syncProgress, productos.length, filters, initialFilters])
 
   useEffect(() => {
     const merged = mergeSharedIntoFilters(initialFilters)
@@ -332,11 +390,14 @@ export function CatalogoClient({ initialFilters }: Props) {
     })
   }, [])
 
-  // Filtros sidebar — en CP default diferido (idle) para priorizar tarjetas <1s
+  // Filtros sidebar — diferido 12 s tras montar (prioridad absoluta: tarjetas)
   useEffect(() => {
     let cancelled = false
+    const defer = window.setTimeout(() => {
+      void loadFiltrosInner()
+    }, 12_000)
 
-    async function loadFiltros(attempt = 0) {
+    async function loadFiltrosInner(attempt = 0) {
       try {
         const params = filterToSearchParams(filters)
         if (ventaActiva) params.set('lista_precio_id', String(listaPrecioSesion))
@@ -437,20 +498,15 @@ export function CatalogoClient({ initialFilters }: Props) {
         }
       } catch {
         if (!cancelled && attempt < 2) {
-          setTimeout(() => loadFiltros(attempt + 1), 800 * (attempt + 1))
+          setTimeout(() => loadFiltrosInner(attempt + 1), 2000 * (attempt + 1))
         }
       }
     }
 
-    if (isCpDefault(filters) && !isCatalogoOrigenTodos(filters)) {
-      runWhenIdle(() => {
-        if (!cancelled) void loadFiltros()
-      })
-    } else {
-      void loadFiltros()
+    return () => {
+      cancelled = true
+      window.clearTimeout(defer)
     }
-
-    return () => { cancelled = true }
   }, [
     filters.origen_tipo ?? '',
     filters.ramo_tipo ?? '',
@@ -516,6 +572,8 @@ export function CatalogoClient({ initialFilters }: Props) {
         fromRow: opts.fromRow,
         limit: opts.limit ?? 30,
         exclude: opts.exclude,
+        // Sin filtros laterales: siempre ruta quick (evita escaneo 12k + descuentos × lote).
+        quick: !hasSidebarFilters(opts.currentFilters),
       })
       return json as {
         tarjetas: TarjetaGrilla[]
@@ -532,14 +590,12 @@ export function CatalogoClient({ initialFilters }: Props) {
     // Origen/ramo/depósito/quincenas = live (no deferred) — chrome PE ≠ grilla CP
     const activeFilters = filtersConOrigenInmediato(deferredFilters, filters)
     const esPe = isCatalogoOrigenPe(activeFilters)
-    const esTodos = isCatalogoOrigenTodos(activeFilters)
     const cacheKey = catalogWarmCacheKey(activeFilters)
     const cachedRaw = getPageWarmCache(cacheKey)
     const cached =
       cachedRaw && tarjetasRespetanOrigen(cachedRaw.tarjetas, activeFilters.origen_tipo)
         ? cachedRaw
         : null
-    const cacheReady = isCatalogWarmEnough(cached)
 
     const hasCached = (cached?.tarjetas.length ?? 0) > 0
 
@@ -562,61 +618,114 @@ export function CatalogoClient({ initialFilters }: Props) {
       setError(null)
       warmCatalogImages(cached.tarjetas)
     } else if (!cached) {
-      setProductos([])
       setRowFrom(0)
       setExcludeKeys([])
       setHasMore(true)
     }
 
-    const origenPendiente =
-      (filters.origen_tipo ?? '') !== (deferredFilters.origen_tipo ?? '') ||
-      (filters.ramo_tipo ?? '') !== (deferredFilters.ramo_tipo ?? '')
-    setLoading(!hasCached || filtrosPendientes || origenPendiente)
+    // Con cache → instantáneo; refresh silencioso en background (nunca bloquear 30 s).
+    setLoading(!hasCached)
+    setRefreshing(hasCached)
     setError(null)
 
-    if (cacheReady && !hasSidebarFilters(activeFilters)) {
-      ensureDualCatalogWarm(activeFilters)
-      return () => { cancelled = true }
+    const persistWarmIfWide = () =>
+      !hasSidebarFilters(activeFilters)
+
+    const applyPageJson = (json: {
+      tarjetas: TarjetaGrilla[]
+      nextRowFrom: number
+      hasMore: boolean
+      excludeCardKeys: string[]
+    }, opts?: { background?: boolean }) => {
+      if (!tarjetasRespetanOrigen(json.tarjetas ?? [], activeFilters.origen_tipo)) {
+        if (!opts?.background) {
+          setError('Origen de stock inconsistente — reintentá Pronta entrega / Compra previa')
+          if (!hasCached) setProductos([])
+        }
+        return
+      }
+      setProductos(sortTarjetasLineaRef(json.tarjetas ?? []))
+      setRowFrom(json.nextRowFrom ?? 0)
+      setExcludeKeys(json.excludeCardKeys ?? [])
+      setHasMore(Boolean(json.hasMore))
+      setError(null)
+      warmCatalogImages(json.tarjetas ?? [])
+      if (persistWarmIfWide() && (json.tarjetas?.length ?? 0) > 0) {
+        storePageWarmCache(cacheKey, {
+          tarjetas: json.tarjetas ?? [],
+          nextRowFrom: json.nextRowFrom ?? 0,
+          hasMore: Boolean(json.hasMore),
+          excludeCardKeys: json.excludeCardKeys ?? [],
+          fetchedAt: Date.now(),
+        })
+      }
+      prefetchScrollPageSoon(activeFilters, json.nextRowFrom ?? 0, json.excludeCardKeys ?? [])
+      enableCatalogBackgroundWarm()
     }
 
-    if (esTodos) ensureTodosCatalogWarm()
-    else if (esPe) ensurePeCatalogWarm()
+    if (hasCached && !hasSidebarFilters(activeFilters)) {
+      prefetchScrollPageSoon(activeFilters, cached!.nextRowFrom, cached!.excludeCardKeys)
+      markCatalogPrimaryFetchStart()
+      void fetchPage({ fromRow: 0, exclude: [], currentFilters: activeFilters, limit: CARD_PAGE_LIMIT })
+        .then(json => {
+          if (cancelled) return
+          applyPageJson(json, { background: true })
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) {
+            markCatalogPrimaryFetchEnd()
+            setLoading(false)
+            setRefreshing(false)
+            ensureRamoParWarm(activeFilters)
+            ensureDualCatalogWarm(activeFilters)
+          }
+        })
+      return () => {
+        cancelled = true
+        markCatalogPrimaryFetchEnd()
+      }
+    }
 
-    fetchPage({ fromRow: 0, exclude: [], currentFilters: activeFilters, limit: 30 })
+    markCatalogPrimaryFetchStart()
+    fetchPage({ fromRow: 0, exclude: [], currentFilters: activeFilters, limit: CARD_PAGE_LIMIT })
       .then(json => {
         if (cancelled) return
-        if (!tarjetasRespetanOrigen(json.tarjetas ?? [], activeFilters.origen_tipo)) {
-          setError('Origen de stock inconsistente — reintentá Pronta entrega / Compra previa')
-          setProductos([])
-          return
-        }
-        setProductos(sortTarjetasLineaRef(json.tarjetas ?? []))
-        setRowFrom(json.nextRowFrom ?? 0)
-        setExcludeKeys(json.excludeCardKeys ?? [])
-        setHasMore(Boolean(json.hasMore))
-        warmCatalogImages(json.tarjetas ?? [])
-        if (isTodosDefault(activeFilters) || isCpDefault(activeFilters) || esPe) {
-          storePageWarmCache(cacheKey, {
-            tarjetas: json.tarjetas ?? [],
-            nextRowFrom: json.nextRowFrom ?? 0,
-            hasMore: Boolean(json.hasMore),
-            excludeCardKeys: json.excludeCardKeys ?? [],
-            fetchedAt: Date.now(),
-          })
-        }
+        applyPageJson(json)
       })
       .catch(err => {
-        if (!cancelled && !cacheReady) {
-          setError(err instanceof Error ? err.message : 'Error cargando catálogo')
+        if (cancelled) return
+        setProductos(prev => {
+          if (prev.length === 0) {
+            setError(mensajeErrorCatalogo(err))
+          } else {
+            setError(null)
+          }
+          return prev
+        })
+        if (esTimeoutCatalogo(err) && !hasCached) {
+          window.setTimeout(() => {
+            if (cancelled) return
+            void fetchPage({ fromRow: 0, exclude: [], currentFilters: activeFilters, limit: CARD_PAGE_LIMIT })
+              .then(json => { if (!cancelled) applyPageJson(json) })
+              .catch(() => undefined)
+          }, 4_000)
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          markCatalogPrimaryFetchEnd()
+          setLoading(false)
+          setRefreshing(false)
+          ensureRamoParWarm(activeFilters)
+          ensureDualCatalogWarm(activeFilters)
+        }
       })
 
-    ensureDualCatalogWarm(activeFilters)
-
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      markCatalogPrimaryFetchEnd()
+    }
   }, [
     deferredFilters.grupo_estilo_id,
     deferredFilters.marca_id,
@@ -643,11 +752,10 @@ export function CatalogoClient({ initialFilters }: Props) {
     filtrosPendientes,
   ])
 
-  // Mantener dual warm + scroll page 2 en idle
   useEffect(() => {
     if (loading || productos.length === 0 || !hasMore) return
     ensureDualCatalogWarm(filters)
-    prefetchScrollPageWhenIdle(filters, rowFrom, excludeKeys)
+    prefetchScrollPageSoon(filters, rowFrom, excludeKeys)
   }, [loading, productos.length, hasMore, rowFrom, excludeKeys.join(','), filters.origen_tipo ?? ''])
 
   const loadMore = useCallback(async () => {
@@ -660,7 +768,7 @@ export function CatalogoClient({ initialFilters }: Props) {
       setExcludeKeys(scrollHit.excludeCardKeys)
       setHasMore(scrollHit.hasMore)
       warmCatalogImages(scrollHit.tarjetas)
-      prefetchScrollPageWhenIdle(filters, scrollHit.nextRowFrom, scrollHit.excludeCardKeys)
+      prefetchScrollPageSoon(filters, scrollHit.nextRowFrom, scrollHit.excludeCardKeys)
       return
     }
 
@@ -678,15 +786,41 @@ export function CatalogoClient({ initialFilters }: Props) {
       setHasMore(Boolean(json.hasMore))
       setError(null)
       warmCatalogImages(json.tarjetas ?? [])
-      prefetchScrollPageWhenIdle(filters, json.nextRowFrom ?? rowFrom, json.excludeCardKeys ?? excludeKeys)
+      prefetchScrollPageSoon(filters, json.nextRowFrom ?? rowFrom, json.excludeCardKeys ?? excludeKeys)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando más modelos')
+      if (!esTimeoutCatalogo(err)) {
+        setError(mensajeErrorCatalogo(err))
+      }
     } finally {
       setLoadingMore(false)
     }
   }, [loadingMore, hasMore, rowFrom, excludeKeys, filters, fetchPage])
 
   const updateFilters = (next: CatalogoFilterState) => {
+    ensureRamoParWarm(next)
+    if ((next.ramo_tipo ?? '') !== (filters.ramo_tipo ?? '')) {
+      const key = catalogWarmCacheKey({
+        ...mergeSharedIntoFilters(next),
+        origen_tipo: next.origen_tipo,
+        ramo_tipo: next.ramo_tipo,
+      })
+      const hit = getPageWarmCache(key)
+      if (hit?.tarjetas.length && tarjetasRespetanOrigen(hit.tarjetas, next.origen_tipo)) {
+        setProductos(sortTarjetasLineaRef(hit.tarjetas))
+        setRowFrom(hit.nextRowFrom)
+        setExcludeKeys(hit.excludeCardKeys)
+        setHasMore(hit.hasMore)
+        setLoading(false)
+        setRefreshing(true)
+        setError(null)
+        warmCatalogImages(hit.tarjetas)
+      } else {
+        setProductos([])
+        setLoading(true)
+        setError(null)
+      }
+    }
+    ensureDualCatalogWarm(next)
     setFiltroFeedback({
       id: Date.now(),
       filtro: etiquetaCambioFiltro(filters, next),
@@ -803,6 +937,7 @@ export function CatalogoClient({ initialFilters }: Props) {
           eventoId={filtroFeedback.id}
           filtro={filtroFeedback.filtro}
           onDone={cerrarFiltroFeedback}
+          waiting={loading || refreshing}
         />
       )}
       {showSyncOverlay && (
@@ -882,13 +1017,19 @@ export function CatalogoClient({ initialFilters }: Props) {
         </div>
 
         <div className="relative min-h-[12rem] min-w-0 flex-1 pr-2 sm:pr-3">
-      {loading && productos.length === 0 && !showSyncOverlay && (
-        <div className="mb-6 flex justify-center py-16">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+      {productos.length === 0 && !error && (
+        <CatalogoGrillaSkeleton slots={CARD_PAGE_LIMIT} />
+      )}
+
+      {refreshing && productos.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-2">
+          <span className="rounded-full bg-slate-900/75 px-3 py-1 text-xs font-medium text-white shadow">
+            Actualizando catálogo…
+          </span>
         </div>
       )}
 
-      {error && (
+      {error && productos.length === 0 && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
           {error}
           <button

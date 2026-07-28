@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { asegurarFacturasDescuentosLote } from '@/lib/asegurarFacturasDescuentosLote'
 import { normalizarDescuentos4, precioNetoCascada } from '@/lib/carritoDescuentosFi'
+import { sumaDescuentosComerciales } from '@/lib/resolverDescuentosFiPe'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
 import {
   cajasDisponiblesDeFila,
@@ -271,7 +272,7 @@ async function validarItemsStockEnCarrito(
   return { items: out, recalculados }
 }
 
-/** Marca FIs pre_autorizado tras validación (paridad RPC MIG-160). */
+/** Marca FIs pre_autorizado tras validación (paridad RPC MIG-160). PE sin Desc. comercial → no congelar. */
 async function marcarFacturasPreAutorizado(sb: SupabaseClient, idUsuario: number): Promise<void> {
   const { data: sesion } = await sb
     .from('carrito_sesion')
@@ -280,7 +281,15 @@ async function marcarFacturasPreAutorizado(sb: SupabaseClient, idUsuario: number
     .maybeSingle()
   const lote = sesion?.descuentos_lote as { facturas?: Array<Record<string, unknown>> } | null
   if (!lote?.facturas?.length) return
-  const facturas = lote.facturas.map((f) => ({ ...f, pre_autorizado: true }))
+  const facturas = lote.facturas.map((f) => {
+    const esPe = Number(f.pp_id) < 0
+    const desc = normalizarDescuentos4(f.descuentos)
+    const comercial = sumaDescuentosComerciales(desc)
+    if (esPe && comercial <= 0) {
+      return { ...f, pre_autorizado: false }
+    }
+    return { ...f, pre_autorizado: true }
+  })
   await sb
     .from('carrito_sesion')
     .update({

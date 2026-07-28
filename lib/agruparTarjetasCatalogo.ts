@@ -17,20 +17,27 @@ import {
 import { enrichImagenUrls } from '@/lib/productImage'
 import { gradasFmtFromRow } from '@/lib/gradasFmt'
 import { resolveParesPorCaja } from '@/lib/prontaEntregaVenta'
+import { cadenaComercialDesdeCodGrupo } from '@/lib/pilares/codGrupoCadena'
 import {
   esLiquidacionRow,
   esPromoRow,
   type TipoGrupoId,
 } from '@/lib/filtros/filtro-tipo-canonico'
 
-/** Separar Normal / Promo / LIQ — mismo SKU PE no puede contaminar badge ni filtro Tipo. */
+/** Separar Normal / Promo / LIQ — PE: triunvirato COD.GRUPO · CP: BCL si no hay grupo. */
 export function commercialBucketFromRow(item: {
+  cod_grupo?: string | null
   es_liquidacion?: boolean | null
   es_promo?: boolean | null
   cadena_comercial?: string | null
   descp_caso?: string | null
   caso_precio?: string | null
 }): TipoGrupoId | 'otro' {
+  const desdeGrupo = cadenaComercialDesdeCodGrupo(item.cod_grupo)
+  if (desdeGrupo === 'LIQUIDACION') return 'liquidacion'
+  if (desdeGrupo === 'PROMOCIONAL') return 'promo'
+  if (desdeGrupo === 'REGULAR' || desdeGrupo === 'COMUN') return 'normal'
+
   const signals = {
     es_liquidacion: item.es_liquidacion,
     es_promo: item.es_promo,

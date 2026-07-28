@@ -1,38 +1,33 @@
 /**
- * Grupo uno PE — visual + cadena · trillizo siamés con Report (`pe-grupo-uno-visual.ts`).
+ * Grupo uno PE — visual + cadena DPE · trillizo siamés con Report.
+ * Ley: segregación SOLO triunvirato Excel — ver `cadena-dpe-triunvirato.ts`.
  */
 import {
-  esLiquidacionRow,
-  esPromoRow,
-  type RowTipoSignals,
-} from '@/lib/filtros/filtro-tipo-canonico'
-import { cadenaComercialDesdeCodGrupo } from '@/lib/pilares/codGrupoCadena'
+  cadenaDpeTriunvirato,
+  esComunDpe,
+  esLiquidacionDpe,
+  esPromoDpe,
+  type RowCadenaDpe,
+} from '@/lib/filtros/cadena-dpe-triunvirato'
 
 export type PeGrupoUnoShell = 'normal' | 'promo' | 'liquidacion' | 'comun'
 
-export type RowCadenaPe = RowTipoSignals & { cod_grupo?: string | null }
+export type RowCadenaPe = RowCadenaDpe
 
 export function esComunRow(row: RowCadenaPe): boolean {
-  if (String(row.cadena_comercial ?? '').trim().toUpperCase() === 'COMUN') return true
-  const cg = String(row.cod_grupo ?? '').trim()
-  if (!cg) return false
-  return cadenaComercialDesdeCodGrupo(cg) === 'COMUN'
+  return esComunDpe(row)
 }
 
-export function resolvePeGrupoUnoShell(row: RowTipoSignals): PeGrupoUnoShell {
-  if (esLiquidacionRow(row)) return 'liquidacion'
-  if (esPromoRow(row)) return 'promo'
-  if (esComunRow(row)) return 'comun'
+export function resolvePeGrupoUnoShell(row: RowCadenaPe): PeGrupoUnoShell {
+  if (esLiquidacionDpe(row)) return 'liquidacion'
+  if (esPromoDpe(row)) return 'promo'
+  if (esComunDpe(row)) return 'comun'
   return 'normal'
 }
 
-/** Cadena diccionario BD — misma prioridad que badge/filtro (cadena + COD.GRUPO). */
+/** Cadena diccionario DPE — triunvirato COD.GRUPO únicamente. */
 export function cadenaPeCanonico(
   row: RowCadenaPe,
 ): 'REGULAR' | 'PROMOCIONAL' | 'LIQUIDACION' | 'COMUN' {
-  const shell = resolvePeGrupoUnoShell(row)
-  if (shell === 'liquidacion') return 'LIQUIDACION'
-  if (shell === 'promo') return 'PROMOCIONAL'
-  if (shell === 'comun') return 'COMUN'
-  return 'REGULAR'
+  return cadenaDpeTriunvirato(row)
 }

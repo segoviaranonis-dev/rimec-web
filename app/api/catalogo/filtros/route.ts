@@ -215,9 +215,19 @@ export async function GET(req: NextRequest) {
     })
   } catch (err) {
     console.error('[catalogo/filtros]', err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Error cargando filtros' },
-      { status: 500 },
-    )
+    return NextResponse.json({
+      filtros: { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] },
+      colores: [],
+      quincenas: [],
+      preventas: [],
+      paresDatoDuro: [],
+      tonosDisponibles: [],
+      materialFamilias: [],
+      colorFamilias: [],
+      precioRango: null,
+      totalFilas: 0,
+      metaSource: 'degraded',
+      degraded: true,
+    })
   }
 }

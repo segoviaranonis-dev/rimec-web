@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
+import { asegurarFacturasDescuentosLote } from '@/lib/asegurarFacturasDescuentosLote'
 import { resolveCarritoStockRow, stockCantidadLabel } from '@/lib/carritoStockResolve'
 import { isProntaEntregaStockRow, syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
 
@@ -23,14 +24,16 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'no-session' }, { status: 401 })
 
   const body = (await req.json()) as ItemBody
-  const isPe = isProntaEntregaStockRow({
-    det_id: Number(body?.det_id),
+  const detId = Number(body?.det_id)
+  if (!Number.isFinite(detId) || detId <= 0 || !body?.cantidad_cajas || body.cantidad_cajas <= 0) {
+    return NextResponse.json({ error: 'payload inválido' }, { status: 400 })
+  }
+
+  let isPe = isProntaEntregaStockRow({
+    det_id: detId,
     origen_tipo: body.origen_tipo,
     pp_id: body.pp_id,
   })
-  if (!body?.det_id || !body?.cantidad_cajas || body.cantidad_cajas <= 0) {
-    return NextResponse.json({ error: 'payload inválido' }, { status: 400 })
-  }
   if (!isPe && !body?.pp_id) {
     return NextResponse.json({ error: 'payload inválido — falta pp_id' }, { status: 400 })
   }
@@ -58,17 +61,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'sesión de venta no activa' }, { status: 409 })
   }
 
-  const stockHit = await resolveCarritoStockRow(sb, body.det_id, body.origen_tipo)
+  const stockHit = await resolveCarritoStockRow(sb, detId, body.origen_tipo, body.pp_id)
   if (!stockHit) {
+    console.warn('[carrito/items] producto no encontrado', {
+      det_id: detId,
+      origen_tipo: body.origen_tipo,
+      pp_id: body.pp_id,
+    })
     return NextResponse.json({ error: 'producto no encontrado' }, { status: 404 })
   }
 
-  const detIdStore = isPe ? stockHit.canonicalDetId : body.det_id
+  isPe = isProntaEntregaStockRow({
+    det_id: detId,
+    origen_tipo: stockHit.row.origen_tipo ?? body.origen_tipo,
+    pp_id: body.pp_id,
+  })
+
+  const detIdStore = isPe ? stockHit.canonicalDetId : detId
 
   const cajasDisponibles = stockHit.row.cajas_disponibles ?? 0
   if (body.cantidad_cajas > cajasDisponibles) {
     return NextResponse.json({
-      error: `stock insuficiente (disponible: ${stockCantidadLabel(body.det_id, cajasDisponibles, stockHit.row.origen_tipo ?? body.origen_tipo)})`,
+      error: `stock insuficiente (disponible: ${stockCantidadLabel(detId, cajasDisponibles, stockHit.row.origen_tipo ?? body.origen_tipo)})`,
     }, { status: 400 })
   }
 
@@ -93,6 +107,12 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Descuentos FI — async; no bloquear cada tap en catálogo.
+  void asegurarFacturasDescuentosLote(sb, session.id_usuario).catch((err) => {
+    console.warn('[carrito/items] asegurarFacturasDescuentosLote:', err)
+  })
+
   return NextResponse.json({ item: data })
 }
 

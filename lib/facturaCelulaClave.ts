@@ -1,14 +1,13 @@
 /**
  * R-FI-2 — Segregación comercial infalible en FI.
- * PROMO y LIQUIDACIÓN nunca comparten factura (ni entre sí ni con Regular
- * si el caso_id colapsara). Prioridad: LIQ > PROMO > REGULAR (hermanos siameses).
+ * PROMO y LIQUIDACIÓN nunca comparten factura (ni entre sí ni con Regular).
  *
- * Fuente de verdad liquidación/promo PE = COD.GRUPO Carlos (dígito cadena)
- * materializado en `es_liquidacion` / `es_promo` / `cadena_comercial` (vista PE).
- * Si faltan flags, se re-deriva desde `cod_grupo`.
+ * PE (DPE): cadena SOLO triunvirato COD.GRUPO — BCL no incide.
+ * CP / programado: caso BCL permitido cuando no hay cod_grupo PE.
  */
-import { esLiquidacionRow, esPromoRow, type RowTipoSignals } from '@/lib/filtros/filtro-tipo-canonico'
 import { claveCasoFi, etiquetaCasoFi, type CasoFragmentable } from '@/lib/facturaCasoClave'
+import { cadenaDpeTriunvirato } from '@/lib/filtros/cadena-dpe-triunvirato'
+import { esLiquidacionRow, esPromoRow, type RowTipoSignals } from '@/lib/filtros/filtro-tipo-canonico'
 import { cadenaComercialDesdeCodGrupo } from '@/lib/pilares/codGrupoCadena'
 
 export type CadenaComercialFi = 'LIQUIDACION' | 'PROMOCIONAL' | 'REGULAR' | 'COMUN'
@@ -19,6 +18,10 @@ export type CelulaFragmentable = CasoFragmentable &
   }
 
 export function cadenaComercialFi(item: CelulaFragmentable): CadenaComercialFi {
+  const cg = String(item.cod_grupo ?? '').trim()
+  if (cg) {
+    return cadenaDpeTriunvirato({ cod_grupo: item.cod_grupo })
+  }
   const row: RowTipoSignals = {
     descp_caso: item.caso ?? item.descp_caso ?? null,
     caso_precio: item.caso_precio ?? item.caso ?? null,
@@ -40,6 +43,27 @@ export function cadenaComercialFi(item: CelulaFragmentable): CadenaComercialFi {
 /** Clave FI = caso × cadena comercial (R-FI-1 + R-FI-2). */
 export function claveCelulaFi(item: CelulaFragmentable): string {
   return `${claveCasoFi(item)}|${cadenaComercialFi(item)}`
+}
+
+/**
+ * PE — R-FI-3 dictado: una FI no mezcla moléculas con % comercial distinto.
+ * Misma cadena + distinto dictado Report → células / FIs separadas.
+ */
+export function claveCelulaFiPeDictado(
+  item: CelulaFragmentable & {
+    pp_id?: number | null
+    descuento_comercial_pct?: number | null
+  },
+  esPe?: boolean,
+): string {
+  const base = claveCelulaFi(item)
+  const pe =
+    esPe === true ||
+    (item.pp_id != null && Number(item.pp_id) < 0)
+  if (!pe) return base
+  const pct = Number(item.descuento_comercial_pct)
+  if (Number.isFinite(pct) && pct > 0) return `${base}|d${pct}`
+  return `${base}|d0`
 }
 
 export function etiquetaCelulaFi(item: CelulaFragmentable): string {

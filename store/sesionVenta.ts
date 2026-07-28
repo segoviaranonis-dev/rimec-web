@@ -30,7 +30,8 @@ import {
 import { normalizarDescuentos4, precioNetoCascada } from '@/lib/carritoDescuentosFi'
 import { gradasFmtFromRow } from '@/lib/gradasFmt'
 import { etiquetaCasoFi } from '@/lib/facturaCasoClave'
-import { cadenaComercialFi, claveCelulaFi, etiquetaCelulaFi } from '@/lib/facturaCelulaClave'
+import { cadenaComercialFi, claveCelulaFiPeDictado, etiquetaCelulaFi } from '@/lib/facturaCelulaClave'
+import { findFacturaConfig } from '@/lib/facturaConfigMatch'
 
 export { getPrecioActivoLib as getPrecioActivo, getPrecioActivoPeLib as getPrecioActivoPe }
 
@@ -82,6 +83,8 @@ export interface ItemCarrito {
   es_liquidacion?: boolean | null
   cadena_comercial?: string | null
   cod_grupo?:      string | null
+  /** % dictado Report (pe_descuento_comercial_molecula) — segregación FI PE */
+  descuento_comercial_pct?: number | null
   nombre:          string
   gradas_fmt:      string
   imagen_url:      string
@@ -220,6 +223,7 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     es_liquidacion?: boolean | null
     cadena_comercial?: string | null
     cod_grupo?: string | null
+    descuento_comercial_pct?: number | null
   } | undefined
   const stockSaldo = stockAny?.saldo_pares
   const stockGrada = stockAny?.grada
@@ -239,6 +243,11 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     stockAny?.cod_grupo != null && String(stockAny.cod_grupo).trim() !== ''
       ? String(stockAny.cod_grupo)
       : base?.cod_grupo ?? null
+  const descComercial = (() => {
+    const n = Number(stockAny?.descuento_comercial_pct)
+    if (Number.isFinite(n) && n > 0) return n
+    return base?.descuento_comercial_pct ?? null
+  })()
 
   if (base) {
     const enriched: ItemCarritoMeta = {
@@ -250,6 +259,7 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
       es_liquidacion: esLiq,
       cadena_comercial: cadenaCom,
       cod_grupo: codGrupo,
+      descuento_comercial_pct: descComercial,
     }
     persistMeta(enriched)
     const pares = paresCalc(enriched, row.cantidad_cajas)
@@ -311,6 +321,7 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     es_liquidacion: esLiq,
     cadena_comercial: cadenaCom,
     cod_grupo: codGrupo,
+    descuento_comercial_pct: descComercial,
     nombre: stockRow?.nombre ?? '',
     gradas_fmt: gradasFmtFromRow({
       grades_json: stockRow?.grades_json as Record<string, number> | null | undefined,
@@ -340,6 +351,17 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
  * el shape `ItemCarrito` aunque la BD solo guarde precio + snapshot mínimo.
  */
 const META_CACHE: Map<number, ItemCarritoMeta> = new Map()
+
+/** Evita GET /carrito/sesion en cada tap — agrupa sync FI. */
+let cargarDesdeBDTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleCargarDesdeBD(get: () => SesionVenta) {
+  if (typeof window === 'undefined') return
+  if (cargarDesdeBDTimer) clearTimeout(cargarDesdeBDTimer)
+  cargarDesdeBDTimer = setTimeout(() => {
+    cargarDesdeBDTimer = null
+    void get().cargarDesdeBD()
+  }, 2000)
+}
 
 function persistMeta(item: ItemCarritoMeta) {
   META_CACHE.set(item.det_id, item)
@@ -589,6 +611,15 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
     const s = get()
     const actual = s.carrito[key]?.cajas ?? 0
     const cajas = actual + 1
+    const pares = paresCalc(item, cajas)
+    const prevEntry = s.carrito[key]
+
+    // UI optimista — el tap no espera 10s al POST.
+    set((st) => ({
+      carrito: { ...st.carrito, [key]: { ...item, cajas, pares, subtotal: item.precio_base * pares } },
+      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
+    }))
+
     try {
       await carritoUpsertItem({
         det_id: item.det_id,
@@ -603,13 +634,23 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       })
     } catch (err) {
       console.error('[sesionVenta.agregarCaja]', err)
+      const rollbackCajas = Math.max(0, cajas - 1)
+      set((st) => {
+        const next = { ...st.carrito }
+        if (rollbackCajas <= 0) {
+          if (prevEntry) next[key] = prevEntry
+          else delete next[key]
+        } else if (prevEntry) {
+          const rp = paresCalc(prevEntry, rollbackCajas)
+          next[key] = { ...prevEntry, cajas: rollbackCajas, pares: rp, subtotal: prevEntry.precio_base * rp }
+        } else {
+          delete next[key]
+        }
+        return { carrito: next, validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] } }
+      })
       throw err
     }
-    const pares = paresCalc(item, cajas)
-    set((st) => ({
-      carrito: { ...st.carrito, [key]: { ...item, cajas, pares, subtotal: item.precio_base * pares } },
-      validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
-    }))
+    scheduleCargarDesdeBD(get)
   },
 
   quitarCaja: async (det_id) => {
@@ -767,12 +808,17 @@ export function fragmentarCarrito(
       // R-FI-1 + R-FI-2: 1 FI = 1 caso × 1 cadena (PROMO ≠ LIQUIDACIÓN ≠ REGULAR).
       const byCelula: Record<string, ItemCarrito[]> = {}
       for (const item of mItems) {
-        const key = claveCelulaFi(item)
+        const esPeItem =
+          isProntaEntregaStockRow({
+            det_id: item.det_id,
+            origen_tipo: item.origen_tipo,
+          }) || item.pp_id < 0
+        const key = claveCelulaFiPeDictado(item, esPeItem)
         if (!byCelula[key]) byCelula[key] = []
         byCelula[key].push(item)
       }
 
-      const facturas: FacturaPrevisible[] = Object.entries(byCelula).map(([celulaKey, cItems]) => {
+      const facturas: FacturaPrevisible[] = Object.entries(byCelula).map(([, cItems]) => {
         const casoId =
           cItems.find((i) => i.caso_id != null && Number(i.caso_id) > 0)?.caso_id ?? null
         const caso = etiquetaCelulaFi({
@@ -784,15 +830,20 @@ export function fragmentarCarrito(
             cItems.find((i) => i.cadena_comercial)?.cadena_comercial ??
             cadenaComercialFi(cItems[0]!),
         })
-        // Buscar configuración de esta factura específica (MIG-083)
-        const facturaConfig = facturasConfig?.find(
-          (f) =>
-            f.pp_id === ppId &&
-            f.marca === marca &&
-            ((casoId != null && f.caso_id != null && Number(f.caso_id) === Number(casoId)) ||
-              f.caso === caso ||
-              f.caso === etiquetaCasoFi({ caso: cItems[0]?.caso, caso_id: casoId })),
-        )
+        const dictadoPct =
+          cItems.find((i) => i.descuento_comercial_pct != null && Number(i.descuento_comercial_pct) > 0)
+            ?.descuento_comercial_pct ?? null
+        const facturaConfig =
+          findFacturaConfig(facturasConfig, ppId, marca, caso, casoId) ??
+          (facturasConfig ?? []).find(
+            (f) =>
+              Number(f.pp_id) === ppId &&
+              String(f.marca) === marca &&
+              String(f.caso) === caso &&
+              (dictadoPct == null ||
+                Number((f as FacturaConfig & { dictado_comercial_pct?: number }).dictado_comercial_pct) ===
+                  Number(dictadoPct)),
+          )
         const descFactura = normalizarDescuentos4(facturaConfig?.descuentos ?? descCabecera)
         const listaFactura = facturaConfig?.lista_precio_id ?? 1
 
@@ -840,8 +891,13 @@ export function fragmentarCarrito(
             cajas_disponibles: item.cajas_disponibles,
           }
         })
+        const esPeGrupo =
+          isProntaEntregaStockRow({
+            det_id: cItems[0]!.det_id,
+            origen_tipo: cItems[0]!.origen_tipo,
+          }) || cItems[0]!.pp_id < 0
         return {
-          grupo_key: `pp${ppId}__${marca}__${celulaKey}`,
+          grupo_key: `pp${ppId}__${marca}__${claveCelulaFiPeDictado(cItems[0]!, esPeGrupo)}`,
           caso,
           caso_id: casoId,
           total_pares: detalle.reduce((s, i) => s + i.pares, 0),

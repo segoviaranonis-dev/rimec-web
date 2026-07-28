@@ -148,6 +148,9 @@ export function applyGeneroRamoBuscarSql(query: any, filters: CatalogoFilterStat
     q = applyModuloAccesoriosIncludeSql(q) as typeof q
   } else if (filters.ramo_tipo === 'CALZADO' || filters.ramo_tipo === 'CONFECCIONES') {
     q = q.eq('ramo_tipo', filters.ramo_tipo)
+    if (filters.ramo_tipo === 'CONFECCIONES') {
+      q = q.eq('tipo_v2_id', 2)
+    }
   }
 
   const subfamiliaAbcr = peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])

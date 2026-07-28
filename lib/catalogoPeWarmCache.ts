@@ -183,6 +183,22 @@ export function getScrollWarmCache(
   return hit
 }
 
+function urlsWarmVariant(v: {
+  imagen_candidates_thumb?: string[] | null
+  imagen_url_thumb?: string | null
+  imagen_url_flat?: string | null
+  imagen_url?: string | null
+}): string[] {
+  const out: string[] = []
+  for (const u of v.imagen_candidates_thumb ?? []) {
+    if (u) out.push(u)
+  }
+  const primary = v.imagen_url_thumb ?? v.imagen_url_flat ?? v.imagen_url
+  if (primary) out.push(primary)
+  return [...new Set(out)]
+}
+
+/** Precarga cadena sm→flat alineada con ProductImage (decode cache). */
 export function warmCatalogImages(tarjetas: TarjetaGrilla[], maxCards = CARD_PAGE_LIMIT) {
   let n = 0
   for (const card of tarjetas) {
@@ -191,8 +207,9 @@ export function warmCatalogImages(tarjetas: TarjetaGrilla[], maxCards = CARD_PAG
     for (const lote of lotes) {
       const v = lote.variantes[0]
       if (!v) continue
-      const url = v.imagen_url_thumb ?? v.imagen_url_flat ?? v.imagen_url
-      if (url) void preloadImageDecoded(url)
+      for (const url of urlsWarmVariant(v)) {
+        void preloadImageDecoded(url)
+      }
       n++
       if (n >= maxCards) break
     }
@@ -232,13 +249,50 @@ export function storePageWarmCache(key: string, payload: PageWarmPayload) {
   warmCatalogImages(payload.tarjetas)
 }
 
+/** Cola única — evita 5× timeout Supabase en paralelo al F5. */
+let warmChain: Promise<void> = Promise.resolve()
+
+function scheduleWarm(task: () => Promise<void>): Promise<void> {
+  const run = warmChain.then(task)
+  warmChain = run.catch(() => undefined)
+  return run
+}
+
+let primaryCatalogFetchDepth = 0
+
+/** CatalogoClient: pausar warm mientras la grilla activa pide datos. */
+export function markCatalogPrimaryFetchStart(): void {
+  primaryCatalogFetchDepth++
+}
+
+export function markCatalogPrimaryFetchEnd(): void {
+  primaryCatalogFetchDepth = Math.max(0, primaryCatalogFetchDepth - 1)
+}
+
+function isPrimaryCatalogFetchActive(): boolean {
+  return primaryCatalogFetchDepth > 0
+}
+
+/** Precarga en background — OFF hasta 1.ª grilla OK (evita saturar Supabase al F5). */
+let catalogWarmEnabled = false
+
+export function enableCatalogBackgroundWarm(): void {
+  catalogWarmEnabled = true
+}
+
+function warmAllowed(): boolean {
+  return catalogWarmEnabled && !isPrimaryCatalogFetchActive()
+}
+
 export async function prefetchCatalogPage(
   filters: CatalogoFilterState,
   opts?: { withFiltros?: boolean; force?: boolean; maxAttempts?: number },
 ): Promise<void> {
   const key = catalogWarmCacheKey(filters)
   if (!opts?.force && isCatalogWarmEnough(getPageWarmCache(key))) return
+  if (!warmAllowed() && !opts?.force) return
 
+  return scheduleWarm(async () => {
   const withFiltros = opts?.withFiltros ?? false
   const qs = filtersQueryString(filters)
 
@@ -294,6 +348,7 @@ export async function prefetchCatalogPage(
   }
 
   storePageWarmCache(key, payload)
+  })
 }
 
 let todosInflight: Promise<void> | null = null
@@ -341,6 +396,71 @@ export function effectivePeWarmFilters(): CatalogoFilterState {
  */
 let peConfInflight: Promise<void> | null = null
 let cpConfInflight: Promise<void> | null = null
+let todosConfInflight: Promise<void> | null = null
+
+/** Todos + Confecciones — pill 👕 con origen TODOS (entrada canónica home). */
+export function ensureTodosConfeccionesWarm(): void {
+  if (typeof window === 'undefined') return
+  const f: CatalogoFilterState = {
+    ...TODOS_DEFAULT_FILTERS,
+    origen_tipo: 'TODOS',
+    ramo_tipo: 'CONFECCIONES',
+  }
+  const key = catalogWarmCacheKey(f)
+  if (isCatalogWarmEnough(getPageWarmCache(key)) || todosConfInflight) return
+  todosConfInflight = prefetchCatalogPage(f, { withFiltros: false })
+    .catch(() => undefined)
+    .finally(() => { todosConfInflight = null })
+}
+
+let todosCalzInflight: Promise<void> | null = null
+
+/** Todos + Calzado — par hermano de confecciones (precarga pill 👟). */
+export function ensureTodosCalzadoWarm(): void {
+  if (typeof window === 'undefined') return
+  const f: CatalogoFilterState = {
+    ...TODOS_DEFAULT_FILTERS,
+    origen_tipo: 'TODOS',
+    ramo_tipo: 'CALZADO',
+  }
+  const key = catalogWarmCacheKey(f)
+  if (isCatalogWarmEnough(getPageWarmCache(key)) || todosCalzInflight) return
+  todosCalzInflight = prefetchCatalogPage(f, { withFiltros: false })
+    .catch(() => undefined)
+    .finally(() => { todosCalzInflight = null })
+}
+
+/**
+ * Hilos secundarios — precarga Calzado + Confecciones del origen activo ANTES del click.
+ * Cola única: no satura Supabase; el pill opuesto va primero si se conoce el ramo actual.
+ */
+export function ensureRamoParWarm(
+  active?: Pick<CatalogoFilterState, 'origen_tipo' | 'ramo_tipo'>,
+): void {
+  if (typeof window === 'undefined' || !catalogWarmEnabled) return
+  const origen = active?.origen_tipo || 'TODOS'
+  const ramoActual = active?.ramo_tipo || 'CALZADO'
+  const base = mergeSharedIntoFilters({
+    ...CP_DEFAULT_FILTERS,
+    origen_tipo: origen,
+  })
+  const calzado: CatalogoFilterState = { ...base, ramo_tipo: 'CALZADO' }
+  const confecciones: CatalogoFilterState = { ...base, ramo_tipo: 'CONFECCIONES' }
+
+  const preload = (f: CatalogoFilterState) => {
+    const key = catalogWarmCacheKey(f)
+    if (isCatalogWarmEnough(getPageWarmCache(key))) return
+    void prefetchCatalogPage(f, { withFiltros: false }).catch(() => undefined)
+  }
+
+  if (ramoActual === 'CONFECCIONES') {
+    preload(calzado)
+    staggerWarm(() => preload(confecciones), 400)
+  } else {
+    preload(confecciones)
+    staggerWarm(() => preload(calzado), 400)
+  }
+}
 
 /** PE Confecciones ≥30 — cambio Calzado↔Confecciones ~3 s. */
 export function ensurePeConfeccionesWarm(): void {
@@ -371,23 +491,35 @@ export function ensureCpConfeccionesWarm(): void {
     .finally(() => { cpConfInflight = null })
 }
 
-export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): void {
-  if (typeof window === 'undefined') return
+function staggerWarm(fn: () => void, delayMs: number): void {
+  window.setTimeout(fn, delayMs)
+}
 
-  // Todos primero — grilla fusionada CP+PE (Director · 2026-07-13)
-  ensureTodosCatalogWarm()
-  ensurePeCatalogWarm()
-  ensurePeConfeccionesWarm()
-  ensureCpConfeccionesWarm()
+export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): void {
+  if (typeof window === 'undefined' || !catalogWarmEnabled) return
+
+  // Grilla activa pide datos → warm diferido (evita statement timeout en ráfaga).
+  if (isPrimaryCatalogFetchActive()) {
+    runWhenIdle(() => ensureDualCatalogWarm(_activeFilters))
+    return
+  }
 
   const cpFilters = effectiveCpWarmFilters()
   const cpKey = catalogWarmCacheKey(cpFilters)
 
+  // CP calzado primero (más liviano) — resto escalonado en cola única.
   if (!isCatalogWarmEnough(getPageWarmCache(cpKey)) && !cpInflight) {
     cpInflight = prefetchCatalogPage(cpFilters, { withFiltros: false })
       .catch(() => undefined)
       .finally(() => { cpInflight = null })
   }
+
+  staggerWarm(() => ensureTodosCalzadoWarm(), 2_000)
+  staggerWarm(() => ensureTodosConfeccionesWarm(), 2_400)
+  staggerWarm(() => ensurePeCatalogWarm(), 4_000)
+  staggerWarm(() => ensurePeConfeccionesWarm(), 6_000)
+  staggerWarm(() => ensureCpConfeccionesWarm(), 8_000)
+  staggerWarm(() => ensureTodosCatalogWarm(), 12_000)
 }
 
 /** @deprecated usar ensureDualCatalogWarm */
@@ -424,6 +556,18 @@ export function prefetchScrollPageWhenIdle(
 ): void {
   if (!rowFrom && !exclude.length) return
   runWhenIdle(() => {
+    void prefetchScrollPage(filters, rowFrom, exclude)
+  })
+}
+
+/** Prefetch página 2+ en microtarea — scroll sin esperar idle. */
+export function prefetchScrollPageSoon(
+  filters: CatalogoFilterState,
+  rowFrom: number,
+  exclude: string[],
+): void {
+  if (!rowFrom && !exclude.length) return
+  queueMicrotask(() => {
     void prefetchScrollPage(filters, rowFrom, exclude)
   })
 }

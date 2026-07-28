@@ -1,6 +1,6 @@
 /**
  * Etapas visibles «RIMEC sincronizando» — warm CP → PE → Confecciones → Todos.
- * Promesa UX (CHUSAR 2.2.1.15): mínimo ~30 s · preview con fotos · % por tiempo.
+ * Hotfix 2026-07-28: mínimo ~5 s · seed con force · cierra al tener Todos warm.
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
 import {
@@ -116,8 +116,8 @@ export type CatalogSyncProgress = {
 export const CATALOG_SYNC_PREVIEW_LIMIT = 12
 export const CATALOG_SYNC_GRID_SLOTS = 9
 
-/** CHUSAR 2.2.1.15 — mínimo 30 s aunque el cache responda antes. */
-export const CATALOG_SYNC_MIN_TOTAL_MS = 30_000
+/** Hotfix login: no castigar al vendedor con 30 s teatrales si el warm ya respondió. */
+export const CATALOG_SYNC_MIN_TOTAL_MS = 5_000
 
 /** Prod: overlay warm. Local: activar con NEXT_PUBLIC_CATALOG_SYNC_OVERLAY=1. */
 export function isCatalogSyncOverlayEnabled(): boolean {
@@ -131,7 +131,8 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function waitStageMin(stageStartMs: number): Promise<void> {
+async function waitStageMin(stageStartMs: number, stage: CatalogSyncStageDef): Promise<void> {
+  if (isStageWarm(stage)) return
   await delay(Math.max(0, STAGE_MIN_MS - (Date.now() - stageStartMs)))
 }
 
@@ -169,7 +170,7 @@ async function warmStageWithRetry(stage: CatalogSyncStageDef): Promise<void> {
 
     await prefetchCatalogPage(stage.filters(), {
       withFiltros: stage.withFiltros,
-      force: i > 0,
+      force: true,
       maxAttempts: 3,
     }).catch(() => undefined)
 
@@ -177,7 +178,7 @@ async function warmStageWithRetry(stage: CatalogSyncStageDef): Promise<void> {
     if (stage.id === 'confecciones') {
       await prefetchCatalogPage(CP_CONFECCIONES_FILTERS, {
         withFiltros: false,
-        force: i > 0,
+        force: true,
         maxAttempts: 2,
       }).catch(() => undefined)
     }
@@ -222,28 +223,49 @@ export async function runCatalogSyncStages(
 
   const cpStage = CATALOG_SYNC_STAGES[0]!
   const peStage = CATALOG_SYNC_STAGES[1]!
+  const todosStage = CATALOG_SYNC_STAGES.find((s) => s.id === 'todos')!
 
-  // Seed fotos YA (ruta quick) — el usuario debe ver imágenes desde ~10 %.
+  // Seed fotos YA (ruta quick) — Todos primero (vista home) + CP/PE en paralelo.
   emit({
-    stageIndex: 0,
-    stage: cpStage,
+    stageIndex: CATALOG_SYNC_STAGES.length - 1,
+    stage: todosStage,
     phase: 'start',
     completedIds: [],
     marqueeTarjetas: [],
   })
 
-  const seedCp = prefetchCatalogPage(cpStage.filters(), { maxAttempts: 1 }).catch(() => undefined)
-  const seedPe = prefetchCatalogPage(peStage.filters(), { maxAttempts: 1 }).catch(() => undefined)
+  // force:true — warm de fondo está OFF hasta 1.ª grilla; sin force el seed era no-op.
+  const seedTodos = prefetchCatalogPage(todosStage.filters(), {
+    withFiltros: true,
+    maxAttempts: 2,
+    force: true,
+  }).catch(() => undefined)
+  const seedCp = prefetchCatalogPage(cpStage.filters(), {
+    maxAttempts: 1,
+    force: true,
+  }).catch(() => undefined)
+  const seedPe = prefetchCatalogPage(peStage.filters(), {
+    maxAttempts: 1,
+    force: true,
+  }).catch(() => undefined)
 
-  // Poll agresivo los primeros ~4 s hasta tener preview con fotos.
+  // Poll agresivo los primeros ~4 s — preview = grilla Todos si ya calentó.
   const seedDeadline = Date.now() + 4_500
   while (Date.now() < seedDeadline) {
-    const mid = emitPreviewFromCache(cpStage, marqueeTarjetas)
+    const todosPreview = stagePreviewTarjetas(todosStage)
+    const mid =
+      todosPreview.length > 0
+        ? {
+            preview: todosPreview,
+            marquee: mergeMarqueeTarjetas(marqueeTarjetas, todosPreview),
+          }
+        : emitPreviewFromCache(cpStage, marqueeTarjetas)
     if (mid.preview.length > 0) {
       marqueeTarjetas = mid.marquee
+      warmCatalogImages(mid.preview, CATALOG_SYNC_GRID_SLOTS)
       emit({
-        stageIndex: 0,
-        stage: cpStage,
+        stageIndex: todosPreview.length > 0 ? CATALOG_SYNC_STAGES.length - 1 : 0,
+        stage: todosPreview.length > 0 ? todosStage : cpStage,
         phase: 'start',
         completedIds: [],
         previewTarjetas: mid.preview,
@@ -256,6 +278,9 @@ export async function runCatalogSyncStages(
 
   // Warm completo en paralelo (incluye stages restantes).
   const stageWarmTasks = CATALOG_SYNC_STAGES.map((stage, idx) => {
+    if (stage.id === 'todos') {
+      return seedTodos.then(() => warmStageWithRetry(stage))
+    }
     if (idx === 0) return seedCp.then(() => warmStageWithRetry(stage))
     if (idx === 1) return seedPe.then(() => warmStageWithRetry(stage))
     return warmStageWithRetry(stage)
@@ -302,7 +327,7 @@ export async function runCatalogSyncStages(
           ),
         })
       }
-      if (warmDone) break
+      if (warmDone && isStageWarm(stage)) break
       await delay(280)
     }
 
@@ -331,7 +356,7 @@ export async function runCatalogSyncStages(
       })
     }
 
-    await waitStageMin(stageStartMs)
+    await waitStageMin(stageStartMs, stage)
 
     completedIds.push(stage.id)
     const done = emitPreviewFromCache(stage, marqueeTarjetas)
@@ -351,11 +376,20 @@ export async function runCatalogSyncStages(
     })
   }
 
-  await delay(Math.max(0, CATALOG_SYNC_MIN_TOTAL_MS - (Date.now() - runStartMs)))
-
-  const todosStage = CATALOG_SYNC_STAGES.find((s) => s.id === 'todos')!
-  if (!isStageWarm(todosStage)) {
-    await warmStageWithRetry(todosStage)
+  const elapsedBeforeTail = Date.now() - runStartMs
+  const todosWarmNow = isStageWarm(todosStage)
+  const allStagesWarm = CATALOG_SYNC_STAGES.every(isStageWarm)
+  if (todosWarmNow) {
+    // Gate listo: salir ya (máx ~1.2 s de marca si el warm fue instantáneo).
+    const MIN_BRAND_MS = allStagesWarm ? 400 : 1_200
+    if (elapsedBeforeTail < MIN_BRAND_MS) {
+      await delay(MIN_BRAND_MS - elapsedBeforeTail)
+    }
+  } else {
+    await delay(Math.max(0, CATALOG_SYNC_MIN_TOTAL_MS - elapsedBeforeTail))
+    if (!isStageWarm(todosStage)) {
+      await warmStageWithRetry(todosStage)
+    }
   }
 
   const finalLedger = buildIntegrityLedger(

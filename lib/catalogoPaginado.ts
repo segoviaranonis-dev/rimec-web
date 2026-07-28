@@ -20,7 +20,10 @@ import { enrichCatalogoRows, enrichPreventaCatalogoRows } from '@/lib/catalogoEn
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 import { calzadoExcluyeCarterasPorDefecto } from '@/lib/filtros/filtro-tipo-canonico'
 import { peTieneSubfamiliaAccesorios } from '@/lib/filtros/modulo-accesorios'
-import { enrichTarjetasPeDescuentoComercial } from '@/lib/peDescuentoComercial'
+import {
+  enrichTarjetasPeDescuentoComercial,
+  fetchPeDescuentoComercialMap,
+} from '@/lib/peDescuentoComercial'
 
 export const CATALOGO_CARD_PAGE = 30
 const ROW_BATCH = 80
@@ -31,6 +34,60 @@ const QUERY_RETRIES = 2
 const BUCKET = `${resolveSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/productos`
 
 type StockView = 'v_stock_rimec' | 'v_stock_pe_rimec'
+
+/** Confecciones/accesorios: escaneo total agota statement_timeout en prod. */
+function catalogoUsaRutaRapida(filters: CatalogoFilterStateExtended): boolean {
+  const ramo = String(filters.ramo_tipo ?? '').toUpperCase()
+  return ramo === 'CONFECCIONES' || ramo === 'ACCESORIOS'
+}
+
+function rowBatchSize(filters: CatalogoFilterStateExtended): number {
+  if (catalogoUsaRutaRapida(filters)) return 40
+  return isCatalogoOrigenTodos(filters) ? ROW_BATCH_TODOS : ROW_BATCH
+}
+
+function cpConfeccionesFilters(
+  filters: CatalogoFilterStateExtended,
+): CatalogoFilterStateExtended {
+  return filtersForCpSql({
+    ...filters,
+    origen_tipo: 'TRÁNSITO_PP',
+    ramo_tipo: 'CONFECCIONES',
+    deposito_codigo: '',
+    quincenas: [],
+  })
+}
+
+function peConfeccionesFilters(
+  filters: CatalogoFilterStateExtended,
+): CatalogoFilterStateExtended {
+  return filtersForPeSql({
+    ...filters,
+    origen_tipo: 'PRONTA_ENTREGA',
+    ramo_tipo: 'CONFECCIONES',
+    quincenas: [],
+  })
+}
+
+/** TODOS+Confecciones = CP 638 + PE confecciones (paridad meta RPC · evita scan PE-only). */
+async function fetchStockBatchConfeccionesTodos(
+  filters: CatalogoFilterStateExtended,
+  rowFrom: number,
+  rowTo: number,
+): Promise<StockRow[]> {
+  const span = rowTo - rowFrom + 1
+  const half = Math.max(1, Math.ceil(span / 2))
+  const cpTo = rowFrom + half - 1
+  const [cpRows, peRows] = await Promise.all([
+    fetchStockBatchFromView('v_stock_rimec', cpConfeccionesFilters(filters), rowFrom, cpTo).catch(
+      () => [] as StockRow[],
+    ),
+    fetchStockBatchFromView('v_stock_pe_rimec', peConfeccionesFilters(filters), rowFrom, cpTo).catch(
+      () => [] as StockRow[],
+    ),
+  ])
+  return [...cpRows, ...peRows]
+}
 
 /** Orden canónico grilla: Línea → Referencia → Material → Color (ascendente). */
 export function compareLineaRefMatColor(
@@ -183,8 +240,10 @@ async function fetchStockBatch(
   rowTo: number,
 ): Promise<StockRow[]> {
   if (isCatalogoOrigenTodos(filters)) {
+    if (filters.ramo_tipo === 'CONFECCIONES') {
+      return fetchStockBatchConfeccionesTodos(filters, rowFrom, rowTo)
+    }
     if (
-      filters.ramo_tipo === 'CONFECCIONES' ||
       filters.ramo_tipo === 'ACCESORIOS' ||
       peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
     ) {
@@ -204,6 +263,7 @@ async function fetchStockBatch(
 async function rowsToGrillaAsync(
   rows: StockRow[],
   filters: CatalogoFilterStateExtended,
+  peDescMap?: Map<string, number>,
 ): Promise<TarjetaGrilla[]> {
   const active = rows.filter(r => cajasDisponiblesDeFila(r) > 0)
   // Preventa Carlos siempre — la vista puede traer género/tono sin nro_pedido_externo (MIG-151).
@@ -223,7 +283,7 @@ async function rowsToGrillaAsync(
       : t.origen_tipo === 'PRONTA_ENTREGA',
   )
   if (tienePe) {
-    await enrichTarjetasPeDescuentoComercial(sorted)
+    await enrichTarjetasPeDescuentoComercial(sorted, peDescMap)
   }
   return sorted
 }
@@ -244,7 +304,7 @@ export async function fetchTarjetasPage(opts: {
   hasMore: boolean
   excludeCardKeys: string[]
 }> {
-  if (opts.quick) {
+  if (opts.quick || catalogoUsaRutaRapida(opts.filters)) {
     return fetchTarjetasPageQuick(opts)
   }
 
@@ -280,7 +340,7 @@ async function fetchTarjetasPageQuick(opts: {
   let rowFrom = Math.max(0, opts.rowFrom)
   let scanned = 0
   let hasMore = true
-  const batchSize = isCatalogoOrigenTodos(opts.filters) ? ROW_BATCH_TODOS : ROW_BATCH
+  const batchSize = rowBatchSize(opts.filters)
 
   while (tarjetas.length < opts.limit && hasMore && scanned < MAX_SCAN_ROWS) {
     const to = rowFrom + batchSize - 1
@@ -347,6 +407,9 @@ async function loadSortedCatalogCards(
   const hit = sortedCatalogCache.get(key)
   if (hit && Date.now() - hit.at < SORT_CACHE_TTL_MS) return hit.cards
 
+  // Un solo fetch del mapa % (TTL en peDescuentoComercial) — no por lote.
+  const peDescMap = await fetchPeDescuentoComercialMap()
+
   const seen = new Map<string, TarjetaGrilla>()
   let rowFrom = 0
   let scanned = 0
@@ -357,7 +420,7 @@ async function loadSortedCatalogCards(
     if (!batch.length) break
     scanned += batch.length
     rowFrom += batch.length
-    const grilla = await rowsToGrillaAsync(batch, filters)
+    const grilla = await rowsToGrillaAsync(batch, filters, peDescMap)
     for (const card of grilla) {
       if (!seen.has(card.cardKey)) seen.set(card.cardKey, card)
     }

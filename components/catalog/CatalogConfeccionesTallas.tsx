@@ -13,7 +13,7 @@ import {
   variantesPorColor,
 } from '@/lib/confeccionesCatalogo'
 import { etiquetaTalleDesdeGrada } from '@/lib/gradaAbierta638'
-import { syntheticPpIdForPe } from '@/lib/prontaEntregaVenta'
+import { syntheticPpIdForPe, isProntaEntregaStockRow } from '@/lib/prontaEntregaVenta'
 import { resolverLpc03, resolverLpc04 } from '@/lib/precioLista'
 
 type Props = {
@@ -29,10 +29,14 @@ function buildCartItem(
   lote: TarjetaCatalogo,
   line: TallaVentaLine,
   listaPrecioId: ListaId,
-  esPe: boolean,
 ) {
   const v = line.variante
   const precioVal = line.precio
+  const esPe = isProntaEntregaStockRow({
+    det_id: v.det_id,
+    origen_tipo: lote.origen_tipo,
+    pp_id: v.pp_id,
+  })
   const ppIdPe = esPe
     ? syntheticPpIdForPe({ deposito_id: v.deposito_id, proforma: v.proforma, pp_nro: v.pp_nro })
     : (v.pp_id ?? 0)
@@ -40,7 +44,7 @@ function buildCartItem(
   const precioLpc04Snap = resolverLpc04(v.lpn ?? null, v.lpc04 ?? null, lote.descp_caso) ?? 0
 
   return {
-    det_id: v.det_id,
+    det_id: Number(v.det_id),
     linea_codigo: lote.linea_codigo,
     referencia_codigo: lote.referencia_codigo,
     material_code: v.material_code,
@@ -82,37 +86,57 @@ function splitDosFilas<T>(items: T[]): [T[], T[]] {
   return [items.slice(0, mid), items.slice(mid)]
 }
 
+function etiquetaTallePrefijo(talle: string): string {
+  const t = String(talle ?? '').trim()
+  if (!t || t === '—') return 'T ?'
+  return `T ${t}`
+}
+
+/** 638 — un toque: 0→1→…→máx→0. Sin +/- (poco espacio en tarjeta). */
 function BotonTalla({
   line,
   qty,
+  activa,
   onTap,
 }: {
   line: TallaVentaLine
   qty: number
+  activa: boolean
   onTap: () => void
 }) {
-  const agotado = qty >= line.stock
+  const sinStock = line.stock <= 0
   const seleccionado = qty > 0
+  const prefijo = etiquetaTallePrefijo(line.talle)
+  const enMax = qty >= line.stock && line.stock > 0
+
   return (
     <button
       type="button"
-      title={line.gradas_fmt}
-      disabled={agotado}
-      onClick={onTap}
-      className={`flex h-[1.625rem] min-w-[1.625rem] flex-1 flex-col items-center justify-center rounded border px-0.5 text-center transition active:scale-95 disabled:opacity-35 ${
+      title={
         seleccionado
-          ? 'border-rimec-azul bg-rimec-azul text-white'
-          : 'border-slate-200/90 bg-white text-slate-800 hover:border-rimec-azul/40'
+          ? `${prefijo}: ${qty} · toque otra vez ${enMax ? '→ vaciar' : '→ +1'}`
+          : `${line.gradas_fmt} · ${line.stock} disp. · toque para pedir`
+      }
+      disabled={sinStock && activa}
+      onClick={onTap}
+      className={`flex h-[1.75rem] min-w-[2.75rem] flex-1 flex-col items-center justify-center rounded border px-0.5 text-center transition active:scale-95 disabled:opacity-35 ${
+        seleccionado
+          ? 'border-rimec-azul bg-rimec-azul text-white shadow-sm'
+          : 'border-slate-200/90 bg-slate-50 text-slate-600 hover:border-slate-300'
       }`}
     >
-      <span className="text-[9px] font-black leading-none">{line.talle}</span>
-      <span
-        className={`mt-px text-[6px] font-semibold leading-none tabular-nums ${
-          seleccionado ? 'text-white/80' : 'text-slate-400'
-        }`}
-      >
-        {seleccionado ? `${qty}/${line.stock}` : line.stock}
-      </span>
+      {seleccionado ? (
+        <span className="whitespace-nowrap text-[8px] font-black tabular-nums leading-none">
+          {prefijo}: {qty}
+        </span>
+      ) : (
+        <>
+          <span className="whitespace-nowrap text-[8px] font-black leading-none text-slate-700">{prefijo}</span>
+          <span className="mt-px text-[6px] font-semibold leading-none tabular-nums text-slate-400">
+            {line.stock}
+          </span>
+        </>
+      )}
     </button>
   )
 }
@@ -120,10 +144,12 @@ function BotonTalla({
 function FilaTallas({
   tallas,
   carrito,
+  activa,
   onTap,
 }: {
   tallas: TallaVentaLine[]
   carrito: Record<string, { cajas?: number }>
+  activa: boolean
   onTap: (line: TallaVentaLine) => void
 }) {
   if (tallas.length === 0) return null
@@ -134,6 +160,7 @@ function FilaTallas({
           key={line.det_id}
           line={line}
           qty={carrito[`det_${line.det_id}`]?.cajas ?? 0}
+          activa={activa}
           onTap={() => onTap(line)}
         />
       ))}
@@ -150,7 +177,12 @@ export function CatalogConfeccionesTallas({
 }: Props) {
   const carrito = useSesion(s => s.carrito)
   const agregarCaja = useSesion(s => s.agregarCaja)
-  const esPe = lote.origen_tipo === 'PRONTA_ENTREGA'
+  const setCajas = useSesion(s => s.setCajas)
+  const esPe = isProntaEntregaStockRow({
+    det_id: lote.variantes[0]?.det_id,
+    origen_tipo: lote.origen_tipo,
+    pp_id: lote.variantes[0]?.pp_id,
+  })
 
   const colores = useMemo(() => coloresUnicosEnLote(lote), [lote])
   const tonoKey = activeTonoKey && colores.includes(activeTonoKey) ? activeTonoKey : colores[0] ?? ''
@@ -198,15 +230,19 @@ export function CatalogConfeccionesTallas({
     [variantesTalla],
   )
 
-  const handleTap = (line: TallaVentaLine) => {
+  const handleTapTalla = (line: TallaVentaLine) => {
     if (!activa) {
       onNeedSession()
       return
     }
+    if (line.stock <= 0) return
     const key = `det_${line.det_id}`
     const qty = carrito[key]?.cajas ?? 0
-    if (qty >= line.stock) return
-    void agregarCaja(buildCartItem(lote, line, listaPrecioId, esPe))
+    if (qty >= line.stock) {
+      void setCajas(line.det_id, 0)
+      return
+    }
+    void agregarCaja(buildCartItem(lote, line, listaPrecioId))
   }
 
   if (gruposUi.length === 0) {
@@ -257,8 +293,8 @@ export function CatalogConfeccionesTallas({
               </p>
             ) : null}
             <div className="flex flex-col gap-0.5">
-              <FilaTallas tallas={fila1} carrito={carrito} onTap={handleTap} />
-              <FilaTallas tallas={fila2} carrito={carrito} onTap={handleTap} />
+              <FilaTallas tallas={fila1} carrito={carrito} activa={activa} onTap={handleTapTalla} />
+              <FilaTallas tallas={fila2} carrito={carrito} activa={activa} onTap={handleTapTalla} />
             </div>
           </div>
         )

@@ -15,12 +15,41 @@ export function esDescuentoSoloComisionDiccionario(raw: unknown): boolean {
   return COMISION_D1.has(Number(d[0]) || 0)
 }
 
+/** Suma Descuentos4 comerciales (excluye filas vacías / solo comisión). */
+export function sumaDescuentosComerciales(raw: unknown): number {
+  const d = normalizarDescuentos4(raw)
+  if (esDescuentoSoloComisionDiccionario(d)) return 0
+  return d.reduce((s, x) => s + (Number(x) || 0), 0)
+}
+
+/**
+ * pre_autorizado solo bloquea si el vendedor fijó descuentos comerciales reales.
+ * [0,0,0,0] o solo comisión 2/4 congelados por validación → re-sincronizar dictado Report.
+ */
+export function preAutorizadoBloqueaResolver(raw: unknown, preAutorizado?: boolean): boolean {
+  if (!preAutorizado) return false
+  return sumaDescuentosComerciales(raw) > 0
+}
+
+/** Descuentos4 canónicos PE desde lista + dictado Report (sin comisión diccionario). */
+export function calcularDescuentosPeCanonicos(input: {
+  listaPrecioId: number
+  dictadoComercialPct: number | null | undefined
+}): Descuentos4 {
+  return resolverDescuentosFiPe({
+    listaPrecioId: input.listaPrecioId,
+    descuentosPrevios: [0, 0, 0, 0],
+    dictadoComercialPct: input.dictadoComercialPct,
+    preAutorizado: false,
+  })
+}
+
 /**
  * Resuelve Descuentos4 para FI PE.
  * · LPC03 (lista 3): D1=10% fijo · D2=dictado comercial
  * · resto: D1=dictado comercial
  * · Si previos son solo comisión (2/4) → pisar con dictado
- * · pre_autorizado → no tocar (vendedor/admin editó)
+ * · pre_autorizado → no tocar solo si hay descuento comercial real (edición vendedor)
  */
 export function resolverDescuentosFiPe(input: {
   listaPrecioId: number
@@ -29,7 +58,7 @@ export function resolverDescuentosFiPe(input: {
   preAutorizado?: boolean
 }): Descuentos4 {
   const prev = normalizarDescuentos4(input.descuentosPrevios)
-  if (input.preAutorizado) return prev
+  if (preAutorizadoBloqueaResolver(prev, input.preAutorizado)) return prev
 
   const dictado =
     input.dictadoComercialPct != null &&

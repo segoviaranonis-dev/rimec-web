@@ -180,11 +180,17 @@ export async function carritoUpsertItem(item: {
   marca_id_snapshot?: number | null
   origen_tipo?: string | null
 }): Promise<CarritoItemBD> {
+  const payload = {
+    ...item,
+    det_id: Number(item.det_id),
+    pp_id: Number(item.pp_id),
+    cantidad_cajas: Math.floor(Number(item.cantidad_cajas)),
+  }
   const res = await fetch('/api/carrito/items', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify(item),
+    body: JSON.stringify(payload),
   })
   const data = await asJson<{ item: CarritoItemBD }>(res)
   return data.item

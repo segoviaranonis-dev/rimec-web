@@ -40,7 +40,7 @@ export async function PATCH(
 
   const { data: currentItem } = await sb
     .from('carrito_item')
-    .select('cantidad_cajas')
+    .select('cantidad_cajas, pp_id')
     .eq('id_usuario', session.id_usuario)
     .eq('det_id', detId)
     .maybeSingle()
@@ -49,7 +49,12 @@ export async function PATCH(
 
   // Solo validar stock al subir cantidad — bajar/quitar no consume stock nuevo
   if (qty > currentQty) {
-    const stockHit = await resolveCarritoStockRow(sb, detId)
+    const stockHit = await resolveCarritoStockRow(
+      sb,
+      detId,
+      null,
+      currentItem?.pp_id ?? null,
+    )
     if (!stockHit) {
       return NextResponse.json({ error: 'producto no encontrado' }, { status: 404 })
     }

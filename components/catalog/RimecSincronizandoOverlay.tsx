@@ -88,12 +88,15 @@ export function RimecSincronizandoOverlay({
   const phase = progress?.phase ?? 'start'
   const completed = new Set<CatalogSyncStageId>(progress?.completedIds ?? [])
 
-  // % solo por reloj (~30 s) — no saltar a 100% porque las etapas warm terminaron antes.
+  // % por reloj; si Todos ya PASS → 99% sin quedarse congelado hasta el final.
   const elapsedMs = startedAt ? Math.max(0, nowMs - startedAt) : 0
   const rawPct = (elapsedMs / CATALOG_SYNC_MIN_TOTAL_MS) * 100
+  const todosListo = (progress?.audit?.todosTarjetas ?? 0) >= 30 && progress?.audit?.allPass
   const progressPct = waitingGrid
     ? 100
-    : Math.min(99, Math.max(1, Math.round(rawPct)))
+    : todosListo && phase === 'done'
+      ? 99
+      : Math.min(99, Math.max(1, Math.round(rawPct)))
 
   const label =
     waitingGrid && phase === 'done'

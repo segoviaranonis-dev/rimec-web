@@ -6,13 +6,13 @@ import {
   moleculeKeyPeDescuento,
 } from '@/lib/peDescuentoComercial'
 
-/** CP (v_stock_rimec) — sin proveedor_importacion_id/tipo_v2_id (solo existen en v_stock_pe_rimec). */
+/** CP (v_stock_rimec) — incluye señales 638 para normalizar prendas vs cajas. */
 const CARRITO_STOCK_SELECT_CP =
-  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, saldo_pares, cantidad_cajas, cantidad_pares, pares_vendidos, grades_json, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo, pp_id'
+  'det_id, lpn, lpc02, lpc03, lpc04, cajas_disponibles, saldo_pares, cantidad_cajas, cantidad_pares, pares_vendidos, grades_json, grada, linea_codigo, referencia_codigo, material_code, color_code, descp_color, pp_nro, proforma, quincena_desc, nombre, imagen_url, pares_por_caja, descp_caso, origen_tipo, pp_id, tipo_v2_id, ramo_tipo'
 
-/** PE: señales R-FI-2 + COD.GRUPO Carlos (dígito cadena → LIQ/PROMO/REGULAR). */
+/** PE: señales R-FI-2 + COD.GRUPO Carlos · CP base ya trae grada/tipo_v2/ramo. */
 const CARRITO_STOCK_SELECT_PE =
-  `${CARRITO_STOCK_SELECT_CP.replace('grades_json,', 'grades_json, grada,')}, proveedor_importacion_id, tipo_v2_id, es_liquidacion, es_promo, cadena_comercial, cod_grupo`
+  `${CARRITO_STOCK_SELECT_CP}, proveedor_importacion_id, es_liquidacion, es_promo, cadena_comercial, cod_grupo`
 
 /** @deprecated Usar select por vista. */
 export const CARRITO_STOCK_SELECT = CARRITO_STOCK_SELECT_CP
@@ -117,6 +117,20 @@ async function fetchVistaStockChunked(
   return rows
 }
 
+async function fetchVistaStockSafe(
+  sb: SupabaseClient,
+  table: 'v_stock_rimec' | 'v_stock_pe_rimec',
+  select: string,
+  detIds: number[],
+): Promise<CarritoStockEnriched[]> {
+  try {
+    return await fetchVistaStockChunked(sb, table, select, detIds)
+  } catch (err) {
+    console.error(`[carritoStock] ${table}`, err)
+    return []
+  }
+}
+
 /** Fallback PPD — el carrito guarda det_id real; la vista catálogo puede filtrar filas válidas. */
 async function fetchPpdStockFallback(
   sb: SupabaseClient,
@@ -169,6 +183,7 @@ async function fetchPpdStockFallback(
 export async function fetchCarritoStockByDetIds(
   sb: SupabaseClient,
   detIds: number[],
+  opts?: { withPeDescuento?: boolean },
 ): Promise<Map<number, CarritoStockEnriched>> {
   const map = new Map<number, CarritoStockEnriched>()
   if (!detIds.length) return map
@@ -177,8 +192,8 @@ export async function fetchCarritoStockByDetIds(
   const expanded = expandPeDetIds(unique)
 
   const [cpRows, peRows] = await Promise.all([
-    fetchVistaStockChunked(sb, 'v_stock_rimec', CARRITO_STOCK_SELECT_CP, expanded),
-    fetchVistaStockChunked(sb, 'v_stock_pe_rimec', CARRITO_STOCK_SELECT_PE, expanded),
+    fetchVistaStockSafe(sb, 'v_stock_rimec', CARRITO_STOCK_SELECT_CP, expanded),
+    fetchVistaStockSafe(sb, 'v_stock_pe_rimec', CARRITO_STOCK_SELECT_PE, expanded),
   ])
 
   const aliasKeys = new Set(unique)
@@ -207,19 +222,21 @@ export async function fetchCarritoStockByDetIds(
   }
 
   try {
-    const descMap = await fetchPeDescuentoComercialMap()
-    if (descMap.size > 0) {
-      for (const row of map.values()) {
-        const k = moleculeKeyPeDescuento(
-          String(row.linea_codigo ?? ''),
-          String(row.referencia_codigo ?? ''),
-          String(row.material_code ?? ''),
-          String(row.color_code ?? ''),
-        )
-        const pct = descMap.get(k)
-        if (pct != null && pct > 0) {
-          ;(row as CarritoStockEnriched & { descuento_comercial_pct?: number }).descuento_comercial_pct =
-            pct
+    if (opts?.withPeDescuento) {
+      const descMap = await fetchPeDescuentoComercialMap()
+      if (descMap.size > 0) {
+        for (const row of map.values()) {
+          const k = moleculeKeyPeDescuento(
+            String(row.linea_codigo ?? ''),
+            String(row.referencia_codigo ?? ''),
+            String(row.material_code ?? ''),
+            String(row.color_code ?? ''),
+          )
+          const pct = descMap.get(k)
+          if (pct != null && pct > 0) {
+            ;(row as CarritoStockEnriched & { descuento_comercial_pct?: number }).descuento_comercial_pct =
+              pct
+          }
         }
       }
     }

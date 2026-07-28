@@ -16,13 +16,19 @@ export function moleculeKeyPeDescuento(
 }
 
 const PAGE = 1000
+const MAP_TTL_MS = 5 * 60_000
 
-export async function fetchPeDescuentoComercialMap(opts?: {
-  batchLabel?: string | null
-}): Promise<Map<string, number>> {
+type MapCacheEntry = { map: Map<string, number>; at: number }
+const mapCache = new Map<string, MapCacheEntry>()
+const mapInflight = new Map<string, Promise<Map<string, number>>>()
+
+function cacheKeyForBatch(batch: string): string {
+  return batch || '__all__'
+}
+
+async function fetchPeDescuentoComercialMapUncached(batch: string): Promise<Map<string, number>> {
   const sb = getSupabaseAdmin()
   const map = new Map<string, number>()
-  const batch = String(opts?.batchLabel ?? '').trim()
 
   // Preferir batch concreto: primero filas con batch, luego globales.
   // Paginación — PostgREST limita ~1000 por request.
@@ -65,6 +71,30 @@ export async function fetchPeDescuentoComercialMap(opts?: {
   }
 
   return map
+}
+
+export async function fetchPeDescuentoComercialMap(opts?: {
+  batchLabel?: string | null
+}): Promise<Map<string, number>> {
+  const batch = String(opts?.batchLabel ?? '').trim()
+  const key = cacheKeyForBatch(batch)
+  const hit = mapCache.get(key)
+  if (hit && Date.now() - hit.at < MAP_TTL_MS) return hit.map
+
+  const pending = mapInflight.get(key)
+  if (pending) return pending
+
+  const run = fetchPeDescuentoComercialMapUncached(batch)
+    .then((map) => {
+      mapCache.set(key, { map, at: Date.now() })
+      return map
+    })
+    .finally(() => {
+      mapInflight.delete(key)
+    })
+
+  mapInflight.set(key, run)
+  return run
 }
 
 export async function lookupPeDescuentoPct(input: {

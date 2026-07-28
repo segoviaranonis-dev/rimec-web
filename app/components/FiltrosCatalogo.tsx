@@ -716,7 +716,7 @@ export function FiltrosCatalogo({
           <input
             value={buscarLocal}
             onChange={e => setBuscarLocal(e.target.value)}
-            placeholder="Línea, ref, marca, material, color…"
+            placeholder="L-R-M-C · línea · marca · material · color…"
             className="flex-1 min-w-0 rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-orange-400"
           />
         </FilterRow>

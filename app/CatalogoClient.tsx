@@ -572,8 +572,8 @@ export function CatalogoClient({ initialFilters }: Props) {
         fromRow: opts.fromRow,
         limit: opts.limit ?? 30,
         exclude: opts.exclude,
-        // Sin filtros laterales: siempre ruta quick (evita escaneo 12k + descuentos × lote).
-        quick: !hasSidebarFilters(opts.currentFilters),
+        // Con filtros/búsqueda: NUNCA escaneo 12k (loadSorted). Ruta quick + SQL.
+        quick: true,
       })
       return json as {
         tarjetas: TarjetaGrilla[]

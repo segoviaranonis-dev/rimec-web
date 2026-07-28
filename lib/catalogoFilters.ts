@@ -131,6 +131,28 @@ function escapeIlike(q: string): string {
   return q.replace(/[%_,().\\]/g, ' ').trim()
 }
 
+/** Buscar L-R-M-C (o L-R / L-R-M) · códigos numéricos separados por - o /. */
+export function parseBuscarCatalogo(raw: string): {
+  linea?: string
+  referencia?: string
+  material?: string
+  color?: string
+  free?: string
+} {
+  const t = String(raw ?? '').trim()
+  if (!t) return {}
+  const m = t.match(/^(\d+)\s*[-/]\s*(\d+)(?:\s*[-/]\s*(\d+))?(?:\s*[-/]\s*(\d+))?$/)
+  if (m) {
+    return {
+      linea: m[1],
+      referencia: m[2],
+      material: m[3] || undefined,
+      color: m[4] || undefined,
+    }
+  }
+  return { free: t }
+}
+
 export function generoCodigosActivos(filters: CatalogoFilterStateExtended): string[] {
   const multi = (filters.genero_codigos ?? []).map((c) => String(c).trim()).filter(Boolean)
   if (multi.length) return multi
@@ -160,20 +182,30 @@ export function applyGeneroRamoBuscarSql(query: any, filters: CatalogoFilterStat
     q = applyModuloAccesoriosExcludeSql(q) as typeof q
   }
 
-  const buscar = escapeIlike(String(filters.buscar ?? ''))
-  if (buscar.length >= 2) {
-    const pat = `%${buscar}%`
-    q = q.or(
-      [
-        `linea_codigo.ilike.${pat}`,
-        `referencia_codigo.ilike.${pat}`,
-        `nombre.ilike.${pat}`,
-        `descp_material.ilike.${pat}`,
-        `descp_color.ilike.${pat}`,
-        `material_code.ilike.${pat}`,
-        `descp_marca.ilike.${pat}`,
-      ].join(','),
-    )
+  const parsed = parseBuscarCatalogo(String(filters.buscar ?? ''))
+  if (parsed.linea) {
+    // Molécula L-R-M-C — AND por partes (ilike del string completo nunca matchea).
+    q = q.eq('linea_codigo', parsed.linea)
+    q = q.eq('referencia_codigo', parsed.referencia!)
+    if (parsed.material) q = q.eq('material_code', parsed.material)
+    if (parsed.color) q = q.eq('color_code', parsed.color)
+  } else {
+    const buscar = escapeIlike(parsed.free ?? '')
+    if (buscar.length >= 2) {
+      const pat = `%${buscar}%`
+      q = q.or(
+        [
+          `linea_codigo.ilike.${pat}`,
+          `referencia_codigo.ilike.${pat}`,
+          `nombre.ilike.${pat}`,
+          `descp_material.ilike.${pat}`,
+          `descp_color.ilike.${pat}`,
+          `material_code.ilike.${pat}`,
+          `color_code.ilike.${pat}`,
+          `descp_marca.ilike.${pat}`,
+        ].join(','),
+      )
+    }
   }
   return q
 }

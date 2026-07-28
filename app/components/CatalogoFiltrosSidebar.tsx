@@ -177,6 +177,7 @@ function MultiSelectGroup({
   emptyLabel = 'Sin opciones',
   maxH = 'max-h-36',
   defaultOpen = false,
+  filterable = false,
 }: {
   title: string
   items: FilterItem[]
@@ -186,43 +187,63 @@ function MultiSelectGroup({
   emptyLabel?: string
   maxH?: string
   defaultOpen?: boolean
+  /** Caja de filtro local — Estilo/Marca con muchas opciones (TENIS abajo del ABC). */
+  filterable?: boolean
 }) {
   const n = selected.length
+  const [q, setQ] = useState('')
+  const needle = q.trim().toLowerCase()
+  const visible = needle
+    ? items.filter((it) => String(it.label ?? '').toLowerCase().includes(needle))
+    : items
   return (
     <details open={defaultOpen} className="group rounded-lg border border-slate-200/90 bg-white">
-      <AcordeonHeader title={title} count={n} onClear={onClear} />
+      <AcordeonHeader title={`${title} · ${items.length}`} count={n} onClear={onClear} />
       <div className="border-t border-slate-100 p-1.5">
         {items.length === 0 ? (
           <p className="px-1 py-1 text-[11px] text-slate-400">{emptyLabel}</p>
         ) : (
-          <ul className={`${maxH} space-y-0.5 overflow-y-auto`} role="group" aria-label={`${title} · multi-selección`}>
-            {items.map((item) => {
-              const id = Number(item.id)
-              if (!Number.isFinite(id)) return null
-              const on = selected.includes(id)
-              return (
-                <li key={id}>
-                  <label
-                    className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition ${
-                      on
-                        ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
-                        : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => onToggle(id)}
-                      className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-rimec-azul focus:ring-rimec-azul/30"
-                    />
-                    <span className="min-w-0 flex-1 truncate" title={item.label}>
-                      {item.label}
-                    </span>
-                  </label>
-                </li>
-              )
-            })}
-          </ul>
+          <>
+            {filterable && items.length > 6 ? (
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Filtrar lista…"
+                className="mb-1.5 w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 placeholder:text-slate-400 focus:border-rimec-azul focus:outline-none"
+              />
+            ) : null}
+            <ul className={`${maxH} space-y-0.5 overflow-y-auto`} role="group" aria-label={`${title} · multi-selección`}>
+              {visible.map((item) => {
+                const id = Number(item.id)
+                if (!Number.isFinite(id)) return null
+                const on = selected.includes(id)
+                return (
+                  <li key={id}>
+                    <label
+                      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition ${
+                        on
+                          ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
+                          : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => onToggle(id)}
+                        className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-rimec-azul focus:ring-rimec-azul/30"
+                      />
+                      <span className="min-w-0 flex-1 truncate" title={item.label}>
+                        {item.label}
+                      </span>
+                    </label>
+                  </li>
+                )
+              })}
+              {visible.length === 0 ? (
+                <li className="px-1 py-1 text-[11px] text-slate-400">Sin coincidencias</li>
+              ) : null}
+            </ul>
+          </>
         )}
       </div>
     </details>
@@ -854,7 +875,7 @@ export function CatalogoFiltrosSidebar({
             type="search"
             value={buscarLocal}
             onChange={(e) => setBuscarLocal(e.target.value)}
-            placeholder="Línea, ref, marca…"
+            placeholder="L-R-M-C · línea · marca…"
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:border-rimec-azul focus:outline-none focus:ring-2 focus:ring-rimec-azul/20"
           />
         </label>
@@ -992,6 +1013,8 @@ export function CatalogoFiltrosSidebar({
           onToggle={(id) => patch(toggleEstiloCascada(estiloIds, id))}
           onClear={() => patch(cascadaEstilo([]))}
           defaultOpen
+          filterable
+          maxH="max-h-72"
         />
 
         <MultiSelectGroup

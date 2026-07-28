@@ -29,6 +29,7 @@ async function runTarjetasQuery(opts: {
   const { filters, rowFrom, limit, exclude, quick } = opts
   const useQuick =
     quick ||
+    Boolean(String(filters.buscar ?? '').trim()) ||
     filters.ramo_tipo === 'CONFECCIONES' ||
     filters.ramo_tipo === 'ACCESORIOS'
   if (useQuick) {

@@ -12,7 +12,7 @@ type Props = {
 
 const PASO_MS = 400
 const INTRO_MS = 3000
-const MAX_WAIT_MS = 45_000
+const MAX_WAIT_MS = 12_000
 
 /** Respuesta visual inmediata al tocar un filtro; persiste si `waiting` (BD lenta). */
 export function FiltroAplicandoOverlay({ eventoId, filtro, onDone, waiting = false }: Props) {

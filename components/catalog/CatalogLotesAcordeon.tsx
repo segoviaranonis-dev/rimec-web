@@ -200,7 +200,7 @@ export function CatalogLotesAcordeon({
                     <span className="max-w-[96px] text-right text-[10px] font-bold leading-tight tabular-nums text-orange-600">
                       {precioNetoPe != null && precioNetoPe < precioVal ? (
                         <>
-                          <span className="block text-[8px] font-normal tabular-nums text-slate-400 line-through">
+                          <span className="block text-[9px] font-semibold tabular-nums text-black line-through decoration-black/80">
                             {formatPrecioGs(precioVal)}
                           </span>
                           <span className="block">{formatPrecioGs(precioNetoPe)}</span>

@@ -30,18 +30,23 @@ export function EditorDescuentosFi({
   const [listaId, setListaId] = useState(factura.lista_precio_id)
   const [slots, setSlots] = useState(['', '', '', ''])
 
+  const esPromoFi =
+    String(factura.cadena_comercial ?? '').trim().toUpperCase() === 'PROMOCIONAL' ||
+    String(factura.caso ?? '').toUpperCase().includes('PROMOCIONAL')
+
   useEffect(() => {
     if (!abierto) return
     setListaId(factura.lista_precio_id)
     const norm = normalizarDescuentos4(factura.descuentos)
-    if (esPeLote && factura.lista_precio_id === 3 && Number(norm[0]) !== 10) {
+    // LP03 +10 % solo si NO es PROMOCIONAL (anti doble descuento)
+    if (esPeLote && factura.lista_precio_id === 3 && !esPromoFi && Number(norm[0]) !== 10) {
       norm[0] = 10
     }
     setSlots(norm.map((d) => descuentoInputDisplay(d)))
-  }, [abierto, factura, esPeLote])
+  }, [abierto, factura, esPeLote, esPromoFi])
 
   useEffect(() => {
-    if (!abierto || !esPeLote) return
+    if (!abierto || !esPeLote || esPromoFi) return
     if (listaId === 3) {
       setSlots((prev) => {
         if (prev[0] === '10') return prev
@@ -50,7 +55,7 @@ export function EditorDescuentosFi({
         return next
       })
     }
-  }, [abierto, esPeLote, listaId])
+  }, [abierto, esPeLote, esPromoFi, listaId])
 
   useEffect(() => {
     if (!abierto) return

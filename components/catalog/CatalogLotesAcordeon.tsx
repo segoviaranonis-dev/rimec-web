@@ -5,7 +5,7 @@ import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
 import { CatalogPanelOrigen } from '@/components/catalog/CatalogPanelOrigen'
 import { useCatalogAcordeon } from '@/components/catalog/CatalogAcordeonContext'
 import { resolveParesPorCaja, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
-import { esLiquidacionPe } from '@/lib/catalogoComercial'
+import { esLiquidacionPe, esPromoTarjeta } from '@/lib/catalogoComercial'
 import { DatoDuroCpFilas } from '@/components/catalog/DatoDuroCpFilas'
 import { etiquetaDatoDuroCp, partesDatoDuroCp } from '@/lib/datoDuroCabecera'
 import { formatPrecioGs } from '@/lib/formatPrecioGs'
@@ -142,13 +142,14 @@ export function CatalogLotesAcordeon({
                 descuentoPctPorMol?.get(molKeyLote(lote)) ??
                 null)
             : null
+        const esPromo = esPe && esPromoTarjeta(lote)
         const precioNetoPe =
           esPe && precioVal != null && precioVal > 0 && activa
-            ? precioNetoPeCatalogo(precioVal, listaPrecioId, descPct)
+            ? precioNetoPeCatalogo(precioVal, listaPrecioId, descPct, esPromo)
             : null
         const etiquetaDescPe =
-          esPe && hayDescuentoPeCatalogo(listaPrecioId, descPct)
-            ? etiquetaDescuentosPeCatalogo(listaPrecioId, descPct)
+          esPe && hayDescuentoPeCatalogo(listaPrecioId, descPct, esPromo)
+            ? etiquetaDescuentosPeCatalogo(listaPrecioId, descPct, esPromo)
             : null
 
         const datoDuroLabel = esPe ? (

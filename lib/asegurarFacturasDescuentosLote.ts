@@ -209,6 +209,7 @@ export async function asegurarFacturasDescuentosLote(
         descuentosPrevios: descuentos,
         dictadoComercialPct: cell.descuento_comercial_pct,
         preAutorizado: preAutorizadoBloqueaResolver(old?.descuentos, old?.pre_autorizado),
+        esPromocional: cadena === 'PROMOCIONAL',
       })
     }
     const base = sintetizarFacturaConfig({

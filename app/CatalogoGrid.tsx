@@ -409,8 +409,9 @@ function TarjetaProducto({
   const esPromoCp = vis.showCpPromoBadge
   const descPct = pctDescuentoDesdeTarjeta(p, descuentoPctPorMol)
   const esPe = p.origen_tipo === 'PRONTA_ENTREGA'
+  const esPromoPe = esPe && esPromoTarjeta(p)
   const showDescBadge =
-    esPe && hayDescuentoPeCatalogo(listaPrecioId, descPct)
+    esPe && hayDescuentoPeCatalogo(listaPrecioId, descPct, esPromoPe)
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -437,7 +438,11 @@ function TarjetaProducto({
         imageTopRightBadge={vis.imageTopRightBadge}
         imageTopLeftBadge={
           showDescBadge ? (
-            <PeDescComercialBadge pct={descPct ?? 0} listaPrecioId={listaPrecioId} />
+            <PeDescComercialBadge
+              pct={descPct ?? 0}
+              listaPrecioId={listaPrecioId}
+              esPromocional={esPromoPe}
+            />
           ) : null
         }
         linea={p.linea_codigo}
@@ -538,8 +543,9 @@ function TarjetaProductoFusion({
   const descPct = lotePeHero
     ? pctDescuentoDesdeTarjeta(lotePeHero, descuentoPctPorMol)
     : null
+  const esPromoPeBadge = lotePeHero != null && esPromoTarjeta(lotePeHero)
   const showDescBadge =
-    lotePeHero != null && hayDescuentoPeCatalogo(listaPrecioId, descPct)
+    lotePeHero != null && hayDescuentoPeCatalogo(listaPrecioId, descPct, esPromoPeBadge)
 
   const ventaFooter = (
     <CatalogLotesAcordeon
@@ -566,7 +572,11 @@ function TarjetaProductoFusion({
         imageTopRightBadge={peVis?.imageTopRightBadge ?? null}
         imageTopLeftBadge={
           showDescBadge ? (
-            <PeDescComercialBadge pct={descPct ?? 0} listaPrecioId={listaPrecioId} />
+            <PeDescComercialBadge
+              pct={descPct ?? 0}
+              listaPrecioId={listaPrecioId}
+              esPromocional={esPromoPeBadge}
+            />
           ) : null
         }
         linea={p.linea_codigo}

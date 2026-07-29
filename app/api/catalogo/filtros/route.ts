@@ -199,8 +199,19 @@ export async function GET(req: NextRequest) {
     }
     const rows = await rowsForFiltrosLegacy(facetFilters)
     const precioRango = await precioRangoParaFiltros(filters)
+    const filtrosLegacy = buildFiltrosFromRows(rows, filters.ramo_tipo)
+    try {
+      const { loadMaestrasTrianguloCatalogo } = await import('@/lib/pilares/loadMaestrasTriangulo')
+      const maestras = await loadMaestrasTrianguloCatalogo(filters.ramo_tipo)
+      if (maestras) {
+        filtrosLegacy.todosEstilos = maestras.estilos
+        filtrosLegacy.todosGeneros = maestras.generos
+      }
+    } catch (e) {
+      console.error('[catalogo/filtros] maestras pilares', e)
+    }
     return NextResponse.json({
-      filtros: buildFiltrosFromRows(rows, filters.ramo_tipo),
+      filtros: filtrosLegacy,
       colores: buildColoresFromRows(rows),
       quincenas: buildQuincenasFromRows(rows),
       preventas: buildPreventasFromRows(rows),

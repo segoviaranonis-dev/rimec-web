@@ -201,8 +201,33 @@ function finalizeMeta(
   return stripAccesoriosFromMetaIfCalzado(meta, filters)
 }
 
+/** Ley siamese 2026-07-29 — Estilo/Género = FK Administrador Pilares (no distinct stock). */
+async function applyMaestrasTrianguloPilares(
+  meta: CatalogoMetaRpc | null,
+  filters: CatalogoFilterStateExtended,
+): Promise<CatalogoMetaRpc | null> {
+  if (!meta) return null
+  if (esRamoAccesorios(filters.ramo_tipo)) return meta
+  const { loadMaestrasTrianguloCatalogo } = await import('@/lib/pilares/loadMaestrasTriangulo')
+  const maestras = await loadMaestrasTrianguloCatalogo(filters.ramo_tipo)
+  if (!maestras) return meta
+  let next: CatalogoMetaRpc = {
+    ...meta,
+    estilos: maestras.estilos,
+    generos: maestras.generos,
+  }
+  return finalizeMeta(next, filters) ?? next
+}
+
 /** Meta sidebar vía RPC SQL (CAT-LAT-T2) — fallback null → scan legacy. */
 export async function fetchCatalogoMetaViaRpc(
+  filters: CatalogoFilterStateExtended,
+): Promise<CatalogoMetaRpc | null> {
+  const raw = await fetchCatalogoMetaViaRpcRaw(filters)
+  return applyMaestrasTrianguloPilares(raw, filters)
+}
+
+async function fetchCatalogoMetaViaRpcRaw(
   filters: CatalogoFilterStateExtended,
 ): Promise<CatalogoMetaRpc | null> {
   if (isCatalogoOrigenPe(filters)) {

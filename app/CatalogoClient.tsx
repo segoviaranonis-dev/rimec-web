@@ -459,20 +459,14 @@ export function CatalogoClient({ initialFilters }: Props) {
             /* fallback header opcional */
           }
         }
+        // Estilo/Género: REEMPLAZO (no merge) — ley siamese pilares · anti 638↔654
         setFiltrosMeta((prev) => ({
           ...nextMeta,
           todasMarcas: mergeFacet(prev.todasMarcas, nextMeta.todasMarcas),
-          todosEstilos: mergeFacet(prev.todosEstilos, nextMeta.todosEstilos),
+          todosEstilos: nextMeta.todosEstilos,
           todosTipos: mergeFacet(prev.todosTipos, nextMeta.todosTipos),
           todasLineas: mergeFacet(prev.todasLineas, nextMeta.todasLineas),
-          todosGeneros: (() => {
-            const m = new Map<string, { codigo: string; label: string }>()
-            for (const g of [...prev.todosGeneros, ...nextMeta.todosGeneros]) {
-              const c = String(g.codigo ?? '').trim()
-              if (c) m.set(c, { codigo: c, label: String(g.label ?? c).trim() || c })
-            }
-            return [...m.values()]
-          })(),
+          todosGeneros: nextMeta.todosGeneros,
         }))
         setMaterialFamilias(json.materialFamilias ?? [])
         setColorFamilias(json.colorFamilias ?? [])

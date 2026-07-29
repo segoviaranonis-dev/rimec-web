@@ -187,13 +187,14 @@ export function deriveOrigenFromStockRow(row: StockOrigenRow): OrigenMetadatos {
   const quincenaDesc = row.quincena_desc
   const ppId = row.pp_id != null ? Number(row.pp_id) : 0
 
-  // Si hay quincena definida, usarla como referencia (dato duro siamese)
+  // Si hay quincena definida, usarla como referencia (dato duro siamese).
+  // Incluir ppId siempre: dos PP con la misma preventa Carlos no deben compartir cardKey.
   if (quincenaId && quincenaDesc) {
     const pv = formatNumeroPreventaCarlos(row.numero_preventa)
     const label = etiquetaDatoDuroCp(pv, quincenaDesc)
     return {
       tipo: 'TRÁNSITO_PP',
-      referenciaId: `q:${quincenaId}:${pv || ppId}`,
+      referenciaId: `q:${quincenaId}:pp${ppId || 0}:${pv || 'x'}`,
       label,
       shell: paletaQuincena(`${quincenaId}`),
     }

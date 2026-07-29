@@ -944,9 +944,9 @@ export function CatalogoGrid({
         </div>
       ) : (
         <CatalogGrillaDeposito totalModelos={filtered.length} totalPares={grillaPares} stockLabel={grillaStockLabel} compactStats>
-          {filtered.map(p => (
+          {filtered.map((p, i) => (
             <TarjetaGrillaItem
-              key={p.cardKey}
+              key={p.cardKey || `idx-${i}`}
               producto={p}
               onNeedSession={() => setMostrarDialogo(true)}
               descuentoPctPorMol={descuentoPctPorMol}

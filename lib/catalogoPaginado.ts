@@ -135,8 +135,21 @@ function colorCodigoDeTarjeta(t: TarjetaGrilla): string {
   return String(v?.color_code ?? '')
 }
 
+/** Primera gana — evita React “two children with the same key” al concatenar páginas / warm. */
+export function dedupeTarjetasByCardKey(tarjetas: TarjetaGrilla[]): TarjetaGrilla[] {
+  const seen = new Set<string>()
+  const out: TarjetaGrilla[] = []
+  for (const t of tarjetas) {
+    const k = t.cardKey
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(t)
+  }
+  return out
+}
+
 function sortTarjetasLineaRef(tarjetas: TarjetaGrilla[]): TarjetaGrilla[] {
-  return [...tarjetas].sort((a, b) =>
+  return dedupeTarjetasByCardKey(tarjetas).sort((a, b) =>
     compareLineaRefMatColor(a, b, colorCodigoDeTarjeta(a), colorCodigoDeTarjeta(b)),
   )
 }

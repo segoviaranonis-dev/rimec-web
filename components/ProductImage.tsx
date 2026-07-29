@@ -11,10 +11,8 @@ import {
 import { useHeroProgressiveSrc } from '@/lib/use-hero-progressive-src'
 
 type Props = {
-  /** URL primaria resuelta en servidor (sm/ o flat). */
   src?: string | null
   fallbackSrc?: string | null
-  /** Cadena sm→md→flat precomputada en servidor — paridad Tablet/Report. */
   candidates?: string[]
   linea: string
   referencia: string
@@ -27,13 +25,11 @@ type Props = {
   className?: string
 }
 
-function markLoadedIfCached(img: HTMLImageElement | null): boolean {
-  return Boolean(img?.complete && img.naturalWidth > 0)
-}
-
 /**
- * Imagen catálogo RIMEC Web — canon NIIF · paridad Tablet `TarjetaCajaDeposito`.
- * Cadena retry: candidatos servidor → fallback flat → sin inventar CSS.
+ * Imagen catálogo RIMEC Web.
+ * - Sin skeleton con nombre (era el parpadeo “20 veces/s”).
+ * - Solo cambia src cuando la URL ya está en caché decode.
+ * - Fallbacks se prueban en silencio (Image()), sin pintar URLs rotas.
  */
 export function ProductImage({
   src: srcProp,
@@ -50,11 +46,13 @@ export function ProductImage({
   className = '',
 }: Props) {
   const imgRef = useRef<HTMLImageElement>(null)
-  const [loaded, setLoaded] = useState(false)
-  const [activeSrc, setActiveSrc] = useState<string | null>(null)
-  const [candidateIdx, setCandidateIdx] = useState(0)
+  const displaySrcRef = useRef<string | null>(null)
+  const probeGen = useRef(0)
+  const [displaySrc, setDisplaySrc] = useState<string | null>(null)
 
   const isHero = variant === 'hero'
+
+  const candidatesKey = candidatesProp?.join('\0') ?? ''
 
   const chain = useMemo(() => {
     if (candidatesProp?.length) return candidatesProp
@@ -66,14 +64,8 @@ export function ProductImage({
       imagenNombre,
       isHero ? 'modal' : 'thumb',
     )
-  }, [candidatesProp, linea, referencia, material, color, imagenNombre, isHero])
-
-  const primarySrc = useMemo(() => {
-    if (isHero) return null
-    if (chain.length) return chain[0] ?? null
-    if (srcProp) return srcProp
-    return fallbackProp ?? null
-  }, [isHero, srcProp, chain, fallbackProp])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidatesKey, linea, referencia, material, color, imagenNombre, isHero])
 
   const flatFallback = fallbackProp ?? null
 
@@ -83,7 +75,10 @@ export function ProductImage({
     () => ({
       imagen_url_thumb: chain.find(u => u.includes('/sm/')) ?? chain[0] ?? null,
       imagen_url_hero: chain.find(u => u.includes('/lg/')) ?? chain[0] ?? null,
-      imagen_url_flat: flatFallback ?? chain.find(u => !/\/productos\/(sm|md|lg|thumbs)\//i.test(u)) ?? null,
+      imagen_url_flat:
+        flatFallback ??
+        chain.find(u => !/\/productos\/(sm|md|lg|thumbs)\//i.test(u)) ??
+        null,
     }),
     [chain, flatFallback],
   )
@@ -105,91 +100,53 @@ export function ProductImage({
   useLayoutEffect(() => {
     if (isHero) return
 
-    setCandidateIdx(0)
-    setActiveSrc(primarySrc)
+    const gen = ++probeGen.current
+    const tryList = [
+      ...chain,
+      ...(srcProp ? [srcProp] : []),
+      ...(flatFallback ? [flatFallback] : []),
+    ].filter((u, i, arr) => Boolean(u) && arr.indexOf(u) === i)
 
-    if (!primarySrc) {
-      setLoaded(false)
+    if (tryList.length === 0) {
+      // Mantener foto anterior si existía; no mostrar nombre.
       return
     }
 
-    if (isImageDecoded(primarySrc)) {
-      setLoaded(true)
+    const already =
+      tryList.find(u => u === displaySrcRef.current && isImageDecoded(u)) ??
+      tryList.find(u => isImageDecoded(u))
+
+    if (already) {
+      displaySrcRef.current = already
+      setDisplaySrc(already)
       return
     }
 
     let cancelled = false
-    setLoaded(false)
-
     void (async () => {
-      if (await preloadImageDecoded(primarySrc)) {
-        if (!cancelled) setLoaded(true)
-        return
+      for (const url of tryList) {
+        if (cancelled || probeGen.current !== gen) return
+        const ok = await preloadImageDecoded(url)
+        if (cancelled || probeGen.current !== gen) return
+        if (ok) {
+          displaySrcRef.current = url
+          setDisplaySrc(url)
+          return
+        }
       }
-      const img = imgRef.current
-      if (!cancelled) {
-        setLoaded(markLoadedIfCached(img))
-      }
+      // Todas fallaron: no vaciar si ya había una buena; nunca pintar skeleton con nombre.
     })()
 
     return () => {
       cancelled = true
     }
-  }, [primarySrc, isHero])
-
-  const eager = isHero || priority
-
-  const tryNextSrc = (next: string | null) => {
-    if (!next) return
-    void (async () => {
-      if (await preloadImageDecoded(next)) {
-        setActiveSrc(next)
-        setLoaded(true)
-        return
-      }
-      setActiveSrc(next)
-      setLoaded(false)
-    })()
-  }
-
-  const handleError = () => {
-    if (isHero) return
-
-    let nextIdx = candidateIdx + 1
-    while (nextIdx < chain.length && /\/productos\/(sm|thumbs)\//i.test(chain[nextIdx] ?? '')) {
-      nextIdx += 1
-    }
-    if (nextIdx < chain.length) {
-      setCandidateIdx(nextIdx)
-      tryNextSrc(chain[nextIdx] ?? null)
-      return
-    }
-
-    if (flatFallback && activeSrc !== flatFallback && !chain.includes(flatFallback)) {
-      tryNextSrc(flatFallback)
-      return
-    }
-
-    setActiveSrc(null)
-    setLoaded(false)
-  }
-
-  const handleLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const { naturalWidth, naturalHeight } = e.currentTarget
-    if (naturalWidth < 1 || naturalHeight < 1) {
-      handleError()
-      return
-    }
-    setLoaded(true)
-    void e.currentTarget.decode?.().catch(() => undefined)
-  }
+  }, [isHero, chain, srcProp, flatFallback, linea, referencia, material, color])
 
   if (isHero) {
     return (
       <div className={`cadena-hero-frame ${className}`.trim()} data-hero-frame="rimec-web">
         {heroDisplaySrc ? (
           <img
-            key={heroDisplaySrc}
             ref={imgRef}
             src={heroDisplaySrc}
             alt={alt}
@@ -208,40 +165,26 @@ export function ProductImage({
     )
   }
 
-  const ready =
-    loaded || priority || (activeSrc ? isImageDecoded(activeSrc) : false)
-  const imgOpacity = ready ? 'opacity-100' : 'opacity-0'
-  const thumbKey = `${linea}|${referencia}|${material}|${color}|${candidateIdx}`
+  const eager = priority
 
   return (
     <div
       className={`cadena-thumb-frame ${className}`.trim()}
       style={productImageFallbackStyle(linea, referencia)}
     >
-      {!ready && (
-        <span
-          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-0.5 text-center bg-white"
-          aria-hidden
-        >
-          <span className="text-[10px] font-extrabold tracking-wide text-slate-400">
-            {linea}·{referencia}
-          </span>
-        </span>
-      )}
-      {activeSrc ? (
+      {displaySrc ? (
         <img
-          key={thumbKey}
           ref={imgRef}
-          src={activeSrc}
+          src={displaySrc}
           alt={alt}
-          className={`block max-h-full max-w-full h-auto w-auto object-contain object-center bg-white/95 ${imgOpacity}`}
+          className="block max-h-full max-w-full h-auto w-auto object-contain object-center bg-white/95 opacity-100"
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
           fetchPriority={eager ? 'high' : 'low'}
-          onLoad={handleLoad}
-          onError={handleError}
         />
-      ) : null}
+      ) : (
+        <div className="absolute inset-0 bg-white" aria-hidden />
+      )}
     </div>
   )
 }

@@ -41,6 +41,8 @@ import {
   variantePorTonoKey,
   indiceVariantePorTonoKey,
 } from '@/lib/catalogoTonoActivo'
+import { varianteImagenPorTonoKey } from '@/lib/catalogoVarianteImagen'
+import { preloadImageDecoded } from '@/lib/image-decode-cache'
 
 export type { RimecVariante, TarjetaCatalogo }
 /** @deprecated Usar TarjetaCatalogo — alias para compatibilidad interna */
@@ -207,6 +209,29 @@ function Lightbox({ producto: p, initialIdx, initialTonoKey, onClose }: {
     document.body.style.overflow = 'hidden'
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
   }, [onClose, variantesNav.length])
+
+  /** Prefetch color actual ±1 — deps estables (no array nuevo cada render). */
+  const prefetchSig = variantesNav
+    .map(vv => `${vv.det_id}:${vv.imagen_url_thumb ?? ''}:${(vv.imagen_candidates_hero ?? [])[0] ?? ''}`)
+    .join('|')
+  useEffect(() => {
+    if (variantesNav.length === 0) return
+    const n = variantesNav.length
+    const idxs = n === 1 ? [idx] : [idx, (idx + 1) % n, (idx - 1 + n) % n]
+    for (const i of idxs) {
+      const vv = variantesNav[i]
+      if (!vv) continue
+      const urls = [
+        ...(vv.imagen_candidates_hero ?? []),
+        ...(vv.imagen_candidates_thumb ?? []),
+        vv.imagen_url_hero,
+        vv.imagen_url_thumb,
+        vv.imagen_url_flat,
+      ].filter((u): u is string => Boolean(u))
+      for (const u of urls.slice(0, 3)) void preloadImageDecoded(u)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, prefetchSig])
 
   const v = variantesNav[idx] ?? variantesNav[0]
   if (!v) return null
@@ -400,9 +425,22 @@ function TarjetaProducto({
   const listaPrecioId = useSesion(s => s.listaPrecioId)
   const activa = mounted ? ventaActivaStore : false
 
+  const loteStock = { ...p, variantes: variantesConStock.length ? variantesConStock : p.variantes }
+  const v = varianteImagenPorTonoKey(loteStock, activeTonoKey) ?? v0
   const matchIdx = indiceVariantePorTonoKey(variantesConStock, activeTonoKey)
   const varIdx = matchIdx >= 0 ? matchIdx : 0
-  const v = variantesConStock[varIdx] || p.variantes[0]
+
+  const thumbPrefetchKey = `${activeTonoKey}|${v?.imagen_url_thumb ?? ''}|${(v?.imagen_candidates_thumb ?? []).slice(0, 2).join(',')}`
+  useEffect(() => {
+    const urls = [
+      ...(v?.imagen_candidates_thumb ?? []),
+      v?.imagen_url_thumb,
+      v?.imagen_url_flat,
+    ].filter((u): u is string => Boolean(u))
+    for (const u of urls.slice(0, 3)) void preloadImageDecoded(u)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thumbPrefetchKey])
+
   const paresStock = paresEnTarjeta(p)
   const esConf = isConfecciones638Lote(p)
   const vis = shellYBadgesPe(p)

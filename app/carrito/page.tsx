@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSesion, fragmentarCarrito, LISTAS } from '@/store/sesionVenta'
 import { supabase } from '@/lib/supabase'
@@ -120,10 +121,10 @@ export default function CarritoPage() {
               ? 'Iniciá una venta con cliente desde el catálogo.'
               : 'Agregá productos desde el catálogo.'}
         </p>
-        <a href="/" style={{
+        <Link href="/" style={{
           display: 'inline-block', padding: '14px 28px', borderRadius: 12,
           backgroundColor: AZUL, color: 'white', fontWeight: 700, textDecoration: 'none', fontSize: 16,
-        }}>← Ir al Catálogo</a>
+        }}>← Ir al Catálogo</Link>
       </div>
     )
   }
@@ -610,9 +611,9 @@ export default function CarritoPage() {
           <p style={{ color: '#166534', fontSize: 14, marginTop: 8 }}>
             Stock descontado. Las facturas están en estado RESERVADA esperando aprobación en el ERP.
           </p>
-          <a href="/pedidos" style={{ color: AZUL, fontSize: 14, marginTop: 8, display: 'inline-block' }}>
+          <Link href="/pedidos" prefetch style={{ color: AZUL, fontSize: 14, marginTop: 8, display: 'inline-block' }}>
             → Ver mis pedidos
-          </a>
+          </Link>
         </div>
       )}
 
@@ -964,12 +965,20 @@ export default function CarritoPage() {
           </button>
         </div>
 
-        <a href="/" style={{
-          display: 'block', textAlign: 'center', color: editorFi ? '#CBD5E1' : '#64748B',
-          fontSize: 14, pointerEvents: editorFi ? 'none' : 'auto',
-        }}>
-          ← Seguir agregando
-        </a>
+        <Link
+          href="/"
+          prefetch
+          aria-disabled={!!editorFi}
+          style={{
+            display: 'block', textAlign: 'center', color: editorFi ? '#CBD5E1' : '#64748B',
+            fontSize: 14, pointerEvents: editorFi ? 'none' : 'auto',
+            textDecoration: 'none',
+            fontWeight: 600,
+            padding: '8px 0',
+          }}
+        >
+          ← Seguir comprando
+        </Link>
       </div>
 
       {editorFi && (

@@ -277,8 +277,8 @@ export function CatalogoClient({ initialFilters }: Props) {
   const [syncStartedAt, setSyncStartedAt] = useState<number | null>(null)
   const syncStartedRef = useRef(false)
 
-  // Overlay «RIMEC sincronizando» solo en entrada real (F5 / documento nuevo).
-  // Carrito ↔ catálogo remonta el cliente pero NO reabre el overlay.
+  // Overlay «RIMEC sincronizando» solo en 1.ª entrada de la pestaña.
+  // Carrito ↔ catálogo (SPA o hard nav) NO reabre — gate en sessionStorage.
   useEffect(() => {
     if (syncStartedRef.current) return
     syncStartedRef.current = true

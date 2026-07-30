@@ -80,6 +80,10 @@ type QuincenaItem = { id: number; label: string }
 
 type Props = {
   initialFilters: CatalogoFilterState
+  /** Vendedores RIMEC — solo calzado 654; 638 prohibido. */
+  soloCalzado?: boolean
+  /** PATRICIA / DARIO — solo confecciones 638; 654 prohibido. */
+  soloConfecciones?: boolean
 }
 
 function etiquetaCambioFiltro(prev: CatalogoFilterState, next: CatalogoFilterState): string {
@@ -232,9 +236,29 @@ function tarjetasRespetanOrigen(
   return true
 }
 
-export function CatalogoClient({ initialFilters }: Props) {
+export function CatalogoClient({
+  initialFilters,
+  soloCalzado = false,
+  soloConfecciones = false,
+}: Props) {
+  const warmOpts =
+    soloCalzado
+      ? { skipConfecciones: true }
+      : soloConfecciones
+        ? { skipCalzado: true }
+        : undefined
+  const clampRamo = (f: CatalogoFilterState): CatalogoFilterState => {
+    if (soloConfecciones && f.ramo_tipo !== 'CONFECCIONES') {
+      return { ...f, ramo_tipo: 'CONFECCIONES' }
+    }
+    if (soloCalzado && f.ramo_tipo !== 'CALZADO') {
+      return { ...f, ramo_tipo: 'CALZADO' }
+    }
+    return f
+  }
+
   const [filters, setFilters] = useState<CatalogoFilterState>(() =>
-    mergeSharedIntoFilters(initialFilters),
+    clampRamo(mergeSharedIntoFilters(initialFilters)),
   )
   const [filtroFeedback, setFiltroFeedback] = useState<{ id: number; filtro: string } | null>(null)
   const [, startTransition] = useTransition()
@@ -283,14 +307,14 @@ export function CatalogoClient({ initialFilters }: Props) {
     if (syncStartedRef.current) return
     syncStartedRef.current = true
 
-    const merged = mergeSharedIntoFilters(initialFilters)
+    const merged = clampRamo(mergeSharedIntoFilters(initialFilters))
     if (
       wasCatalogSyncOverlayDoneThisDocument()
       || !isCatalogSyncOverlayEnabled()
       || hasSidebarFilters(merged)
-      || areAllSyncStagesWarm()
+      || areAllSyncStagesWarm({ soloCalzado, soloConfecciones })
     ) {
-      ensureDualCatalogWarm(merged)
+      ensureDualCatalogWarm(merged, warmOpts)
       markCatalogSyncOverlayDoneThisDocument()
       return
     }
@@ -298,13 +322,13 @@ export function CatalogoClient({ initialFilters }: Props) {
     setSyncOverlayVisible(true)
     setSyncStartedAt(Date.now())
     setSyncRunning(true)
-    void runCatalogSyncStages((p) => setSyncProgress(p))
+    void runCatalogSyncStages((p) => setSyncProgress(p), { soloCalzado, soloConfecciones })
       .finally(() => {
         markCatalogSyncOverlayDoneThisDocument()
         setSyncRunning(false)
-        ensureDualCatalogWarm(merged)
+        ensureDualCatalogWarm(merged, warmOpts)
       })
-  }, [initialFilters])
+  }, [initialFilters, soloCalzado, soloConfecciones])
 
   /** Overlay: máx 10 s sin grilla → ceder paso al skeleton (BD lenta). */
   useEffect(() => {
@@ -582,7 +606,7 @@ export function CatalogoClient({ initialFilters }: Props) {
   useEffect(() => {
     let cancelled = false
     // Origen/ramo/depósito/quincenas = live (no deferred) — chrome PE ≠ grilla CP
-    const activeFilters = filtersConOrigenInmediato(deferredFilters, filters)
+    const activeFilters = clampRamo(filtersConOrigenInmediato(deferredFilters, filters))
     const esPe = isCatalogoOrigenPe(activeFilters)
     const cacheKey = catalogWarmCacheKey(activeFilters)
     const cachedRaw = getPageWarmCache(cacheKey)
@@ -671,8 +695,8 @@ export function CatalogoClient({ initialFilters }: Props) {
             markCatalogPrimaryFetchEnd()
             setLoading(false)
             setRefreshing(false)
-            ensureRamoParWarm(activeFilters)
-            ensureDualCatalogWarm(activeFilters)
+            ensureRamoParWarm(activeFilters, warmOpts)
+            ensureDualCatalogWarm(activeFilters, warmOpts)
           }
         })
       return () => {
@@ -711,8 +735,8 @@ export function CatalogoClient({ initialFilters }: Props) {
           markCatalogPrimaryFetchEnd()
           setLoading(false)
           setRefreshing(false)
-          ensureRamoParWarm(activeFilters)
-          ensureDualCatalogWarm(activeFilters)
+          ensureRamoParWarm(activeFilters, warmOpts)
+          ensureDualCatalogWarm(activeFilters, warmOpts)
         }
       })
 
@@ -748,7 +772,7 @@ export function CatalogoClient({ initialFilters }: Props) {
 
   useEffect(() => {
     if (loading || productos.length === 0 || !hasMore) return
-    ensureDualCatalogWarm(filters)
+    ensureDualCatalogWarm(filters, warmOpts)
     prefetchScrollPageSoon(filters, rowFrom, excludeKeys)
   }, [loading, productos.length, hasMore, rowFrom, excludeKeys.join(','), filters.origen_tipo ?? ''])
 
@@ -791,15 +815,16 @@ export function CatalogoClient({ initialFilters }: Props) {
   }, [loadingMore, hasMore, rowFrom, excludeKeys, filters, fetchPage])
 
   const updateFilters = (next: CatalogoFilterState) => {
-    ensureRamoParWarm(next)
-    if ((next.ramo_tipo ?? '') !== (filters.ramo_tipo ?? '')) {
+    const scoped = clampRamo(next)
+    ensureRamoParWarm(scoped, warmOpts)
+    if ((scoped.ramo_tipo ?? '') !== (filters.ramo_tipo ?? '')) {
       const key = catalogWarmCacheKey({
-        ...mergeSharedIntoFilters(next),
-        origen_tipo: next.origen_tipo,
-        ramo_tipo: next.ramo_tipo,
+        ...mergeSharedIntoFilters(scoped),
+        origen_tipo: scoped.origen_tipo,
+        ramo_tipo: scoped.ramo_tipo,
       })
       const hit = getPageWarmCache(key)
-      if (hit?.tarjetas.length && tarjetasRespetanOrigen(hit.tarjetas, next.origen_tipo)) {
+      if (hit?.tarjetas.length && tarjetasRespetanOrigen(hit.tarjetas, scoped.origen_tipo)) {
         setProductos(sortTarjetasLineaRef(hit.tarjetas))
         setRowFrom(hit.nextRowFrom)
         setExcludeKeys(hit.excludeCardKeys)
@@ -814,15 +839,15 @@ export function CatalogoClient({ initialFilters }: Props) {
         setError(null)
       }
     }
-    ensureDualCatalogWarm(next)
+    ensureDualCatalogWarm(scoped, warmOpts)
     setFiltroFeedback({
       id: Date.now(),
-      filtro: etiquetaCambioFiltro(filters, next),
+      filtro: etiquetaCambioFiltro(filters, scoped),
     })
-    persistSharedCatalogFilters(next)
+    persistSharedCatalogFilters(scoped)
     startTransition(() => {
-      setFilters(next)
-      const params = filterToSearchParams(next)
+      setFilters(scoped)
+      const params = filterToSearchParams(scoped)
       const url = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`
       window.history.replaceState(null, '', url)
     })
@@ -963,6 +988,8 @@ export function CatalogoClient({ initialFilters }: Props) {
         value={filters}
         onChange={updateFilters}
         variant="cabecera"
+        soloCalzado={soloCalzado}
+        soloConfecciones={soloConfecciones}
       />
 
       <div className="mt-3 flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-2">
@@ -975,6 +1002,8 @@ export function CatalogoClient({ initialFilters }: Props) {
               <CatalogoFiltrosSidebar
                 filtros={filters}
                 onChange={updateFilters}
+                soloCalzado={soloCalzado}
+                soloConfecciones={soloConfecciones}
                 opciones={{
                   estilos: filtrosMeta.todosEstilos,
                   marcas: filtrosMeta.todasMarcas,
@@ -994,6 +1023,8 @@ export function CatalogoClient({ initialFilters }: Props) {
             <CatalogoFiltrosSidebar
               filtros={filters}
               onChange={updateFilters}
+              soloCalzado={soloCalzado}
+              soloConfecciones={soloConfecciones}
               opciones={{
                 estilos: filtrosMeta.todosEstilos,
                 marcas: filtrosMeta.todasMarcas,

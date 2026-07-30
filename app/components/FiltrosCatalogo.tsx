@@ -74,6 +74,10 @@ interface Props {
   onChange?: (filters: CatalogoFilterState) => void
   /** Cabecera + Tono; Dimensiones/Molécula viven en CatalogoFiltrosSidebar */
   variant?: 'pills' | 'cabecera'
+  /** Vendedores calzado — oculta Confecciones. */
+  soloCalzado?: boolean
+  /** PATRICIA / DARIO — oculta Calzado. */
+  soloConfecciones?: boolean
 }
 
 export type CatalogoFilterState = {
@@ -139,6 +143,8 @@ export function FiltrosCatalogo({
   colores, quincenas, materialFamilias = [], colorFamilias = [],
   totalModelos, totalPares, rangoPrecioCatalogo, value, onChange,
   variant = 'pills',
+  soloCalzado = false,
+  soloConfecciones = false,
 }: Props) {
   const soloCabecera = variant === 'cabecera'
   const router       = useRouter()
@@ -547,6 +553,7 @@ export function FiltrosCatalogo({
                 role="group"
                 aria-label="Calzado o Confecciones"
               >
+                {!soloConfecciones ? (
                 <CategoriaBtn
                   active={ramoActual === 'CALZADO' || !ramoActual}
                   dimmed={!!ramoActual && ramoActual !== 'CALZADO'}
@@ -557,6 +564,8 @@ export function FiltrosCatalogo({
                 >
                   👟 Calzado
                 </CategoriaBtn>
+                ) : null}
+                {!soloCalzado ? (
                 <CategoriaBtn
                   active={ramoActual === 'CONFECCIONES'}
                   dimmed={!!ramoActual && ramoActual !== 'CONFECCIONES'}
@@ -567,6 +576,7 @@ export function FiltrosCatalogo({
                 >
                   👕 Confecciones
                 </CategoriaBtn>
+                ) : null}
               </div>
             </div>
 

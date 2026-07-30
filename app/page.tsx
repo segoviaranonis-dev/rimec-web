@@ -1,4 +1,9 @@
 import { CatalogoClient } from './CatalogoClient'
+import { getSession } from '@/lib/auth/session'
+import {
+  esUsuarioSoloCalzado,
+  esUsuarioSoloConfecciones,
+} from '@/lib/auth/catalogoScopeUsuario'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +38,9 @@ export default async function HomePage({
   }>
 }) {
   const params = await searchParams
+  const session = await getSession()
+  const soloCalzado = esUsuarioSoloCalzado(session?.name)
+  const soloConfecciones = esUsuarioSoloConfecciones(session?.name)
   const cadenaUrl = params.cadena_comercial ?? ''
   // Solo URL explícita — no auto-filtrar desde pe_catalogo_filtro_web al abrir catálogo.
   const cadenaComercial = cadenaUrl
@@ -53,6 +61,8 @@ export default async function HomePage({
 
   return (
     <CatalogoClient
+      soloCalzado={soloCalzado}
+      soloConfecciones={soloConfecciones}
       initialFilters={{
         grupo_estilo_id: params.grupo_estilo_id ?? '',
         marca_id: params.marca_id ?? '',
@@ -65,8 +75,10 @@ export default async function HomePage({
         colores: params.colores ? params.colores.split(',').filter(Boolean) : [],
         quincenas: params.quincenas?.split(',').filter(Boolean).map(Number) ?? [],
         origen_tipo: params.origen_tipo ?? 'TODOS',
-        // Home canónico: Calzado + Todos (CP+PE fusión). Nunca arrancar en Confecciones ni sin ramo.
+        // Scope login: calzado 654 · confecciones 638 · o libre.
         ramo_tipo: (() => {
+          if (soloConfecciones) return 'CONFECCIONES' as const
+          if (soloCalzado) return 'CALZADO' as const
           if (params.ramo_tipo === 'CONFECCIONES') return 'CONFECCIONES' as const
           return 'CALZADO' as const
         })(),

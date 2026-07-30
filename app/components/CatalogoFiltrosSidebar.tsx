@@ -59,6 +59,10 @@ type Props = {
   emptyFilters: CatalogoFilterState
   className?: string
   trailing?: React.ReactNode
+  /** Oculta pill Confecciones (vendedores calzado 654). */
+  soloCalzado?: boolean
+  /** Oculta pill Calzado (PATRICIA / DARIO · 638). */
+  soloConfecciones?: boolean
 }
 
 export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
@@ -541,6 +545,8 @@ export function CatalogoFiltrosSidebar({
   emptyFilters,
   className = '',
   trailing,
+  soloCalzado = false,
+  soloConfecciones = false,
 }: Props) {
   const [bloqueDimOpen, setBloqueDimOpen] = useState(true)
   const [bloqueMolOpen, setBloqueMolOpen] = useState(true)
@@ -638,14 +644,19 @@ export function CatalogoFiltrosSidebar({
   }
 
   const setRamo = (next: '' | PeRamoTipo) => {
+    if (soloCalzado && next === 'CONFECCIONES') return
+    if (soloConfecciones && (next === 'CALZADO' || !next)) return
     // Home = Calzado + Todos. Nunca vaciar ramo (universo mixto / confecciones).
     if (ramo === next) {
-      if (next === 'CONFECCIONES') {
+      if (next === 'CONFECCIONES' && !soloConfecciones) {
         patch({ ramo_tipo: 'CALZADO', ...resetCascadaAlCambiarRamo() })
       }
       return
     }
-    patch({ ramo_tipo: next || 'CALZADO', ...resetCascadaAlCambiarRamo() })
+    patch({
+      ramo_tipo: next || (soloConfecciones ? 'CONFECCIONES' : 'CALZADO'),
+      ...resetCascadaAlCambiarRamo(),
+    })
   }
 
   const paresOpts = opciones.paresDatoDuro ?? []
@@ -844,6 +855,7 @@ export function CatalogoFiltrosSidebar({
         <div className="space-y-1.5">
             <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Categoría</span>
             <div className="flex flex-wrap gap-1">
+              {!soloConfecciones ? (
               <button
                 type="button"
                 onClick={() => setRamo('CALZADO')}
@@ -855,6 +867,8 @@ export function CatalogoFiltrosSidebar({
               >
                 Calzado
               </button>
+              ) : null}
+              {!soloCalzado ? (
               <button
                 type="button"
                 onClick={() => setRamo('CONFECCIONES')}
@@ -866,6 +880,7 @@ export function CatalogoFiltrosSidebar({
               >
                 Confecciones
               </button>
+              ) : null}
             </div>
           </div>
 

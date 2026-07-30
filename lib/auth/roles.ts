@@ -2,6 +2,11 @@
  * OT-514: Roles permitidos en RIMEC Web (Vercel)
  * Fuente verdad: usuario_v2.categoria
  * Referencia: ventas_por_mes_rimec-main/core/auth.py
+ *
+ * Scope catálogo (ramos) — ver lib/auth/catalogoScopeUsuario.ts:
+ * · Calzado 654: vendedores RIMEC (ATI, LILI, …) → 638 PROHIBIDO
+ * · Confecciones 638: PATRICIA · DARIO → 654 PROHIBIDO
+ * · Libre: DIOS / ADMIN (salvo Patricia) / Bazzar
  */
 
 export const CATEGORIAS_PERMITIDAS = ['VENDEDOR', 'ADMIN'] as const

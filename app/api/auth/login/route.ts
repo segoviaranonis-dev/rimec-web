@@ -8,6 +8,7 @@ import { validateUsuario } from '@/lib/auth/validateUsuario'
 import { normalizarCategoria, puedeAccederRimecWeb } from '@/lib/auth/roles'
 import { createSession } from '@/lib/auth/session'
 import type { RolePermitido } from '@/lib/auth/roles'
+import { resolveCatalogoRamoScope } from '@/lib/auth/catalogoScopeUsuario'
 
 export async function POST(request: Request) {
   try {
@@ -51,11 +52,16 @@ export async function POST(request: Request) {
       role: categoriaNorm as RolePermitido,
     })
 
+    const catalogoScope = resolveCatalogoRamoScope(user.descp_usuario)
+
     return NextResponse.json({
       success: true,
       user: {
         name: user.descp_usuario,
         role: categoriaNorm,
+        catalogo_scope: catalogoScope,
+        solo_calzado: catalogoScope === 'calzado',
+        solo_confecciones: catalogoScope === 'confecciones',
       },
     })
   } catch (error) {

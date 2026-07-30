@@ -8,6 +8,8 @@ import { isTarjetaFusionada } from '@/lib/fusionTarjetasCatalogo'
 import { mergeSharedIntoFilters } from '@/lib/catalogoFiltrosCompartidos'
 import { preloadImageDecoded } from '@/lib/image-decode-cache'
 import { requestTarjetasPage } from '@/lib/catalogoFetch'
+import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import { variantesImagenWarm, urlsWarmVariante } from '@/lib/catalogoVarianteImagen'
 
 export const CARD_PAGE_LIMIT = 30
 /** Mínimo de tarjetas en cache para cambio CP↔PE instantáneo (Director · 2026-07-13). */
@@ -189,26 +191,23 @@ function urlsWarmVariant(v: {
   imagen_url_flat?: string | null
   imagen_url?: string | null
 }): string[] {
-  const out: string[] = []
-  for (const u of v.imagen_candidates_thumb ?? []) {
-    if (u) out.push(u)
-  }
-  const primary = v.imagen_url_thumb ?? v.imagen_url_flat ?? v.imagen_url
-  if (primary) out.push(primary)
-  return [...new Set(out)]
+  return urlsWarmVariante(v)
 }
 
-/** Precarga cadena sm→flat alineada con ProductImage (decode cache). */
+/** Precarga imágenes por color único (638) o tono (654) — no todas las tallas. */
 export function warmCatalogImages(tarjetas: TarjetaGrilla[], maxCards = CARD_PAGE_LIMIT) {
   let n = 0
   for (const card of tarjetas) {
     if (n >= maxCards) break
-    const lotes = isTarjetaFusionada(card) ? card.lotes : [card]
+    const lotes = isTarjetaFusionada(card) ? card.lotes : [card as TarjetaCatalogo]
     for (const lote of lotes) {
-      const v = lote.variantes[0]
-      if (!v) continue
-      for (const url of urlsWarmVariant(v)) {
-        void preloadImageDecoded(url)
+      const seen = new Set<string>()
+      for (const v of variantesImagenWarm(lote)) {
+        for (const url of urlsWarmVariant(v)) {
+          if (seen.has(url)) continue
+          seen.add(url)
+          void preloadImageDecoded(url)
+        }
       }
       n++
       if (n >= maxCards) break
@@ -433,9 +432,11 @@ export function ensureTodosCalzadoWarm(): void {
 /**
  * Hilos secundarios — precarga Calzado + Confecciones del origen activo ANTES del click.
  * Cola única: no satura Supabase; el pill opuesto va primero si se conoce el ramo actual.
+ * `skipConfecciones`: vendedores calzado · `skipCalzado`: PATRICIA/DARIO.
  */
 export function ensureRamoParWarm(
   active?: Pick<CatalogoFilterState, 'origen_tipo' | 'ramo_tipo'>,
+  opts?: { skipConfecciones?: boolean; skipCalzado?: boolean },
 ): void {
   if (typeof window === 'undefined' || !catalogWarmEnabled) return
   const origen = active?.origen_tipo || 'TODOS'
@@ -451,6 +452,15 @@ export function ensureRamoParWarm(
     const key = catalogWarmCacheKey(f)
     if (isCatalogWarmEnough(getPageWarmCache(key))) return
     void prefetchCatalogPage(f, { withFiltros: false }).catch(() => undefined)
+  }
+
+  if (opts?.skipConfecciones) {
+    preload(calzado)
+    return
+  }
+  if (opts?.skipCalzado) {
+    preload(confecciones)
+    return
   }
 
   if (ramoActual === 'CONFECCIONES') {
@@ -495,12 +505,22 @@ function staggerWarm(fn: () => void, delayMs: number): void {
   window.setTimeout(fn, delayMs)
 }
 
-export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): void {
+export function ensureDualCatalogWarm(
+  _activeFilters?: CatalogoFilterState,
+  opts?: { skipConfecciones?: boolean; skipCalzado?: boolean },
+): void {
   if (typeof window === 'undefined' || !catalogWarmEnabled) return
 
   // Grilla activa pide datos → warm diferido (evita statement timeout en ráfaga).
   if (isPrimaryCatalogFetchActive()) {
-    runWhenIdle(() => ensureDualCatalogWarm(_activeFilters))
+    runWhenIdle(() => ensureDualCatalogWarm(_activeFilters, opts))
+    return
+  }
+
+  if (opts?.skipCalzado) {
+    staggerWarm(() => ensureTodosConfeccionesWarm(), 400)
+    staggerWarm(() => ensurePeConfeccionesWarm(), 2_000)
+    staggerWarm(() => ensureCpConfeccionesWarm(), 4_000)
     return
   }
 
@@ -515,10 +535,14 @@ export function ensureDualCatalogWarm(_activeFilters?: CatalogoFilterState): voi
   }
 
   staggerWarm(() => ensureTodosCalzadoWarm(), 2_000)
-  staggerWarm(() => ensureTodosConfeccionesWarm(), 2_400)
+  if (!opts?.skipConfecciones) {
+    staggerWarm(() => ensureTodosConfeccionesWarm(), 2_400)
+  }
   staggerWarm(() => ensurePeCatalogWarm(), 4_000)
-  staggerWarm(() => ensurePeConfeccionesWarm(), 6_000)
-  staggerWarm(() => ensureCpConfeccionesWarm(), 8_000)
+  if (!opts?.skipConfecciones) {
+    staggerWarm(() => ensurePeConfeccionesWarm(), 6_000)
+    staggerWarm(() => ensureCpConfeccionesWarm(), 8_000)
+  }
   staggerWarm(() => ensureTodosCatalogWarm(), 12_000)
 }
 

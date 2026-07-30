@@ -8,6 +8,8 @@ import {
   fetchWarmTarjetasCached,
   isWarmTarjetasRequest,
 } from '@/lib/catalogoServerCache'
+import { getSession } from '@/lib/auth/session'
+import { applyCatalogoScopeUsuario } from '@/lib/auth/catalogoScopeUsuario'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,8 +65,16 @@ function parseFromSearchParams(sp: URLSearchParams) {
 /** GET — grilla paginada catálogo (página 1 · exclude corto). */
 export async function GET(req: NextRequest) {
   try {
-    const { rowFrom, limit, exclude, filters, quick } = parseFromSearchParams(req.nextUrl.searchParams)
-    const result = await runTarjetasQuery({ filters, rowFrom, limit, exclude, quick })
+    const session = await getSession()
+    const parsed = parseFromSearchParams(req.nextUrl.searchParams)
+    const filters = applyCatalogoScopeUsuario(parsed.filters, session?.name)
+    const result = await runTarjetasQuery({
+      filters,
+      rowFrom: parsed.rowFrom,
+      limit: parsed.limit,
+      exclude: parsed.exclude,
+      quick: parsed.quick,
+    })
     return NextResponse.json(result)
   } catch (err) {
     console.error('[catalogo/tarjetas]', err)
@@ -78,9 +88,11 @@ export async function GET(req: NextRequest) {
 /** POST — paginación con exclude largo (scroll infinito). */
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSession()
     const body = (await req.json()) as TarjetasBody
     const sp = req.nextUrl.searchParams
-    const filters = body.filters ?? parseCatalogoFiltersFromSearchParams(sp)
+    const rawFilters = body.filters ?? parseCatalogoFiltersFromSearchParams(sp)
+    const filters = applyCatalogoScopeUsuario(rawFilters, session?.name)
     const rowFrom = Math.max(0, Number(body.row_from ?? sp.get('row_from') ?? 0) || 0)
     const limit = Math.min(
       60,

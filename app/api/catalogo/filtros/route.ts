@@ -28,6 +28,8 @@ import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
 import { fetchCatalogoMetaViaRpc, metaRpcToFiltrosResponse } from '@/lib/catalogoMetaRpc'
 import { supabase } from '@/lib/supabase'
 import { unstable_cache } from 'next/cache'
+import { getSession } from '@/lib/auth/session'
+import { applyCatalogoScopeUsuario } from '@/lib/auth/catalogoScopeUsuario'
 
 export const dynamic = 'force-dynamic'
 
@@ -160,7 +162,11 @@ async function paresDatoDuroParaFiltros(filters: CatalogoFilterStateExtended) {
 /** GET — meta sidebar en cascada (marca → líneas → tonos · familias Material/Color). */
 export async function GET(req: NextRequest) {
   try {
-    const filters = parseCatalogoFiltersFromSearchParams(req.nextUrl.searchParams)
+    const session = await getSession()
+    const filters = applyCatalogoScopeUsuario(
+      parseCatalogoFiltersFromSearchParams(req.nextUrl.searchParams),
+      session?.name,
+    )
 
     const rpcMeta = await metaRpcParaFiltros(filters)
     if (rpcMeta && (rpcMeta.marcas.length > 0 || rpcMeta.lineas.length > 0 || rpcMeta.tipos.length > 0)) {

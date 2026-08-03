@@ -13,7 +13,11 @@ import {
 } from '@/lib/facturaCelulaClave'
 import { findFacturaConfig, sintetizarFacturaConfig } from '@/lib/facturaConfigMatch'
 import { aplicarDescuentoDiccionarioPe, fetchPeDiccionarioMap } from '@/lib/peDiccionario'
-import { preAutorizadoBloqueaResolver, resolverDescuentosFiPe } from '@/lib/resolverDescuentosFiPe'
+import {
+  preAutorizadoBloqueaResolver,
+  resolverDescuentosFiPe,
+  sumaDescuentosComerciales,
+} from '@/lib/resolverDescuentosFiPe'
 
 type ItemRow = {
   det_id: number
@@ -50,30 +54,42 @@ function matchPrev(
   },
 ): FacturaConfig | undefined {
   const hit = findFacturaConfig(prev, cell.pp_id, cell.marca, cell.caso, cell.caso_id)
-  if (!hit) {
-    return prev.find(
-      (f) =>
-        String(f.marca) === cell.marca &&
-        ((cell.caso_id != null &&
-          f.caso_id != null &&
-          Number(f.caso_id) === Number(cell.caso_id)) ||
-          String(f.caso) === cell.caso) &&
-        (Math.abs(Number(f.pp_id)) === Math.abs(cell.pp_id) || Number(f.pp_id) <= 0) &&
-        (cell.dictado_comercial_pct == null ||
-          Number((f as FacturaConfig & { dictado_comercial_pct?: number }).dictado_comercial_pct) ===
-            Number(cell.dictado_comercial_pct)),
+  if (hit) {
+    // Hotfix F5: si el vendedor ya guardó (pre_autorizado), NUNCA descartar el match
+    // por divergencia de dictado Report — eso re-aplicaba el % “predeterminado” (ej. 20%).
+    if (hit.pre_autorizado && sumaDescuentosComerciales(hit.descuentos) > 0) return hit
+    const pctF = Number(
+      (hit as FacturaConfig & { dictado_comercial_pct?: number }).dictado_comercial_pct,
     )
+    if (
+      cell.dictado_comercial_pct != null &&
+      Number.isFinite(pctF) &&
+      pctF > 0 &&
+      pctF !== cell.dictado_comercial_pct
+    ) {
+      // Sin edición vendedor: re-sincronizar célula si cambió el dictado
+      return undefined
+    }
+    return hit
   }
-  const pctF = Number((hit as FacturaConfig & { dictado_comercial_pct?: number }).dictado_comercial_pct)
-  if (
-    cell.dictado_comercial_pct != null &&
-    Number.isFinite(pctF) &&
-    pctF > 0 &&
-    pctF !== cell.dictado_comercial_pct
-  ) {
-    return undefined
-  }
-  return hit
+  return prev.find((f) => {
+    const mismaMarca = String(f.marca) === cell.marca
+    const mismoCaso =
+      (cell.caso_id != null &&
+        f.caso_id != null &&
+        Number(f.caso_id) === Number(cell.caso_id)) ||
+      String(f.caso) === cell.caso
+    const mismoPp =
+      Math.abs(Number(f.pp_id)) === Math.abs(cell.pp_id) || Number(f.pp_id) <= 0
+    if (!mismaMarca || !mismoCaso || !mismoPp) return false
+    // Congelado: match aunque dictado Report cambie
+    if (f.pre_autorizado && sumaDescuentosComerciales(f.descuentos) > 0) return true
+    if (cell.dictado_comercial_pct == null) return true
+    const pctF = Number(
+      (f as FacturaConfig & { dictado_comercial_pct?: number }).dictado_comercial_pct,
+    )
+    return !Number.isFinite(pctF) || pctF <= 0 || pctF === cell.dictado_comercial_pct
+  })
 }
 
 function facturasIguales(a: FacturaConfig[], b: FacturaConfig[]): boolean {
@@ -195,23 +211,37 @@ export async function asegurarFacturasDescuentosLote(
       dictado_comercial_pct: cell.descuento_comercial_pct,
     })
     const esPe = Number(cell.pp_id) < 0
-    const descuentosBase = old?.descuentos ?? descCab
-    let descuentos = aplicarDescuentoDiccionarioPe(normalizarDescuentos4(descuentosBase), {
-      cadena_comercial: cadena,
-      es_liquidacion: cell.es_liquidacion,
-      es_promo: cell.es_promo,
-      esPe,
-    })
     const listaFi = Number(old?.lista_precio_id) || listaCab
-    if (esPe) {
-      descuentos = resolverDescuentosFiPe({
-        listaPrecioId: listaFi,
-        descuentosPrevios: descuentos,
-        dictadoComercialPct: cell.descuento_comercial_pct,
-        preAutorizado: preAutorizadoBloqueaResolver(old?.descuentos, old?.pre_autorizado),
-        esPromocional: cadena === 'PROMOCIONAL',
+    const congeladoVendedor =
+      !!old?.pre_autorizado && sumaDescuentosComerciales(old.descuentos) > 0
+
+    let descuentos: ReturnType<typeof normalizarDescuentos4>
+    let preAutorizadoOut: boolean
+
+    if (congeladoVendedor) {
+      // F5 / GET sesión: respetar descuentos guardados (no volver al dictado 20%).
+      descuentos = normalizarDescuentos4(old!.descuentos)
+      preAutorizadoOut = true
+    } else {
+      const descuentosBase = old?.descuentos ?? descCab
+      descuentos = aplicarDescuentoDiccionarioPe(normalizarDescuentos4(descuentosBase), {
+        cadena_comercial: cadena,
+        es_liquidacion: cell.es_liquidacion,
+        es_promo: cell.es_promo,
+        esPe,
       })
+      if (esPe) {
+        descuentos = resolverDescuentosFiPe({
+          listaPrecioId: listaFi,
+          descuentosPrevios: descuentos,
+          dictadoComercialPct: cell.descuento_comercial_pct,
+          preAutorizado: preAutorizadoBloqueaResolver(old?.descuentos, old?.pre_autorizado),
+          esPromocional: cadena === 'PROMOCIONAL',
+        })
+      }
+      preAutorizadoOut = preAutorizadoBloqueaResolver(descuentos, old?.pre_autorizado)
     }
+
     const base = sintetizarFacturaConfig({
       pp_id: cell.pp_id,
       marca: cell.marca,
@@ -225,8 +255,15 @@ export async function asegurarFacturasDescuentosLote(
     })
     facturasOut.push({
       ...base,
-      ...(esPe ? { dictado_comercial_pct: cell.descuento_comercial_pct } : {}),
-      pre_autorizado: preAutorizadoBloqueaResolver(old?.descuentos, old?.pre_autorizado),
+      ...(esPe
+        ? {
+            dictado_comercial_pct: congeladoVendedor
+              ? ((old as FacturaConfig & { dictado_comercial_pct?: number | null })
+                  ?.dictado_comercial_pct ?? cell.descuento_comercial_pct)
+              : cell.descuento_comercial_pct,
+          }
+        : {}),
+      pre_autorizado: preAutorizadoOut,
     })
   }
 

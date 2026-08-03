@@ -138,7 +138,8 @@ async function emitirTokenValidacion(
 ): Promise<{ token: string; expira_en: string }> {
   const token = randomUUID()
   const now = new Date()
-  const expira = new Date(now.getTime() + 60_000)
+  /** Ventana confirmar — PE grande + logística. Paridad SQL carrito_token_vigente. */
+  const expira = new Date(now.getTime() + 30 * 60_000)
   await sb
     .from('carrito_sesion')
     .update({

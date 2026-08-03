@@ -89,8 +89,15 @@ export interface ItemCarrito {
   gradas_fmt:      string
   imagen_url:      string
   lista_precio_id: ListaId
+  /** Bruto de lista (LPN/LPC de stock). Nunca el neto post-descuento. */
   precio_base:     number
-  // Precios directos de v_stock_rimec (MIG-083 fix)
+  /**
+   * Neto persistido en `carrito_item.precio_snapshot` tras Guardar/Validar.
+   * Si > 0 y no hay bruto de lista, fragmentar lo usa sin reaplicar cascada
+   * (evita doble descuento).
+   */
+  precio_snapshot_neto?: number
+  // Precios directos de v_stock_rimec (MIG-083 fix) — solo vista stock, nunca snapshot neto
   precio_lpn:      number
   precio_lpc02:    number
   precio_lpc03:    number
@@ -199,15 +206,35 @@ function paresCalc(item: ItemCarritoMeta, cajas: number): number {
   return paresCarritoDesdeCajas(cajas, item)
 }
 
+function brutoListaDesdeStock(
+  stock: { lpn?: number; lpc02?: number; lpc03?: number; lpc04?: number } | null | undefined,
+  listaId: ListaId,
+  caso: string,
+  esPe: boolean,
+): number {
+  const row = {
+    lpn: Number(stock?.lpn) > 0 ? Number(stock?.lpn) : null,
+    lpc02: Number(stock?.lpc02) > 0 ? Number(stock?.lpc02) : null,
+    lpc03: Number(stock?.lpc03) > 0 ? Number(stock?.lpc03) : null,
+    lpc04: Number(stock?.lpc04) > 0 ? Number(stock?.lpc04) : null,
+  }
+  const fromLista = esPe
+    ? getPrecioActivoPeLib(row, listaId, caso)
+    : getPrecioActivoLib(row, listaId, caso)
+  return fromLista != null && fromLista > 0 ? fromLista : 0
+}
+
 function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, listaId: ListaId): ItemCarrito | null {
   const base = meta.get(row.det_id)
   // Extraer datos del JOIN con v_stock_rimec (MIG-083 fix: multi-dispositivo)
   const stockRow = row.v_stock_rimec?.[0]
-  // No coerzar null→0: getPrecioActivo/fragmentar deben caer al snapshot del carrito.
-  const precio_lpn = Number(stockRow?.lpn) > 0 ? Number(stockRow?.lpn) : Number(row.precio_snapshot) > 0 ? Number(row.precio_snapshot) : 0
+  // Solo precios de lista desde stock. NUNCA rellenar LPN con precio_snapshot
+  // (tras Guardar/Validar el snapshot es NETO → doble descuento en fragmentar).
+  const precio_lpn = Number(stockRow?.lpn) > 0 ? Number(stockRow?.lpn) : 0
   const precio_lpc02 = Number(stockRow?.lpc02) > 0 ? Number(stockRow?.lpc02) : 0
   const precio_lpc03 = Number(stockRow?.lpc03) > 0 ? Number(stockRow?.lpc03) : 0
   const precio_lpc04 = Number(stockRow?.lpc04) > 0 ? Number(stockRow?.lpc04) : 0
+  const snapNeto = Number(row.precio_snapshot) > 0 ? Number(row.precio_snapshot) : 0
 
   // Si tenemos META_CACHE (localStorage), usarlo
   const stockAny = stockRow as {
@@ -249,6 +276,23 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     return base?.descuento_comercial_pct ?? null
   })()
 
+  const origenTipoEarly = stockAny?.origen_tipo ?? base?.origen_tipo ?? null
+  const esPeRow =
+    isProntaEntregaStockRow({
+      det_id: row.det_id,
+      origen_tipo: origenTipoEarly,
+      pp_id: row.pp_id,
+    }) || Number(row.pp_id) < 0
+  const casoSnap = String(row.caso_snapshot ?? base?.caso ?? '')
+  const precioBrutoLista = brutoListaDesdeStock(
+    { lpn: precio_lpn, lpc02: precio_lpc02, lpc03: precio_lpc03, lpc04: precio_lpc04 },
+    listaId,
+    casoSnap,
+    esPeRow,
+  )
+  // Base de lista = bruto stock. Snapshot solo como neto (subtotal ya neto post-guardar).
+  const precioBaseUi = precioBrutoLista > 0 ? precioBrutoLista : 0
+
   if (base) {
     const enriched: ItemCarritoMeta = {
       ...base,
@@ -260,26 +304,36 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
       cadena_comercial: cadenaCom,
       cod_grupo: codGrupo,
       descuento_comercial_pct: descComercial,
+      origen_tipo: origenTipoEarly ?? base.origen_tipo,
+      precio_lpn,
+      precio_lpc02,
+      precio_lpc03,
+      precio_lpc04,
+      precio_base: precioBaseUi > 0 ? precioBaseUi : base.precio_base,
+      precio_snapshot_neto: snapNeto,
     }
     persistMeta(enriched)
     const pares = paresCalc(enriched, row.cantidad_cajas)
+    const unitNeto = snapNeto > 0 ? snapNeto : enriched.precio_base
     return {
       ...enriched,
       lista_precio_id: listaId,
-      precio_base: row.precio_snapshot,
+      precio_base: precioBaseUi > 0 ? precioBaseUi : enriched.precio_base,
+      precio_snapshot_neto: snapNeto,
       precio_lpn,
       precio_lpc02,
       precio_lpc03,
       precio_lpc04,
       cajas: row.cantidad_cajas,
       pares,
-      subtotal: row.precio_snapshot * pares,
+      subtotal: unitNeto * pares,
       cajas_disponibles: stockAny?.cajas_disponibles ?? base.cajas_disponibles ?? 0,
+      origen_tipo: origenTipoEarly ?? base.origen_tipo,
     }
   }
 
   // SIN META_CACHE (otro dispositivo): usar datos de vista stock
-  const origenTipo = stockAny?.origen_tipo
+  const origenTipo = origenTipoEarly
   const saldo_pares = stockSaldo ?? null
   const cant_caja = resolveParesPorCaja({
     pares_por_caja: stockAny?.pares_por_caja,
@@ -301,6 +355,7 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     det_id: row.det_id,
     pp_id: row.pp_id,
   })
+  const unitNeto = snapNeto > 0 ? snapNeto : precioBaseUi
 
   return {
     det_id: row.det_id,
@@ -329,7 +384,8 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     }),
     imagen_url: stockRow?.imagen_url ?? '',
     lista_precio_id: listaId,
-    precio_base: row.precio_snapshot,
+    precio_base: precioBaseUi,
+    precio_snapshot_neto: snapNeto,
     precio_lpn,
     precio_lpc02,
     precio_lpc03,
@@ -340,8 +396,9 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
     grades_json: stockGrades ?? null,
     cajas: row.cantidad_cajas,
     pares,
-    subtotal: row.precio_snapshot * pares,
+    subtotal: unitNeto * pares,
     cajas_disponibles: stockAny?.cajas_disponibles ?? 0,
+    origen_tipo: origenTipo,
   }
 }
 
@@ -470,7 +527,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
               estado: 'OK',
               token: sesion.validacion_token,
               expiraEn: sesion.validada_en
-                ? new Date(new Date(sesion.validada_en).getTime() + 60_000).toISOString()
+                ? new Date(new Date(sesion.validada_en).getTime() + 30 * 60_000).toISOString()
                 : null,
               items: [],
             }
@@ -849,10 +906,10 @@ export function fragmentarCarrito(
 
         const detalle: ItemFragmentado[] = cItems.map((item) => {
           const precioRow = {
-            lpn: item.precio_lpn,
-            lpc02: item.precio_lpc02,
-            lpc03: item.precio_lpc03,
-            lpc04: item.precio_lpc04,
+            lpn: item.precio_lpn > 0 ? item.precio_lpn : null,
+            lpc02: item.precio_lpc02 > 0 ? item.precio_lpc02 : null,
+            lpc03: item.precio_lpc03 > 0 ? item.precio_lpc03 : null,
+            lpc04: item.precio_lpc04 > 0 ? item.precio_lpc04 : null,
           }
           const esPeItem =
             isProntaEntregaStockRow({
@@ -862,15 +919,33 @@ export function fragmentarCarrito(
           const fromLista = esPeItem
             ? getPrecioActivoPeLib(precioRow, listaFactura as ListaId, item.caso)
             : getPrecioActivoLib(precioRow, listaFactura as ListaId, item.caso)
-          // Nunca mandar 0 al confirmar: si la vista viene vacía, usar snapshot del carrito.
-          const precioBaseLista =
-            (fromLista != null && fromLista > 0
-              ? fromLista
-              : null) ??
-            (item.precio_lpn > 0 ? item.precio_lpn : null) ??
-            (item.precio_base > 0 ? item.precio_base : 0)
+          // Bruto solo desde lista/stock. Si no hay: snapshot BD puede ser bruto (al
+          // agregar) o neto (post Guardar) — no reaplicar cascada al neto.
+          const brutoLista =
+            (fromLista != null && fromLista > 0 ? fromLista : 0) ||
+            (item.precio_lpn > 0 ? item.precio_lpn : 0)
+          const snapNeto = Number(item.precio_snapshot_neto) > 0 ? Number(item.precio_snapshot_neto) : 0
+          const brutoMeta = item.precio_base > 0 ? item.precio_base : 0
 
-          const precioNeto = calcularPrecioNeto(precioBaseLista, descFactura)
+          let precioBaseLista = 0
+          let precioNeto = 0
+          if (brutoLista > 0) {
+            precioBaseLista = brutoLista
+            precioNeto = calcularPrecioNeto(brutoLista, descFactura)
+          } else if (snapNeto > 0 && brutoMeta > 0 && snapNeto + 0.5 < brutoMeta) {
+            // Meta = lista; snapshot ya neto (post Guardar) — una sola aplicación
+            precioBaseLista = brutoMeta
+            precioNeto = snapNeto
+          } else if (brutoMeta > 0) {
+            // Catálogo / pre-guardar: precio_base es bruto
+            precioBaseLista = brutoMeta
+            precioNeto = calcularPrecioNeto(brutoMeta, descFactura)
+          } else if (snapNeto > 0) {
+            // Sin lista: confiar en snapshot sin re-descontar
+            precioBaseLista = snapNeto
+            precioNeto = snapNeto
+          }
+
           const paresConfirmar = paresCarritoDesdeCajas(item.cajas, item)
           const subtotal = precioNeto * paresConfirmar
 

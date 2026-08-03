@@ -19,7 +19,9 @@ export function normalizarDescuentos4(raw: unknown): Descuentos4 {
   }) as Descuentos4
 }
 
-/** Cascada d1→d4 · floor centenas (paridad confirmar / fragmentarCarrito). */
+/** Cascada d1→d4 · floor centenas (paridad confirmar / fragmentarCarrito).
+ *  Ley 4.01.04.006: `precioBase` SIEMPRE bruto de lista (LPN/LPC). Nunca pasar
+ *  `precio_snapshot` neto como base — provoca DOBLE_20 / doble cascada. */
 export function precioNetoCascada(precioBase: number, descuentos: Descuentos4 | number[]): number {
   let precio = precioBase
   for (let i = 0; i < 4; i++) {
@@ -119,9 +121,6 @@ export async function guardarDescuentosFacturaInterna(
 ): Promise<GuardarDescuentosFiResult> {
   const descuentos = normalizarDescuentos4(input.descuentos)
 
-  // Regenera facturas PE/CP si faltan (hotfix: botón descuento sin fila en sesión).
-  await asegurarFacturasDescuentosLote(sb, idUsuario)
-
   const { data: sesion, error: sesionErr } = await sb
     .from('carrito_sesion')
     .select('descuentos_lote, lista_precio_id')
@@ -151,6 +150,32 @@ export async function guardarDescuentosFacturaInterna(
       input.caso_id ?? null,
     ),
   )
+
+  // Si falta la FI en sesión, regenerar lote UNA vez (sin pisar edición en curso).
+  if (idx === -1) {
+    await asegurarFacturasDescuentosLote(sb, idUsuario)
+    const { data: sesion2 } = await sb
+      .from('carrito_sesion')
+      .select('descuentos_lote, lista_precio_id')
+      .eq('id_usuario', idUsuario)
+      .single()
+    const lote2 = (sesion2?.descuentos_lote as { facturas?: Array<Record<string, unknown>> }) ?? {}
+    descuentosLote.facturas = Array.isArray(lote2.facturas) ? lote2.facturas : []
+    idx = descuentosLote.facturas.findIndex((f) =>
+      mismaFacturaConfig(
+        {
+          pp_id: Number(f.pp_id),
+          marca: String(f.marca),
+          caso: String(f.caso),
+          caso_id: f.caso_id != null ? Number(f.caso_id) : null,
+        },
+        input.pp_id,
+        input.marca,
+        input.caso,
+        input.caso_id ?? null,
+      ),
+    )
+  }
 
   if (idx === -1) {
     descuentosLote.facturas.push(

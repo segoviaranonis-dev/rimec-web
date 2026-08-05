@@ -683,24 +683,33 @@ export function CatalogoClient({
 
     if (hasCached && !hasSidebarFilters(activeFilters)) {
       prefetchScrollPageSoon(activeFilters, cached!.nextRowFrom, cached!.excludeCardKeys)
-      markCatalogPrimaryFetchStart()
-      void fetchPage({ fromRow: 0, exclude: [], currentFilters: activeFilters, limit: CARD_PAGE_LIMIT })
-        .then(json => {
-          if (cancelled) return
-          applyPageJson(json, { background: true })
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          if (!cancelled) {
-            markCatalogPrimaryFetchEnd()
-            setLoading(false)
-            setRefreshing(false)
-            ensureRamoParWarm(activeFilters, warmOpts)
-            ensureDualCatalogWarm(activeFilters, warmOpts)
-          }
-        })
+      setLoading(false)
+      setRefreshing(false)
+      ensureRamoParWarm(activeFilters, warmOpts)
+      ensureDualCatalogWarm(activeFilters, warmOpts)
+      // Warm fresco ≥30: no SWR inmediato (evita 2.º hit Supabase en first paint).
+      const warmFresh = isCatalogWarmEnough(cached)
+      const swrDelayMs = warmFresh ? 2_800 : 0
+      const swrTimer = window.setTimeout(() => {
+        if (cancelled) return
+        markCatalogPrimaryFetchStart()
+        setRefreshing(true)
+        void fetchPage({ fromRow: 0, exclude: [], currentFilters: activeFilters, limit: CARD_PAGE_LIMIT })
+          .then(json => {
+            if (cancelled) return
+            applyPageJson(json, { background: true })
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            if (!cancelled) {
+              markCatalogPrimaryFetchEnd()
+              setRefreshing(false)
+            }
+          })
+      }, swrDelayMs)
       return () => {
         cancelled = true
+        window.clearTimeout(swrTimer)
         markCatalogPrimaryFetchEnd()
       }
     }

@@ -161,15 +161,21 @@ async function paresDatoDuroParaFiltros(filters: CatalogoFilterStateExtended) {
 
 /** GET — meta sidebar en cascada (marca → líneas → tonos · familias Material/Color). */
 export async function GET(req: NextRequest) {
+  const session = await getSession()
+  const filters = applyCatalogoScopeUsuario(
+    parseCatalogoFiltersFromSearchParams(req.nextUrl.searchParams),
+    session?.name,
+  )
   try {
-    const session = await getSession()
-    const filters = applyCatalogoScopeUsuario(
-      parseCatalogoFiltersFromSearchParams(req.nextUrl.searchParams),
-      session?.name,
-    )
-
     const rpcMeta = await metaRpcParaFiltros(filters)
-    if (rpcMeta && (rpcMeta.marcas.length > 0 || rpcMeta.lineas.length > 0 || rpcMeta.tipos.length > 0)) {
+    if (
+      rpcMeta &&
+      (rpcMeta.marcas.length > 0 ||
+        rpcMeta.lineas.length > 0 ||
+        rpcMeta.tipos.length > 0 ||
+        rpcMeta.estilos.length > 0 ||
+        rpcMeta.generos.length > 0)
+    ) {
       const payload = metaRpcToFiltrosResponse(rpcMeta)
       // Hotfix: no escanear 6k+ filas en TODOS — bloqueaba prod (>10s) y dejaba filtros vacíos.
       let paresDatoDuro: Awaited<ReturnType<typeof paresDatoDuroParaFiltros>> = []
@@ -232,6 +238,35 @@ export async function GET(req: NextRequest) {
     })
   } catch (err) {
     console.error('[catalogo/filtros]', err)
+    try {
+      const { loadMaestrasTrianguloCatalogo } = await import('@/lib/pilares/loadMaestrasTriangulo')
+      const maestras = await loadMaestrasTrianguloCatalogo(filters.ramo_tipo)
+      if (maestras?.estilos?.length || maestras?.generos?.length) {
+        return NextResponse.json({
+          filtros: {
+            todasLineas: [],
+            todasMarcas: [],
+            todosEstilos: maestras.estilos,
+            todosTipos: [],
+            todosGeneros: maestras.generos,
+          },
+          colores: [],
+          quincenas: [],
+          preventas: [],
+          paresDatoDuro: [],
+          tonosDisponibles: [],
+          materialFamilias: [],
+          colorFamilias: [],
+          precioRango: null,
+          totalFilas: 0,
+          origen: filters.origen_tipo,
+          metaSource: 'degraded-maestras',
+          degraded: true,
+        })
+      }
+    } catch (e) {
+      console.error('[catalogo/filtros] degraded maestras', e)
+    }
     return NextResponse.json({
       filtros: { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] },
       colores: [],

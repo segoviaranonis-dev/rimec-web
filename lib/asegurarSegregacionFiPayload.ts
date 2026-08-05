@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   cadenaComercialFi,
+  etiquetaCelulaFi,
   type CadenaComercialFi,
   violacionSegregacionCadenas,
 } from '@/lib/facturaCelulaClave'
@@ -87,12 +88,36 @@ function cadenaDeItem(
   })
 }
 
+function enriquecerCasoFactura(
+  factura: FacturaPayload,
+  signals: Map<number, StockSignal>,
+  cad: CadenaComercialFi,
+): FacturaPayload {
+  const items = Array.isArray(factura.items) ? factura.items : []
+  const first = items[0]
+  const detId = first ? Number(first.det_id) : NaN
+  const s = Number.isFinite(detId) ? signals.get(detId) : undefined
+  const casoBase = String(factura.caso ?? s?.descp_caso ?? '').trim() || 'Sin caso'
+  const caso = etiquetaCelulaFi({
+    caso: casoBase,
+    caso_id: factura.caso_id ?? null,
+    descp_caso: s?.descp_caso ?? casoBase,
+    es_liquidacion: cad === 'LIQUIDACION' ? true : s?.es_liquidacion ?? null,
+    es_promo: cad === 'PROMOCIONAL' ? true : s?.es_promo ?? null,
+    cadena_comercial: cad === 'REGULAR' || cad === 'COMUN' ? cad : s?.cadena_comercial ?? cad,
+    cod_grupo: s?.cod_grupo ?? null,
+  })
+  return { ...factura, caso, _cadena_fi: cad }
+}
+
 function splitFacturaPorCadena(
   factura: FacturaPayload,
   signals: Map<number, StockSignal>,
 ): FacturaPayload[] {
   const items = Array.isArray(factura.items) ? factura.items : []
-  if (!items.length) return [factura]
+  if (!items.length) {
+    return [enriquecerCasoFactura(factura, signals, 'REGULAR')]
+  }
 
   const byCadena = new Map<CadenaComercialFi, typeof items>()
   for (const it of items) {
@@ -102,26 +127,19 @@ function splitFacturaPorCadena(
     byCadena.get(cad)!.push(it)
   }
 
-  if (byCadena.size <= 1) return [factura]
-
   return [...byCadena.entries()].map(([cad, grupo]) => {
     const pares = grupo.reduce((s, i) => s + (Number(i.pares) || 0), 0)
     const monto = grupo.reduce((s, i) => s + (Number(i.subtotal) || 0), 0)
-    const casoBase = String(factura.caso ?? '').trim() || 'Sin caso'
-    const caso =
-      cad === 'REGULAR'
-        ? casoBase
-        : casoBase.toUpperCase().includes(cad.slice(0, 5))
-          ? casoBase
-          : `${casoBase} · ${cad}`
-    return {
-      ...factura,
-      caso,
-      total_pares: pares,
-      total_monto: monto,
-      items: grupo,
-      _cadena_fi: cad,
-    }
+    return enriquecerCasoFactura(
+      {
+        ...factura,
+        total_pares: pares,
+        total_monto: monto,
+        items: grupo,
+      },
+      signals,
+      cad,
+    )
   })
 }
 

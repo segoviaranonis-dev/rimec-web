@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useSesion, getPrecioActivo, getPrecioActivoPe, LISTAS, type ListaId } from '@/store/sesionVenta'
+import { useSesion } from '@/store/sesionVenta'
 import { useRouter } from 'next/navigation'
 import { DialogoActivacion } from '@/components/DialogoActivacion'
 import { CatalogCarruselColores } from '@/components/catalog/CatalogCarruselColores'
@@ -16,7 +16,6 @@ import {
   origenChipStyle,
 } from '@/lib/catalogCardChrome'
 import { formatearQuincena } from '@/lib/fecha'
-import { etiquetaDatoDuroCp } from '@/lib/datoDuroCabecera'
 import { estiloBadgeMarca, labelMarcaCatalogo } from '@/lib/marcaBadge'
 import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
@@ -50,7 +49,6 @@ export type RimecAgrupado = TarjetaCatalogo
 
 const AZUL = '#0F172A'
 const CELESTE = '#0EA5E9'
-const DORADO = '#D4AF37'
 
 const COLOR_MAP: [RegExp, string][] = [
   [/\bbranco\b|\bblanco\b|off\s?white|\bivory\b|\bmarfil\b/i, '#f5f5f0'],
@@ -120,25 +118,6 @@ function etiquetaOrigenChip(
   }
   if (quincenaDesc) return quincenaDesc
   return 'Compra previa'
-}
-
-/** Precio catálogo — PE: LPN si el tier de lista está vacío (LPC02-04 null en vista). */
-function precioCatalogo(
-  v: { lpn?: number | null; lpc02?: number | null; lpc03?: number | null; lpc04?: number | null; precio_web?: number | null },
-  listaId: number,
-  descpCaso: string | null | undefined,
-  origenTipo: TarjetaCatalogo['origen_tipo'] | string | null | undefined,
-): number | null {
-  const row = {
-    lpn: v.lpn ?? null,
-    lpc02: v.lpc02 ?? null,
-    lpc03: v.lpc03 ?? null,
-    lpc04: v.lpc04 ?? null,
-    precio_web: v.precio_web ?? null,
-  }
-  const ot = String(origenTipo ?? '').toUpperCase().replace(/\s+/g, '_')
-  if (ot.includes('PRONTA')) return getPrecioActivoPe(row, listaId, descpCaso)
-  return getPrecioActivo(row, listaId, descpCaso)
 }
 
 function ChipEta({
@@ -756,9 +735,8 @@ export function CatalogoGrid({
     obs.observe(el)
     return () => obs.disconnect()
   }, [hasMore, onLoadMore, productos.length])
-  const { activa, carrito, cliente, vendedor, listaPrecioId } = useSesion()
+  const { activa, carrito } = useSesion()
   const [mostrarDialogo, setMostrarDialogo] = useState(false)
-  const [generandoPDF, setGenerandoPDF] = useState(false)
 
   const filtered = productos
 
@@ -780,90 +758,6 @@ export function CatalogoGrid({
   })
     ? 'prendas'
     : 'pares'
-
-  const handleGenerarPDFCatalogo = async () => {
-    if (!activa || !cliente) return
-
-    setGenerandoPDF(true)
-    try {
-      // Preparar datos: solo productos visibles (respetando filtros)
-      const productosParaPDF = filtered.flatMap(p => {
-        const lotes = isTarjetaFusionada(p) ? p.lotes : [p]
-        return lotes.map(lote => ({
-          linea_codigo: lote.linea_codigo,
-          referencia_codigo: lote.referencia_codigo,
-          descp_material: lote.descp_material,
-          descp_marca: lote.descp_marca,
-          quincena_desc: lote.variantes[0]?.quincena_desc || null,
-          numero_preventa: lote.variantes[0]?.numero_preventa || null,
-          dato_duro_label: etiquetaDatoDuroCp(
-            lote.variantes[0]?.numero_preventa,
-            lote.variantes[0]?.quincena_desc,
-          ),
-          variantes: lote.variantes
-            .filter(v => v.cajas_disponibles > 0)
-            .map(v => ({
-              det_id: v.det_id,
-              descp_color: v.descp_color,
-              imagen_url: v.imagen_url,
-              gradas_fmt: v.gradas_fmt,
-              cajas_disponibles: v.cajas_disponibles,
-              precio_base: precioCatalogo(v, listaPrecioId, lote.descp_caso, lote.origen_tipo) || 0,
-              lista_precio_id: listaPrecioId,
-            })),
-        }))
-      })
-
-      const catalogoData = {
-        cliente_nombre: cliente.descp_cliente || 'Cliente',
-        vendedor_nombre: vendedor?.descp_vendedor || 'Vendedor',
-        lista_precio: LISTAS.find(l => l.id === listaPrecioId)?.nombre || `Lista ${listaPrecioId}`,
-        fecha_generacion: new Date().toLocaleDateString('es-PY', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      }
-
-      // Debug logging
-      console.log('[Catálogo] Generando PDF con:', {
-        productos: productosParaPDF.length,
-        cliente: catalogoData.cliente_nombre,
-        vendedor: catalogoData.vendedor_nombre,
-        lista: catalogoData.lista_precio,
-      })
-
-      const response = await fetch('/api/pdf/catalogo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productos: productosParaPDF, catalogoData }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        console.error('[Catálogo] Error del servidor:', error)
-        throw new Error(error.error || error.message || 'Error generando PDF')
-      }
-
-      // Descargar PDF
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `catalogo-${cliente.descp_cliente.replace(/\s+/g, '_')}-${Date.now()}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-    } catch (error) {
-      console.error('[Catálogo] Error generando PDF:', error)
-      alert('Error al generar el PDF. Intentá de nuevo.')
-    } finally {
-      setGenerandoPDF(false)
-    }
-  }
 
   return (
     <>
@@ -905,38 +799,6 @@ export function CatalogoGrid({
           </a>
         </div>
       )}
-      {activa && filtered.length > 0 && (
-        <div style={{ position: 'fixed', bottom: 100, right: 24, zIndex: 50 }}>
-          <button
-            onClick={handleGenerarPDFCatalogo}
-            disabled={generandoPDF}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '14px 24px', borderRadius: 14,
-              backgroundColor: generandoPDF ? '#94A3B8' : DORADO,
-              color: generandoPDF ? 'white' : AZUL,
-              fontWeight: 700, fontSize: 15, border: 'none',
-              cursor: generandoPDF ? 'not-allowed' : 'pointer',
-              boxShadow: '0 6px 20px rgba(212,175,55,0.35)',
-              transition: 'all 0.2s',
-            }}
-            title="Generar PDF del catálogo visible (respetando filtros)"
-          >
-            {generandoPDF ? (
-              <>
-                <svg className="animate-spin h-5 w-5 inline-block mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Generando PDF ({filtered.length} modelos)...
-              </>
-            ) : (
-              <>📄 PDF Catálogo ({filtered.length} modelos)</>
-            )}
-          </button>
-        </div>
-      )}
-
       {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 0' }}>
           <p style={{ fontSize: 48, marginBottom: 12 }}>📦</p>

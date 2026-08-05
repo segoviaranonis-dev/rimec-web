@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchTarjetasPage, CATALOGO_CARD_PAGE } from '@/lib/catalogoPaginado'
 import {
   parseCatalogoFiltersFromSearchParams,
+  isCatalogoOrigenTodos,
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
 import {
@@ -21,6 +22,22 @@ type TarjetasBody = {
   quick?: boolean
 }
 
+function esTimeoutTarjetas(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err ?? '')
+  return /statement timeout|57014|canceling statement|schema cache|transaction is aborted/i.test(raw)
+}
+
+function tarjetasVaciasPorTimeout(limit: number) {
+  return {
+    tarjetas: [],
+    nextRowFrom: 0,
+    hasMore: false,
+    excludeCardKeys: [] as string[],
+    degraded: true,
+    limit,
+  }
+}
+
 async function runTarjetasQuery(opts: {
   filters: CatalogoFilterStateExtended
   rowFrom: number
@@ -33,7 +50,8 @@ async function runTarjetasQuery(opts: {
     quick ||
     Boolean(String(filters.buscar ?? '').trim()) ||
     filters.ramo_tipo === 'CONFECCIONES' ||
-    filters.ramo_tipo === 'ACCESORIOS'
+    filters.ramo_tipo === 'ACCESORIOS' ||
+    (isCatalogoOrigenTodos(filters) && filters.ramo_tipo === 'CALZADO')
   if (useQuick) {
     return fetchTarjetasPage({
       filters,
@@ -78,6 +96,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[catalogo/tarjetas]', err)
+    if (esTimeoutTarjetas(err)) {
+      const parsed = parseFromSearchParams(req.nextUrl.searchParams)
+      return NextResponse.json(tarjetasVaciasPorTimeout(parsed.limit))
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Error cargando catálogo' },
       { status: 500 },
@@ -107,6 +129,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[catalogo/tarjetas POST]', err)
+    if (esTimeoutTarjetas(err)) {
+      const sp = req.nextUrl.searchParams
+      const limit = Math.min(
+        60,
+        Math.max(1, Number(sp.get('limit') ?? CATALOGO_CARD_PAGE) || CATALOGO_CARD_PAGE),
+      )
+      return NextResponse.json(tarjetasVaciasPorTimeout(limit))
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Error cargando catálogo' },
       { status: 500 },

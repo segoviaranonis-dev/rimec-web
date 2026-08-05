@@ -69,16 +69,27 @@ export function claveCelulaFiPeDictado(
 export function etiquetaCelulaFi(item: CelulaFragmentable): string {
   const caso = etiquetaCasoFi(item)
   const cad = cadenaComercialFi(item)
-  if (cad === 'REGULAR') return caso
+  const up = caso.toUpperCase()
+  const peBatch =
+    /^PE\b/i.test(caso) ||
+    /sdrm/i.test(caso) ||
+    /pronta\s*entrega/i.test(caso) ||
+    /pe-import/i.test(caso)
+
+  if (cad === 'REGULAR') {
+    // PE: siempre dejar cadena visible para traductor Carlos (evita caer a BR-VZ “ciego”).
+    if (peBatch && !up.includes('REGULAR') && !up.includes('NORMAL') && !up.includes('PROMO') && !up.includes('LIQUID')) {
+      return `${caso} · REGULAR`
+    }
+    return caso
+  }
   if (cad === 'COMUN') {
     if (caso === 'Sin caso' || caso.startsWith('Caso #')) return `${caso} · COMUN`
-    const up = caso.toUpperCase()
     if (up.includes('COMUN')) return caso
     return `${caso} · COMUN`
   }
   if (caso === 'Sin caso' || caso.startsWith('Caso #')) return `${caso} · ${cad}`
   // Evitar duplicar si el nombre del caso ya es PROMOCIONAL / LIQUIDACION
-  const up = caso.toUpperCase()
   if (up.includes('LIQUID') || up.includes('PROMO')) return caso
   return `${caso} · ${cad}`
 }

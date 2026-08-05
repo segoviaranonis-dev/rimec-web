@@ -19,8 +19,10 @@ export function normalizarDescuentos4(raw: unknown): Descuentos4 {
   }) as Descuentos4
 }
 
-/** Cascada d1→d4 · floor centenas (paridad confirmar / fragmentarCarrito).
- *  Ley 4.01.04.006: `precioBase` SIEMPRE bruto de lista (LPN/LPC). Nunca pasar
+/** Cascada d1→d4 · Gs enteros sin centena.
+ *  Ley Director: monto que sufrió descuento comercial (carrito / pre-FI) NO se
+ *  redondea a centena en ningún lugar de RIMEC. Lista LPN/LPC sí (2.3.1.7.1.0.2).
+ *  Ley 4.01.04.006: `precioBase` SIEMPRE bruto de lista. Nunca pasar
  *  `precio_snapshot` neto como base — provoca DOBLE_20 / doble cascada. */
 export function precioNetoCascada(precioBase: number, descuentos: Descuentos4 | number[]): number {
   let precio = precioBase
@@ -28,7 +30,7 @@ export function precioNetoCascada(precioBase: number, descuentos: Descuentos4 | 
     const d = Number(descuentos[i]) || 0
     if (d > 0) precio = precio * (1 - d / 100)
   }
-  return Math.floor(precio / 100) * 100
+  return Math.round(precio)
 }
 
 export function etiquetaDescuentos(desc: Descuentos4 | number[]): string {

@@ -20,7 +20,8 @@ const VERDE = '#10B981'
 const AMARILLO = '#F59E0B'
 const ROJO = '#DC2626'
 
-const VENTANA_VALIDACION_S = 60
+/** Paridad con emitirTokenValidacion + carrito_token_vigente (30 min). */
+const VENTANA_VALIDACION_S = 30 * 60
 
 const RE_STOCK_INSUFICIENTE_RPC = /^Stock insuficiente L(\S+) R(\S+) \(PP: ([^)]+)\)\. Solicitado: (\d+), Disponible: (\d+)\.?$/
 
@@ -67,7 +68,7 @@ export default function CarritoPage() {
   const [guardandoDesc, setGuardandoDesc] = useState(false)
   const logisticaSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Countdown del token (60 s desde validacion.expiraEn).
+  // Countdown del token (30 min desde validacion.expiraEn).
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (validacion.estado !== 'OK' || !validacion.expiraEn) return

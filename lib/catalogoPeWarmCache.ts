@@ -543,7 +543,10 @@ export function ensureDualCatalogWarm(
     staggerWarm(() => ensurePeConfeccionesWarm(), 6_000)
     staggerWarm(() => ensureCpConfeccionesWarm(), 8_000)
   }
-  staggerWarm(() => ensureTodosCatalogWarm(), 12_000)
+  // Solo-calzado: ensureTodosCalzadoWarm ya cubre TODOS+CALZADO — no duplicar a los 12s.
+  if (!opts?.skipConfecciones) {
+    staggerWarm(() => ensureTodosCatalogWarm(), 12_000)
+  }
 }
 
 /** @deprecated usar ensureDualCatalogWarm */

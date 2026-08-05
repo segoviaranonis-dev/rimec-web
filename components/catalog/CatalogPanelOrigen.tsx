@@ -17,6 +17,7 @@ import {
   resolverLpc04,
 } from '@/lib/precioLista'
 import { indiceVariantePorTonoKey, tonoKeyDeVariante } from '@/lib/catalogoTonoActivo'
+import { varianteImagenPorTonoKey } from '@/lib/catalogoVarianteImagen'
 import {
   isConfecciones638Lote,
   stockEnLote,
@@ -90,9 +91,9 @@ export function CatalogPanelOrigen({
   const quitarCaja = useSesion(s => s.quitarCaja)
 
   const variantesConStock = p.variantes.filter(v => v.cajas_disponibles > 0)
+  const loteStock = { ...p, variantes: variantesConStock.length ? variantesConStock : p.variantes }
+  const v = varianteImagenPorTonoKey(loteStock, activeTonoKey) ?? variantesConStock[0] ?? p.variantes[0]
   const matchIdx = indiceVariantePorTonoKey(variantesConStock, activeTonoKey)
-  const varIdx = matchIdx >= 0 ? matchIdx : 0
-  const v = variantesConStock[varIdx] || p.variantes[0]
   if (!v) return null
 
   // Protocolo: no calcular/mostrar precio sin venta activa (4.01.04.001)
@@ -223,6 +224,8 @@ export function CatalogPanelOrigen({
             color_hex: vv.color_hex,
             tono_canon: vv.tono_canon,
             descp_color: vv.descp_color,
+            imagen_url_thumb: vv.imagen_url_thumb,
+            imagen_candidates_thumb: vv.imagen_candidates_thumb,
           }))}
           activeIdx={matchIdx}
           onSelect={idx => {
@@ -238,6 +241,8 @@ export function CatalogPanelOrigen({
             color_hex: vv.color_hex,
             tono_canon: vv.tono_canon,
             descp_color: vv.descp_color,
+            imagen_url_thumb: vv.imagen_url_thumb,
+            imagen_candidates_thumb: vv.imagen_candidates_thumb,
           }))}
           activeIdx={Math.max(
             0,

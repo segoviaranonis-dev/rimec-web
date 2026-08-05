@@ -97,7 +97,8 @@ export const CATALOG_SYNC_STAGES: CatalogSyncStageDef[] = [
     tint: 'rgba(224, 231, 255, 0.72)',
     glow: 'rgba(99, 102, 241, 0.35)',
     filters: effectiveTodosWarmFilters,
-    withFiltros: true,
+    // Meta sidebar ya se pide diferida (~12s) en CatalogoClient — no pelear DB al cold start.
+    withFiltros: false,
     requiredForGate: true,
   },
 ]

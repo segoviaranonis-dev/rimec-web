@@ -11,6 +11,7 @@ import {
 } from '@/lib/logisticaPeConfirmar'
 import { appendObsLogisticaPeAFacturas } from '@/lib/logisticaObservacionPe'
 import { notificarAprobadoresPedidoWeb } from '@/lib/notificarAprobadoresPedidoWeb'
+import { validarCarritoPeApp } from '@/lib/carritoValidarPe'
 
 /**
  * POST /api/carrito/confirmar
@@ -81,9 +82,53 @@ export async function POST(req: NextRequest) {
         ? Number((payload as { total_neto?: number }).total_neto) || Number(p_total_monto) || 0
         : Number(p_total_monto) || 0
 
+    // Ley PE/Web: fi.vendedor_id = usuario_v2.id_usuario (NO vendedor_v2). Error 4.02.04.004.
+    const vendedorSesion = session.id_usuario
+    if (p_vendedor_id != null && Number(p_vendedor_id) !== Number(vendedorSesion)) {
+      console.warn('[confirmar] p_vendedor_id≠sesión · usando id_usuario', {
+        body: p_vendedor_id,
+        sesion: vendedorSesion,
+      })
+    }
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      const p = payload as Record<string, unknown>
+      p.vendedor_id = vendedorSesion
+      if (session.name) p.vendedor_nombre = session.name
+    }
+
+    // Si el token del cliente venció (logística larga), revalidar stock/precios y emitir uno fresco.
+    let tokenConfirmar = String(p_validacion_token)
+    const { data: sesTok } = await sb
+      .from('carrito_sesion')
+      .select('validacion_token, validacion_estado, validada_en')
+      .eq('id_usuario', vendedorSesion)
+      .maybeSingle()
+    const validadaMs = sesTok?.validada_en ? new Date(sesTok.validada_en).getTime() : 0
+    const tokenVigente =
+      sesTok?.validacion_estado === 'OK' &&
+      sesTok?.validacion_token &&
+      String(sesTok.validacion_token) === tokenConfirmar &&
+      validadaMs > 0 &&
+      Date.now() - validadaMs < 30 * 60_000
+
+    if (!tokenVigente) {
+      console.warn('[confirmar] token no vigente · revalidando en servidor')
+      const reval = await validarCarritoPeApp(sb, vendedorSesion)
+      if (reval.estado !== 'OK' || !reval.token) {
+        return NextResponse.json({
+          success: false,
+          error:
+            'Token de validación vencido o el stock/precio cambió. Presioná VALIDAR de nuevo.',
+          detail: 'VALIDACION_VENCIDA',
+          items: reval.items ?? [],
+        })
+      }
+      tokenConfirmar = reval.token
+    }
+
     const { data, error: rpcErr } = await sb.rpc('confirmar_pedido_web', {
       p_cliente_id,
-      p_vendedor_id: p_vendedor_id ?? null,
+      p_vendedor_id: vendedorSesion,
       p_plazo_id,
       p_lista_precio_id,
       p_descuento_1: Number(p_descuento_1) || 0,
@@ -93,7 +138,7 @@ export async function POST(req: NextRequest) {
       p_total_pares,
       p_total_monto: totalMonto,
       p_payload: payload,
-      p_validacion_token,
+      p_validacion_token: tokenConfirmar,
     })
 
     if (rpcErr) {

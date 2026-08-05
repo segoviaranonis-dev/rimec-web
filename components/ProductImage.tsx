@@ -122,9 +122,36 @@ export function ProductImage({
       return
     }
 
+    // Thumb: pintar 1.ª candidata de inmediato (candidates API / warm) y validar en background.
+    // Evita waterfall serial md/lg en first paint de grilla.
+    const hasApiCandidates = candidatesKey.length > 0
+    const first = tryList[0]!
+    if (variant === 'thumb' && hasApiCandidates && !displaySrcRef.current) {
+      displaySrcRef.current = first
+      setDisplaySrc(first)
+    }
+
     let cancelled = false
     void (async () => {
-      for (const url of tryList) {
+      const probeList =
+        variant === 'thumb' && hasApiCandidates
+          ? tryList.slice(0, Math.min(2, tryList.length))
+          : tryList
+      for (const url of probeList) {
+        if (cancelled || probeGen.current !== gen) return
+        const ok = await preloadImageDecoded(url)
+        if (cancelled || probeGen.current !== gen) return
+        if (ok) {
+          if (displaySrcRef.current !== url) {
+            displaySrcRef.current = url
+            setDisplaySrc(url)
+          }
+          return
+        }
+      }
+      // Falló la corta: seguir con el resto solo si aún no hay foto.
+      if (displaySrcRef.current) return
+      for (const url of tryList.slice(probeList.length)) {
         if (cancelled || probeGen.current !== gen) return
         const ok = await preloadImageDecoded(url)
         if (cancelled || probeGen.current !== gen) return
@@ -134,13 +161,13 @@ export function ProductImage({
           return
         }
       }
-      // Todas fallaron: no vaciar si ya había una buena; nunca pintar skeleton con nombre.
     })()
 
     return () => {
       cancelled = true
     }
-  }, [isHero, chain, srcProp, flatFallback, linea, referencia, material, color])
+    // Tamaño fijo siempre (HMR no debe mezclar 8 vs 10). candidatesKey = string estable.
+  }, [isHero, chain, srcProp, flatFallback, variant, candidatesKey])
 
   if (isHero) {
     return (

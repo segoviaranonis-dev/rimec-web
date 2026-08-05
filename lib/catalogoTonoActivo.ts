@@ -1,5 +1,6 @@
 import { parseTonoCanon } from '@/lib/pilares/color-canon'
 import type { TarjetaCatalogo } from '@/lib/agruparTarjetasCatalogo'
+import { varianteImagenPorTonoKey } from '@/lib/catalogoVarianteImagen'
 
 export type VarianteTonoKey = {
   color_code?: string | null
@@ -27,20 +28,15 @@ export function indiceVariantePorTonoKey<T extends VarianteTonoKey>(
   return variantes.findIndex(v => tonoKeyDeVariante(v) === tonoKey)
 }
 
-/** Primero lote con stock del tono (para miniatura). */
+/** Primero lote con stock del tono (para miniatura). 638 = representante por color. */
 export function variantePorTonoKey(
   lotes: TarjetaCatalogo[],
   tonoKey: string | null | undefined,
 ): { lote: TarjetaCatalogo; variante: TarjetaCatalogo['variantes'][number] } | null {
   if (!tonoKey) return null
   for (const lote of lotes) {
-    const vars = lote.variantes.filter(v => v.cajas_disponibles > 0)
-    const idx = indiceVariantePorTonoKey(vars, tonoKey)
-    if (idx >= 0) return { lote, variante: vars[idx] }
-  }
-  for (const lote of lotes) {
-    const idx = indiceVariantePorTonoKey(lote.variantes, tonoKey)
-    if (idx >= 0) return { lote, variante: lote.variantes[idx] }
+    const v = varianteImagenPorTonoKey(lote, tonoKey)
+    if (v) return { lote, variante: v }
   }
   return null
 }

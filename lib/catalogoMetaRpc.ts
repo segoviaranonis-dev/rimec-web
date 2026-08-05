@@ -147,6 +147,26 @@ async function fetchMetaRpc(
   }
 }
 
+function tieneFiltrosCascadaMeta(filters: CatalogoFilterStateExtended): boolean {
+  return (
+    (filters.linea_ids?.length ?? 0) > 0 ||
+    (filters.colores?.length ?? 0) > 0 ||
+    (filters.tonos?.length ?? 0) > 0 ||
+    Boolean(filters.sin_tono) ||
+    (filters.material_familias?.length ?? 0) > 0 ||
+    (filters.color_familias?.length ?? 0) > 0
+  )
+}
+
+/** Landing TODOS+Calzado: 1 RPC/origen; cascada solo si hay Color/Tono/Línea activos. */
+async function fetchMetaRpcEfficient(
+  filters: CatalogoFilterStateExtended,
+  esPe: boolean,
+): Promise<CatalogoMetaRpc | null> {
+  if (tieneFiltrosCascadaMeta(filters)) return fetchMetaRpc(filters, esPe)
+  return fetchMetaRpcOnce(filtersForFacetUniverse(filters), esPe)
+}
+
 function mergeItems(a: { id: number; label: string }[], b: { id: number; label: string }[]) {
   const m = new Map<number, string>()
   for (const x of [...a, ...b]) {
@@ -261,7 +281,7 @@ async function fetchCatalogoMetaViaRpcRaw(
         quincenas: [] as number[],
         ramo_tipo: 'CONFECCIONES' as const,
       }
-      const [cp, pe] = await Promise.all([fetchMetaRpc(cpConf, false), fetchMetaRpc(peConf, true)])
+      const [cp, pe] = await Promise.all([fetchMetaRpcEfficient(cpConf, false), fetchMetaRpcEfficient(peConf, true)])
       if (!cp && !pe) return null
       const empty: CatalogoMetaRpc = { marcas: [], lineas: [], estilos: [], tipos: [], generos: [], colores: [], quincenas: [], tonos: [] }
       const a = cp ?? empty
@@ -294,7 +314,7 @@ async function fetchCatalogoMetaViaRpcRaw(
       quincenas: [] as number[],
       ramo_tipo: (filters.ramo_tipo === 'CALZADO' ? 'CALZADO' : filters.ramo_tipo) as '' | 'CALZADO' | 'CONFECCIONES',
     }
-    const [cp, pe] = await Promise.all([fetchMetaRpc(cpF, false), fetchMetaRpc(peF, true)])
+    const [cp, pe] = await Promise.all([fetchMetaRpcEfficient(cpF, false), fetchMetaRpcEfficient(peF, true)])
     if (!cp && !pe) return null
     const empty: CatalogoMetaRpc = { marcas: [], lineas: [], estilos: [], tipos: [], generos: [], colores: [], quincenas: [], tonos: [] }
     const a = cp ?? empty

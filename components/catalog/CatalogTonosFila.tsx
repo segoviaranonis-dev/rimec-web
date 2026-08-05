@@ -1,15 +1,27 @@
 'use client'
 
 import { tonoFromVariante, type VarianteTonoInput } from '@/lib/pilares/tonoVariante'
+import { preloadImageDecoded } from '@/lib/image-decode-cache'
 
 const CELESTE = '#0EA5E9'
 
-type VarianteConId = VarianteTonoInput & { det_id: number }
+type VarianteConId = VarianteTonoInput & {
+  det_id: number
+  imagen_url_thumb?: string | null
+  imagen_candidates_thumb?: string[]
+}
 
 type Props = {
   variantes: VarianteConId[]
   activeIdx: number
   onSelect: (idx: number) => void
+}
+
+function preloadVarianteImagen(v: VarianteConId) {
+  for (const u of v.imagen_candidates_thumb ?? []) {
+    if (u) void preloadImageDecoded(u)
+  }
+  if (v.imagen_url_thumb) void preloadImageDecoded(v.imagen_url_thumb)
 }
 
 /**
@@ -34,8 +46,11 @@ export function CatalogTonosFila({ variantes, activeIdx, onSelect }: Props) {
           <button
             key={vv.det_id}
             type="button"
+            onMouseEnter={() => preloadVarianteImagen(vv)}
+            onFocus={() => preloadVarianteImagen(vv)}
             onClick={e => {
               e.stopPropagation()
+              preloadVarianteImagen(vv)
               onSelect(i)
             }}
             title={title}

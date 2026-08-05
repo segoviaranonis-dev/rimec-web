@@ -1,14 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchCarritoStockByDetIds } from '@/lib/carritoStockEnrich'
+import { precioNetoCascada } from '@/lib/carritoDescuentosFi'
 import { normalizarFilaStockVenta, paresDisponiblesDeFila } from '@/lib/disponibilidad'
 import { getPrecioActivo, getPrecioActivoPe, type ListaPrecioId } from '@/lib/precioLista'
 import { isProntaEntregaStockRow, paresCarritoDesdeCajas } from '@/lib/prontaEntregaVenta'
-
-function calcNeto(precioBase: number, d1: number, d2: number, d3: number, d4: number): number {
-  let p = precioBase
-  for (const d of [d1, d2, d3, d4]) p = p * (1 - (Number(d) || 0) / 100)
-  return Math.floor(p / 100) * 100
-}
 
 /**
  * Hotfix: payload con precio_base/neto 0 pero snapshot/BD con precio → repara antes del RPC.
@@ -122,7 +117,7 @@ export async function repairConfirmarPayloadPrecios(
           precioBase = snap && snap.precio > 0 ? snap.precio : 0
         }
 
-        const precioNeto = calcNeto(precioBase, d1, d2, d3, d4)
+        const precioNeto = precioNetoCascada(precioBase, [d1, d2, d3, d4])
         const subtotal = precioNeto * pares
         facturaMonto += subtotal
         return {

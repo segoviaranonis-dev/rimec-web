@@ -16,7 +16,7 @@ import {
   type CatalogoFilterStateExtended,
 } from '@/lib/catalogoFilters'
 import { applyPrecioSqlFilters } from '@/lib/catalogoPrecioSqlCore'
-import { enrichCatalogoRows, enrichPreventaCatalogoRows } from '@/lib/catalogoEnrich'
+import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 import { calzadoExcluyeCarterasPorDefecto } from '@/lib/filtros/filtro-tipo-canonico'
 import { peTieneSubfamiliaAccesorios } from '@/lib/filtros/modulo-accesorios'
@@ -43,6 +43,7 @@ function catalogoUsaRutaRapida(filters: CatalogoFilterStateExtended): boolean {
 
 function rowBatchSize(filters: CatalogoFilterStateExtended): number {
   if (catalogoUsaRutaRapida(filters)) return 40
+  if (isCatalogoOrigenTodos(filters) && filters.ramo_tipo === 'CALZADO') return 50
   return isCatalogoOrigenTodos(filters) ? ROW_BATCH_TODOS : ROW_BATCH
 }
 
@@ -69,6 +70,25 @@ function peConfeccionesFilters(
   })
 }
 
+function cpCalzadoFilters(filters: CatalogoFilterStateExtended): CatalogoFilterStateExtended {
+  return filtersForCpSql({
+    ...filters,
+    origen_tipo: 'TRÁNSITO_PP',
+    ramo_tipo: 'CALZADO',
+    deposito_codigo: '',
+    quincenas: [],
+  })
+}
+
+function peCalzadoFilters(filters: CatalogoFilterStateExtended): CatalogoFilterStateExtended {
+  return filtersForPeSql({
+    ...filters,
+    origen_tipo: 'PRONTA_ENTREGA',
+    ramo_tipo: 'CALZADO',
+    quincenas: [],
+  })
+}
+
 /** TODOS+Confecciones = CP 638 + PE confecciones (paridad meta RPC · evita scan PE-only). */
 async function fetchStockBatchConfeccionesTodos(
   filters: CatalogoFilterStateExtended,
@@ -86,6 +106,30 @@ async function fetchStockBatchConfeccionesTodos(
       () => [] as StockRow[],
     ),
   ])
+  return [...cpRows, ...peRows]
+}
+
+/** TODOS+Calzado = CP 654 + PE calzado — filtros ramo explícitos; tolera timeout parcial. */
+async function fetchStockBatchCalzadoTodos(
+  filters: CatalogoFilterStateExtended,
+  rowFrom: number,
+  rowTo: number,
+): Promise<StockRow[]> {
+  const span = rowTo - rowFrom + 1
+  const half = Math.max(1, Math.ceil(span / 2))
+  const cpTo = rowFrom + half - 1
+  const cpRows = await fetchStockBatchFromView(
+    'v_stock_rimec',
+    cpCalzadoFilters(filters),
+    rowFrom,
+    cpTo,
+  ).catch(() => [] as StockRow[])
+  const peRows = await fetchStockBatchFromView(
+    'v_stock_pe_rimec',
+    peCalzadoFilters(filters),
+    rowFrom,
+    cpTo,
+  ).catch(() => [] as StockRow[])
   return [...cpRows, ...peRows]
 }
 
@@ -256,6 +300,9 @@ async function fetchStockBatch(
     if (filters.ramo_tipo === 'CONFECCIONES') {
       return fetchStockBatchConfeccionesTodos(filters, rowFrom, rowTo)
     }
+    if (filters.ramo_tipo === 'CALZADO') {
+      return fetchStockBatchCalzadoTodos(filters, rowFrom, rowTo)
+    }
     if (
       filters.ramo_tipo === 'ACCESORIOS' ||
       peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
@@ -279,9 +326,8 @@ async function rowsToGrillaAsync(
   peDescMap?: Map<string, number>,
 ): Promise<TarjetaGrilla[]> {
   const active = rows.filter(r => cajasDisponiblesDeFila(r) > 0)
-  // Preventa Carlos siempre — la vista puede traer género/tono sin nro_pedido_externo (MIG-151).
-  let enriched = await enrichPreventaCatalogoRows(active)
-  enriched = await enrichCatalogoRows(enriched)
+  // enrichCatalogoRows ya aplica preventa Carlos (evitar doble await por lote).
+  let enriched = await enrichCatalogoRows(active)
   const lineaCasoMap =
     filters.tipo_grupos?.length || calzadoExcluyeCarterasPorDefecto(filters)
       ? await getLineaCasoMapCached()

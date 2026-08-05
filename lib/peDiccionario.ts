@@ -97,8 +97,9 @@ export function aplicarDescuentoDiccionarioPe(
     es_promo?: boolean | null
     esPe?: boolean
   },
-): number[] {
-  return [...descCab, 0, 0, 0, 0].slice(0, 4) as [number, number, number, number]
+): [number, number, number, number] {
+  const padded = [...descCab, 0, 0, 0, 0].slice(0, 4)
+  return [padded[0] ?? 0, padded[1] ?? 0, padded[2] ?? 0, padded[3] ?? 0]
 }
 
 /** Comisión D1 (%) — solo lectura para módulo comisiones (no UI carrito). */

@@ -27,6 +27,7 @@ import type { StockRow } from '@/app/catalogo-types'
 import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
 import { fetchCatalogoMetaViaRpcCascada, metaRpcToFiltrosResponse, acotarMetaRpcDesdeFilas } from '@/lib/catalogoMetaRpc'
 import { peSoloFiltroEscolar } from '@/lib/filtros/pe-modulo-escolar'
+import { peTieneSubfamiliaAccesorios } from '@/lib/filtros/modulo-accesorios'
 import { supabase } from '@/lib/supabase'
 import { unstable_cache } from 'next/cache'
 import { getSession } from '@/lib/auth/session'
@@ -58,8 +59,11 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
       return applyMemoryFilters(enriched, filters)
     }
 
-    // ESCOLAR solo PE — no escanear CP (vacío forzado rompía cascada molécula).
-    if (peSoloFiltroEscolar(filters.tipo_ids)) {
+    // ESCOLAR / Carteras / Anteojos = solo PE (misma ley que grilla).
+    if (
+      peSoloFiltroEscolar(filters.tipo_ids) ||
+      peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
+    ) {
       const peRes = await fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
         applySql: q =>
           applyPeCommercialSqlFilters(

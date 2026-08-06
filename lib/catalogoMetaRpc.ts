@@ -522,13 +522,14 @@ export function acotarMetaRpcDesdeFilas(
   const marcaIds = idSet(f.todasMarcas)
   const lineaIds = idSet(f.todasLineas)
   const estiloIds = idSet(f.todosEstilos)
-  const tipoIds = idSet(f.todosTipos)
   const genCodigos = new Set(f.todosGeneros.map((g) => g.codigo))
+  // tipos desde filas + merge AB-CR (inyecta -1/-2/-8/MEDIAS). No filtrar meta.tipos
+  // por FK de fila — eso borraba chips sintéticos del sidebar.
   return {
     marcas: meta.marcas.filter((m) => marcaIds.has(m.id)),
     lineas: meta.lineas.filter((l) => lineaIds.has(l.id)),
     estilos: meta.estilos.filter((e) => estiloIds.has(e.id)),
-    tipos: meta.tipos.filter((t) => tipoIds.has(t.id)),
+    tipos: f.todosTipos.length ? f.todosTipos : meta.tipos,
     generos: meta.generos.filter((g) => genCodigos.has(g.codigo)),
     colores: buildColoresFromRows(rows),
     quincenas: meta.quincenas,

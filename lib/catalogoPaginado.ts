@@ -26,6 +26,14 @@ import {
   fetchPeDescuentoComercialMap,
 } from '@/lib/peDescuentoComercial'
 
+/** AB-CR solo PE (ESCOLAR / Carteras / Anteojos) — no dual CP. */
+function peSoloAbcrSinCp(filters: CatalogoFilterStateExtended): boolean {
+  return (
+    peSoloFiltroEscolar(filters.tipo_ids) ||
+    peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
+  )
+}
+
 export const CATALOGO_CARD_PAGE = 30
 const ROW_BATCH = 80
 const ROW_BATCH_TODOS = 120
@@ -117,8 +125,8 @@ async function fetchStockBatchCalzadoTodos(
   rowFrom: number,
   rowTo: number,
 ): Promise<StockRow[]> {
-  // ESCOLAR solo PE — no mezclar página CP (Vizzano) que “congela” la grilla.
-  if (peSoloFiltroEscolar(filters.tipo_ids)) {
+  // ESCOLAR / Carteras / Anteojos = solo PE — dual CP congelaba grilla o meta.
+  if (peSoloAbcrSinCp(filters)) {
     return fetchStockBatchFromView(
       'v_stock_pe_rimec',
       peCalzadoFilters(filters),
@@ -486,7 +494,9 @@ function sortedCatalogCacheKey(filters: CatalogoFilterStateExtended): string {
     pv: filters.preventas ?? [],
     pmin: filters.precio_min ?? null,
     pmax: filters.precio_max ?? null,
+    ptope: filters.precio_tope ?? null,
     lp: filters.lista_precio_id ?? null,
+    cc: filters.cadena_comercial ?? '',
   })
 }
 

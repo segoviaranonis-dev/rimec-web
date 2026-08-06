@@ -38,8 +38,12 @@ assert.equal(getPrecioActivoPe(row, 3), 158_800)
 const rowStored = { ...row, lpc03: 158_800, lpc04: 170_100 }
 assert.equal(getPrecioActivo(rowStored, 3), 158_800)
 
+// Sin lpc03/lpn_raw: ley Web = LPN×factor (PE stock sin columnas LPC).
 const rowSinSnapshot = { lpn, lpc02: null, lpc03: null, lpc04: null }
-assert.equal(getPrecioActivo(rowSinSnapshot, 3), null)
+assert.equal(getPrecioActivo(rowSinSnapshot, 3), lpcDesdeLpn(lpn, 1.12))
+assert.equal(getPrecioActivo(rowSinSnapshot, 4), lpcDesdeLpn(lpn, 1.2))
+// lpc03 pegado a LPN (dato ciego) → no tratar como tier real
+assert.equal(getPrecioActivo({ ...rowSinSnapshot, lpc03: lpn }, 3), lpcDesdeLpn(lpn, 1.12))
 assert.equal(getPrecioActivo({ ...row, lpc03: 999_999, lpc04: null }, 3, 'PROMOCIONAL'), lpn)
 
 console.log('SMOKE_LEY_PRECIOS_OK', {

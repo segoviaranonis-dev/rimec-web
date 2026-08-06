@@ -99,11 +99,15 @@ function resolverLpcTier(
 ): number | null {
   const base = precioPositivo(lpn)
   if (base == null) return null
-  if (esCasoPromocional(descpCaso)) return redondearCentenaGs(base)
+  const lpnCentena = redondearCentenaGs(base)
+  if (esCasoPromocional(descpCaso)) return lpnCentena
   const stored = precioComercial(lpcStored)
-  if (stored != null) return stored
+  // Tier real en BD (≠ LPN). Si null o pegado a LPN → ley Web (factor).
+  // PE suele traer lpc03/lpc04 null; sin esto getPrecioActivoPe caía a LPN
+  // y el tachado LPC03 = LPN (bug sensible · Director 2026-08-06).
+  if (stored != null && stored !== lpnCentena) return stored
   if (baseBruta != null && baseBruta > 0) return lpcDesdeBaseBruta(baseBruta, factor)
-  return null
+  return lpcDesdeLpn(lpnCentena, factor)
 }
 
 /** LPC03: PROMO = LPN · resto = ROUND(baseBruta×1.12) estilo Excel. */
@@ -180,25 +184,20 @@ export function getPrecioActivo(
 
 
 
-/** PE: misma ley; si tier vacío → LPN centena. */
-
+/**
+ * PE: misma ley que CP.
+ * Si falta LPN → null. LPC03/04 jamás caen a LPN (eso igualaba el tachado).
+ */
 export function getPrecioActivoPe(
-
   row: PrecioListaRow,
-
   listaId: ListaPrecioId | number,
-
   descpCaso?: string | null,
-
 ): number | null {
-
   const tier = getPrecioActivo(row, listaId, descpCaso)
-
   if (tier != null && tier > 0) return tier
-
+  const lista = Number(listaId)
+  if (lista === 3 || lista === 4) return null
   const lpn = Number(row.lpn ?? 0)
-
   return lpn > 0 ? redondearCentenaGs(lpn) : null
-
 }
 

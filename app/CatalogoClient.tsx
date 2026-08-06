@@ -202,17 +202,33 @@ function filtersConOrigenInmediato(
 ): CatalogoFilterState {
   return {
     ...deferred,
+    // Dimensiones que achican grilla/meta: siempre live (anti grilla dormida / flash).
     origen_tipo: live.origen_tipo,
     ramo_tipo: live.ramo_tipo,
     deposito_codigo: live.deposito_codigo,
     quincenas: live.quincenas,
     preventas: live.preventas,
     dato_duro_cp: live.dato_duro_cp,
-    // Marca/Tipo/AB-CR live — evita grilla vieja mientras deferred no lleva marca_ids/tipo_ids (ESCOLAR -8).
     marca_id: live.marca_id,
     marca_ids: live.marca_ids,
     tipo_grupos: live.tipo_grupos,
     tipo_ids: live.tipo_ids,
+    grupo_estilo_id: live.grupo_estilo_id,
+    grupo_estilo_ids: live.grupo_estilo_ids,
+    linea_ids: live.linea_ids,
+    genero_codigo: live.genero_codigo,
+    genero_codigos: live.genero_codigos,
+    colores: live.colores,
+    tonos: live.tonos,
+    sin_tono: live.sin_tono,
+    buscar: live.buscar,
+    cadena_comercial: live.cadena_comercial,
+    material_familias: live.material_familias,
+    color_familias: live.color_familias,
+    precio_min: live.precio_min,
+    precio_max: live.precio_max,
+    precio_tope: live.precio_tope,
+    lista_precio_id: live.lista_precio_id,
   }
 }
 
@@ -533,9 +549,8 @@ export function CatalogoClient({
               linea_ids: prev.linea_ids.filter(id => lineaIdsValid.has(id)),
             }))
           }
-        } else if (cascadaActiva && filters.linea_ids.length > 0) {
-          setFilters(prev => ({ ...prev, linea_ids: [] }))
         }
+        // Meta vacía (loading/race AB-CR) — no borrar línea/estilo; solo podar IDs inválidos.
         if (estiloIdsValid.size > 0) {
           const sel = filters.grupo_estilo_ids?.length
             ? filters.grupo_estilo_ids
@@ -546,17 +561,6 @@ export function CatalogoClient({
               ...prev,
               grupo_estilo_id: '',
               grupo_estilo_ids: (prev.grupo_estilo_ids ?? []).filter(id => estiloIdsValid.has(id)),
-            }))
-          }
-        } else if (cascadaActiva) {
-          const sel = filters.grupo_estilo_ids?.length
-            ? filters.grupo_estilo_ids
-            : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
-          if (sel.length) {
-            setFilters(prev => ({
-              ...prev,
-              grupo_estilo_id: '',
-              grupo_estilo_ids: [],
             }))
           }
         }
@@ -594,6 +598,10 @@ export function CatalogoClient({
     filters.tipo_grupos?.join(',') ?? '',
     filters.material_familias?.join(',') ?? '',
     filters.color_familias?.join(',') ?? '',
+    filters.precio_min ?? '',
+    filters.precio_max ?? '',
+    filters.precio_tope ?? '',
+    filters.lista_precio_id ?? '',
     ventaActiva ? '1' : '0',
     String(listaPrecioSesion),
   ])
@@ -803,27 +811,33 @@ export function CatalogoClient({
       markCatalogPrimaryFetchEnd()
     }
   }, [
-    deferredFilters.grupo_estilo_id,
-    deferredFilters.marca_id,
-    deferredFilters.grupo_estilo_ids?.join(',') ?? '',
-    deferredFilters.marca_ids?.join(',') ?? '',
-    deferredFilters.linea_ids.join(','),
-    deferredFilters.tipo_ids.join(','),
-    deferredFilters.colores.join(','),
+    // Live (mismo set que filtersConOrigenInmediato) — anti grilla dormida.
+    filters.grupo_estilo_id,
+    filters.marca_id,
+    filters.grupo_estilo_ids?.join(',') ?? '',
+    filters.marca_ids?.join(',') ?? '',
+    filters.linea_ids.join(','),
+    filters.tipo_ids.join(','),
+    filters.colores.join(','),
     filters.quincenas.join(','),
     filters.dato_duro_cp?.join(',') ?? '',
     filters.preventas?.join(',') ?? '',
     filters.origen_tipo ?? '',
     filters.ramo_tipo ?? '',
     filters.deposito_codigo ?? '',
-    deferredFilters.genero_codigo ?? '',
-    deferredFilters.tonos?.join(',') ?? '',
-    deferredFilters.sin_tono ? '1' : '',
-    deferredFilters.buscar ?? '',
-    deferredFilters.cadena_comercial ?? '',
-    deferredFilters.tipo_grupos?.join(',') ?? '',
-    deferredFilters.material_familias?.join(',') ?? '',
-    deferredFilters.color_familias?.join(',') ?? '',
+    filters.genero_codigo ?? '',
+    filters.genero_codigos?.join(',') ?? '',
+    filters.tonos?.join(',') ?? '',
+    filters.sin_tono ? '1' : '',
+    filters.buscar ?? '',
+    filters.cadena_comercial ?? '',
+    filters.tipo_grupos?.join(',') ?? '',
+    filters.material_familias?.join(',') ?? '',
+    filters.color_familias?.join(',') ?? '',
+    filters.precio_min ?? '',
+    filters.precio_max ?? '',
+    filters.precio_tope ?? '',
+    filters.lista_precio_id ?? '',
     fetchPage,
     filtrosPendientes,
   ])

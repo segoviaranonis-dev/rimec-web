@@ -22,7 +22,10 @@ export function hasSidebarFilters(f: CatalogoFilterState): boolean {
       f.cadena_comercial?.trim() ||
       (f.tipo_grupos?.length ?? 0) > 0 ||
       (f.material_familias?.length ?? 0) > 0 ||
-      (f.color_familias?.length ?? 0) > 0,
+      (f.color_familias?.length ?? 0) > 0 ||
+      f.precio_min != null ||
+      f.precio_max != null ||
+      f.precio_tope != null,
   )
 }
 

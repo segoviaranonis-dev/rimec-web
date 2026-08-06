@@ -208,6 +208,10 @@ function filtersConOrigenInmediato(
     quincenas: live.quincenas,
     preventas: live.preventas,
     dato_duro_cp: live.dato_duro_cp,
+    // Marca/Tipo live — evita grilla con BR SPORT mientras deferred aún no lleva marca_ids.
+    marca_id: live.marca_id,
+    marca_ids: live.marca_ids,
+    tipo_grupos: live.tipo_grupos,
   }
 }
 
@@ -414,12 +418,15 @@ export function CatalogoClient({
     })
   }, [])
 
-  // Filtros sidebar — diferido 12 s tras montar (prioridad absoluta: tarjetas)
+  // Meta sidebar — debounce corto al cambiar filtros (cascada CHUSAR). Arranque: 1 s máx.
+  const filtrosMountRef = useRef(true)
   useEffect(() => {
     let cancelled = false
+    const delayMs = filtrosMountRef.current ? 1000 : 350
+    filtrosMountRef.current = false
     const defer = window.setTimeout(() => {
       void loadFiltrosInner()
-    }, 12_000)
+    }, delayMs)
 
     async function loadFiltrosInner(attempt = 0) {
       try {
@@ -444,6 +451,7 @@ export function CatalogoClient({
         const meta = json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] }
         const mergeFacet = (prev: FilterItem[], next: FilterItem[]) =>
           normalizeFilterItems([...prev, ...next])
+        const cascadaActiva = hasSidebarFilters(filters)
         let nextMeta = {
           todasLineas: normalizeFilterItems(meta.todasLineas ?? []),
           todasMarcas: normalizeFilterItems(
@@ -453,7 +461,7 @@ export function CatalogoClient({
           todosTipos: normalizeFilterItems(meta.todosTipos ?? []),
           todosGeneros: meta.todosGeneros ?? [],
         }
-        if (!nextMeta.todasMarcas.length) {
+        if (!nextMeta.todasMarcas.length && !cascadaActiva) {
           try {
             const hr = await fetch('/api/catalogo/header-filtros', { credentials: 'same-origin' })
             if (hr.ok) {
@@ -483,14 +491,25 @@ export function CatalogoClient({
             /* fallback header opcional */
           }
         }
-        // Estilo/Género: REEMPLAZO (no merge) — ley siamese pilares · anti 638↔654
+        // Cascada CHUSAR: con filtros activos → reemplazo total (no acumular universo previo).
         setFiltrosMeta((prev) => ({
-          ...nextMeta,
-          todasMarcas: mergeFacet(prev.todasMarcas, nextMeta.todasMarcas),
-          todosEstilos: nextMeta.todosEstilos,
-          todosTipos: mergeFacet(prev.todosTipos, nextMeta.todosTipos),
-          todasLineas: mergeFacet(prev.todasLineas, nextMeta.todasLineas),
-          todosGeneros: nextMeta.todosGeneros,
+          todasLineas: cascadaActiva
+            ? nextMeta.todasLineas
+            : mergeFacet(prev.todasLineas, nextMeta.todasLineas),
+          todasMarcas: cascadaActiva
+            ? nextMeta.todasMarcas
+            : mergeFacet(prev.todasMarcas, nextMeta.todasMarcas),
+          todosEstilos: cascadaActiva
+            ? nextMeta.todosEstilos
+            : mergeFacet(prev.todosEstilos, nextMeta.todosEstilos),
+          todosTipos: cascadaActiva
+            ? nextMeta.todosTipos
+            : mergeFacet(prev.todosTipos, nextMeta.todosTipos),
+          todosGeneros: cascadaActiva
+            ? nextMeta.todosGeneros
+            : nextMeta.todosGeneros.length
+              ? nextMeta.todosGeneros
+              : prev.todosGeneros,
         }))
         setMaterialFamilias(json.materialFamilias ?? [])
         setColorFamilias(json.colorFamilias ?? [])
@@ -504,13 +523,39 @@ export function CatalogoClient({
         }
 
         const lineaIdsValid = new Set((meta.todasLineas as FilterItem[]).map(l => l.id))
-        // No borrar líneas si meta vino vacía (RPC/legacy falló) — evita “filtros que no pegan”.
+        const estiloIdsValid = new Set((meta.todosEstilos as FilterItem[]).map(e => e.id))
         if (lineaIdsValid.size > 0) {
           const invalidLineas = filters.linea_ids.filter(id => !lineaIdsValid.has(id))
           if (invalidLineas.length) {
             setFilters(prev => ({
               ...prev,
               linea_ids: prev.linea_ids.filter(id => lineaIdsValid.has(id)),
+            }))
+          }
+        } else if (cascadaActiva && filters.linea_ids.length > 0) {
+          setFilters(prev => ({ ...prev, linea_ids: [] }))
+        }
+        if (estiloIdsValid.size > 0) {
+          const sel = filters.grupo_estilo_ids?.length
+            ? filters.grupo_estilo_ids
+            : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
+          const invalidEstilos = sel.filter(id => !estiloIdsValid.has(id))
+          if (invalidEstilos.length) {
+            setFilters(prev => ({
+              ...prev,
+              grupo_estilo_id: '',
+              grupo_estilo_ids: (prev.grupo_estilo_ids ?? []).filter(id => estiloIdsValid.has(id)),
+            }))
+          }
+        } else if (cascadaActiva) {
+          const sel = filters.grupo_estilo_ids?.length
+            ? filters.grupo_estilo_ids
+            : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
+          if (sel.length) {
+            setFilters(prev => ({
+              ...prev,
+              grupo_estilo_id: '',
+              grupo_estilo_ids: [],
             }))
           }
         }
@@ -534,6 +579,7 @@ export function CatalogoClient({
     filters.marca_ids?.join(',') ?? '',
     filters.grupo_estilo_ids?.join(',') ?? '',
     filters.genero_codigo ?? '',
+    filters.genero_codigos?.join(',') ?? '',
     filters.linea_ids.join(','),
     filters.tipo_ids.join(','),
     filters.colores.join(','),
@@ -622,7 +668,7 @@ export function CatalogoClient({
       setRowFrom(cached.nextRowFrom)
       setExcludeKeys(cached.excludeCardKeys)
       setHasMore(cached.hasMore)
-      if (cached.filtrosMeta) {
+      if (cached.filtrosMeta && !hasSidebarFilters(activeFilters)) {
         setFiltrosMeta({
           todasLineas: normalizeFilterItems(cached.filtrosMeta.todasLineas ?? []),
           todasMarcas: normalizeFilterItems(cached.filtrosMeta.todasMarcas ?? []),
@@ -1051,7 +1097,7 @@ export function CatalogoClient({
         </div>
 
         <div className="relative min-h-[12rem] min-w-0 flex-1 pr-2 sm:pr-3">
-      {productos.length === 0 && !error && (
+      {loading && productos.length === 0 && !error && (
         <CatalogoGrillaSkeleton slots={CARD_PAGE_LIMIT} />
       )}
 

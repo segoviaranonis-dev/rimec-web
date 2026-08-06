@@ -25,7 +25,7 @@ import type { ListaPrecioId } from '@/lib/precioLista'
 import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import type { StockRow } from '@/app/catalogo-types'
 import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
-import { fetchCatalogoMetaViaRpc, metaRpcToFiltrosResponse } from '@/lib/catalogoMetaRpc'
+import { fetchCatalogoMetaViaRpcCascada, metaRpcToFiltrosResponse, acotarMetaRpcDesdeFilas } from '@/lib/catalogoMetaRpc'
 import { supabase } from '@/lib/supabase'
 import { unstable_cache } from 'next/cache'
 import { getSession } from '@/lib/auth/session'
@@ -114,7 +114,7 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
 
 /** RPC directo — sin unstable_cache (hotfix 2026-07-24: cache/null + timeout bloqueaban sidebar). */
 async function metaRpcParaFiltros(filters: CatalogoFilterStateExtended) {
-  return fetchCatalogoMetaViaRpc(filters)
+  return fetchCatalogoMetaViaRpcCascada(filters)
 }
 
 const cachedPrecioRango = unstable_cache(
@@ -176,7 +176,42 @@ export async function GET(req: NextRequest) {
         rpcMeta.estilos.length > 0 ||
         rpcMeta.generos.length > 0)
     ) {
-      const payload = metaRpcToFiltrosResponse(rpcMeta)
+      let metaFinal = rpcMeta
+      let materialFamilias: Awaited<ReturnType<typeof buildMaterialFamiliasFromRows>> = []
+      let colorFamilias: Awaited<ReturnType<typeof buildColorFamiliasFromRows>> = []
+      // Cascada CHUSAR: cualquier dimensión activa debe acotar meta (Marca→Línea…).
+      // Antes solo Estilo/Línea/tipo_grupos → Marca ACTVITTA dejaba Línea en ~841.
+      const needRowsScan =
+        (filters.tipo_grupos?.length ?? 0) > 0 ||
+        (filters.grupo_estilo_ids?.length ?? 0) > 0 ||
+        Boolean(filters.grupo_estilo_id) ||
+        (filters.linea_ids?.length ?? 0) > 0 ||
+        (filters.material_familias?.length ?? 0) > 0 ||
+        (filters.color_familias?.length ?? 0) > 0 ||
+        (filters.marca_ids?.length ?? 0) > 0 ||
+        Boolean(filters.marca_id) ||
+        (filters.tipo_ids?.length ?? 0) > 0 ||
+        (filters.genero_codigos?.length ?? 0) > 0 ||
+        Boolean(filters.genero_codigo) ||
+        Boolean(filters.deposito_codigo) ||
+        (filters.tonos?.length ?? 0) > 0 ||
+        Boolean(filters.sin_tono) ||
+        Boolean(filters.buscar?.trim())
+      if (needRowsScan) {
+        try {
+          const rows = await rowsForFiltrosLegacy({
+            ...filters,
+            material_familias: [],
+            color_familias: [],
+          })
+          materialFamilias = buildMaterialFamiliasFromRows(rows)
+          colorFamilias = buildColorFamiliasFromRows(rows)
+          metaFinal = acotarMetaRpcDesdeFilas(metaFinal, rows, filters.ramo_tipo)
+        } catch (e) {
+          console.error('[catalogo/filtros] cascada scan/acotar', e)
+        }
+      }
+      const payload = metaRpcToFiltrosResponse(metaFinal)
       // Hotfix: no escanear 6k+ filas en TODOS — bloqueaba prod (>10s) y dejaba filtros vacíos.
       let paresDatoDuro: Awaited<ReturnType<typeof paresDatoDuroParaFiltros>> = []
       if (isCatalogoOrigenCp(filters)) {
@@ -196,8 +231,8 @@ export async function GET(req: NextRequest) {
         ...payload,
         paresDatoDuro,
         precioRango,
-        materialFamilias: [],
-        colorFamilias: [],
+        materialFamilias,
+        colorFamilias,
         totalFilas: null,
         origen: filters.origen_tipo,
         metaSource: 'rpc',

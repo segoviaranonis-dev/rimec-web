@@ -89,20 +89,21 @@ function peCalzadoFilters(filters: CatalogoFilterStateExtended): CatalogoFilterS
   })
 }
 
-/** TODOS+Confecciones = CP 638 + PE confecciones (paridad meta RPC · evita scan PE-only). */
+/**
+ * TODOS dual-vista: mismo rango rowFrom..rowTo en CP y PE (cursores independientes).
+ * Antes: half-split + avanzar rowFrom por merge → saltaba la mitad de filas PE
+ * (bug urgente LIQ: 10 tarjetas · hasMore false · faltaba MODARE).
+ */
 async function fetchStockBatchConfeccionesTodos(
   filters: CatalogoFilterStateExtended,
   rowFrom: number,
   rowTo: number,
 ): Promise<StockRow[]> {
-  const span = rowTo - rowFrom + 1
-  const half = Math.max(1, Math.ceil(span / 2))
-  const cpTo = rowFrom + half - 1
   const [cpRows, peRows] = await Promise.all([
-    fetchStockBatchFromView('v_stock_rimec', cpConfeccionesFilters(filters), rowFrom, cpTo).catch(
+    fetchStockBatchFromView('v_stock_rimec', cpConfeccionesFilters(filters), rowFrom, rowTo).catch(
       () => [] as StockRow[],
     ),
-    fetchStockBatchFromView('v_stock_pe_rimec', peConfeccionesFilters(filters), rowFrom, cpTo).catch(
+    fetchStockBatchFromView('v_stock_pe_rimec', peConfeccionesFilters(filters), rowFrom, rowTo).catch(
       () => [] as StockRow[],
     ),
   ])
@@ -115,21 +116,20 @@ async function fetchStockBatchCalzadoTodos(
   rowFrom: number,
   rowTo: number,
 ): Promise<StockRow[]> {
-  const span = rowTo - rowFrom + 1
-  const half = Math.max(1, Math.ceil(span / 2))
-  const cpTo = rowFrom + half - 1
-  const cpRows = await fetchStockBatchFromView(
-    'v_stock_rimec',
-    cpCalzadoFilters(filters),
-    rowFrom,
-    cpTo,
-  ).catch(() => [] as StockRow[])
-  const peRows = await fetchStockBatchFromView(
-    'v_stock_pe_rimec',
-    peCalzadoFilters(filters),
-    rowFrom,
-    cpTo,
-  ).catch(() => [] as StockRow[])
+  const [cpRows, peRows] = await Promise.all([
+    fetchStockBatchFromView(
+      'v_stock_rimec',
+      cpCalzadoFilters(filters),
+      rowFrom,
+      rowTo,
+    ).catch(() => [] as StockRow[]),
+    fetchStockBatchFromView(
+      'v_stock_pe_rimec',
+      peCalzadoFilters(filters),
+      rowFrom,
+      rowTo,
+    ).catch(() => [] as StockRow[]),
+  ])
   return [...cpRows, ...peRows]
 }
 
@@ -277,6 +277,13 @@ function applyPeTipoExclusionesSql(query: any, filters: CatalogoFilterStateExten
   const sel = filters.tipo_grupos ?? []
   if (!sel.length) return query
   let q = query
+  // Grupo uno: chip único → SQL positivo (densidad; no barrer REGULAR).
+  if (sel.length === 1 && sel[0] === 'liquidacion') {
+    return q.or('es_liquidacion.eq.true,cadena_comercial.eq.LIQUIDACION')
+  }
+  if (sel.length === 1 && sel[0] === 'promo') {
+    return q.or('es_promo.eq.true,cadena_comercial.eq.PROMOCIONAL')
+  }
   if (!sel.includes('liquidacion')) {
     q = q.or('es_liquidacion.eq.false,es_liquidacion.is.null')
     q = q.neq('cadena_comercial', 'LIQUIDACION')
@@ -401,6 +408,12 @@ async function fetchTarjetasPageQuick(opts: {
   let hasMore = true
   const batchSize = rowBatchSize(opts.filters)
 
+  // TODOS dual CP+PE: cada vista pagina el mismo offset. Avanzar SIEMPRE +batchSize
+  // (no +batch.length del merge) — si no, se saltan filas PE y hasMore muere corto.
+  const dualTodos =
+    isCatalogoOrigenTodos(opts.filters) &&
+    (opts.filters.ramo_tipo === 'CALZADO' || opts.filters.ramo_tipo === 'CONFECCIONES')
+
   while (tarjetas.length < opts.limit && hasMore && scanned < MAX_SCAN_ROWS) {
     const to = rowFrom + batchSize - 1
     const batch = await fetchStockBatch(opts.filters, rowFrom, to)
@@ -410,13 +423,21 @@ async function fetchTarjetasPageQuick(opts: {
     }
     scanned += batch.length
     const grilla = await rowsToGrillaAsync(batch, opts.filters)
+    // Ley TODOS 2.2.1.28: si el lote se corta a mitad de página → no avanzar cursor;
+    // la siguiente página re-procesa el mismo lote con exclude (no perder MODARE/LIQ).
+    let corteMitadLote = false
     for (const card of grilla) {
       if (excludeSet.has(card.cardKey)) continue
       excludeSet.add(card.cardKey)
       tarjetas.push(card)
-      if (tarjetas.length >= opts.limit) break
+      if (tarjetas.length >= opts.limit) {
+        corteMitadLote = true
+        hasMore = true
+        break
+      }
     }
-    rowFrom += batch.length
+    if (corteMitadLote) break
+    rowFrom += dualTodos ? batchSize : batch.length
     if (batch.length < batchSize) hasMore = false
   }
 
@@ -472,17 +493,22 @@ async function loadSortedCatalogCards(
   const seen = new Map<string, TarjetaGrilla>()
   let rowFrom = 0
   let scanned = 0
+  const dualTodos =
+    isCatalogoOrigenTodos(filters) &&
+    (filters.ramo_tipo === 'CALZADO' || filters.ramo_tipo === 'CONFECCIONES')
 
   while (scanned < MAX_SCAN_ROWS) {
     const to = rowFrom + NUMERIC_SCAN_BATCH - 1
     const batch = await fetchStockBatch(filters, rowFrom, to)
     if (!batch.length) break
     scanned += batch.length
-    rowFrom += batch.length
+    rowFrom += dualTodos ? NUMERIC_SCAN_BATCH : batch.length
     const grilla = await rowsToGrillaAsync(batch, filters, peDescMap)
     for (const card of grilla) {
       if (!seen.has(card.cardKey)) seen.set(card.cardKey, card)
     }
+    // Dual: merge puede ser > batch; fin = ninguna vista trajo página llena → batch < span
+    // (si una vista sigue viva, batch suele ≥ span).
     if (batch.length < NUMERIC_SCAN_BATCH) break
   }
 

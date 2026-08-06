@@ -9,6 +9,7 @@ import {
   lookupPeTraductorByLineaRef,
   subtipoAbcrDesdeTraductor,
 } from '@/lib/filtros/pe-traductor-tipo1'
+import { PE_TIPO1_ESCOLAR_ID } from '@/lib/filtros/pe-modulo-escolar'
 
 export const MODULO_ACCESORIOS_LABELS = [
   'CARTERAS',
@@ -35,7 +36,11 @@ export const ACCESORIOS_SUBTIPO_SYNTHETIC_ID: Record<string, number> = {
 
 /** IDs sintéticos AB-CR sidebar — no son FK BD pero son filtros válidos. */
 export function isAbcrSyntheticTipoId(id: number): boolean {
-  return id === ACCESORIOS_SUBTIPO_SYNTHETIC_ID.CARTERAS || id === ACCESORIOS_SUBTIPO_SYNTHETIC_ID.LENTES
+  return (
+    id === ACCESORIOS_SUBTIPO_SYNTHETIC_ID.CARTERAS ||
+    id === ACCESORIOS_SUBTIPO_SYNTHETIC_ID.LENTES ||
+    id === PE_TIPO1_ESCOLAR_ID
+  )
 }
 
 const SYNTHETIC_ID_TO_SUBTIPO = new Map<number, string>(
@@ -197,7 +202,12 @@ export function rowMatchesAccesoriosSubtipo(row: FilaAccesoriosSignals, keys: re
 }
 
 export function peTieneSubfamiliaAccesorios(tipo1Ids: readonly number[]): boolean {
-  return tipo1Ids.some((id) => id < 0)
+  // Solo Carteras/Anteojos (-1/-2). ESCOLAR (-8) es sintético AB-CR pero no módulo accesorios.
+  return tipo1Ids.some(
+    (id) =>
+      id === ACCESORIOS_SUBTIPO_SYNTHETIC_ID.CARTERAS ||
+      id === ACCESORIOS_SUBTIPO_SYNTHETIC_ID.LENTES,
+  )
 }
 
 export { mergePeAbcrTipo1Items } from '@/lib/filtros/pe-abcr-tipo1'

@@ -26,6 +26,7 @@ import { labelMarcaCatalogo } from '@/lib/marcaBadge'
 import { useSesion, type ListaId } from '@/store/sesionVenta'
 import {
   cascadaColor,
+  cascadaDimensiones,
   cascadaEstilo,
   cascadaLinea,
   cascadaMaterial,
@@ -609,7 +610,7 @@ export function FiltrosCatalogo({
         {tiposAbcr.length > 0 && (
           <FilterRow label={abcrLabel}>
             <ScrollPillsRow>
-              <CabeceraPill active={!tiposSelIds.length} onClick={() => aplicar({ tipo_ids: [], material_familias: [], color_familias: [] })}>
+              <CabeceraPill active={!tiposSelIds.length} onClick={() => aplicar(cascadaDimensiones({ tipo_ids: [] }))}>
                 Todos
               </CabeceraPill>
               {tiposAbcr.map((t, idx) => {
@@ -620,7 +621,7 @@ export function FiltrosCatalogo({
                     active={sel}
                     onClick={() => {
                       const next = sel ? tiposSelIds.filter(x => x !== t.id) : [...tiposSelIds, t.id]
-                      aplicar({ tipo_ids: next, material_familias: [], color_familias: [] })
+                      aplicar(cascadaDimensiones({ tipo_ids: next }))
                     }}
                   >
                     {t.label}
@@ -634,7 +635,7 @@ export function FiltrosCatalogo({
         {marcas.length > 0 && (
           <FilterRow label="Marca · multi">
             <ScrollPillsRow>
-              <CabeceraPill active={!marcaIdsActual.length} onClick={() => aplicar({ marca_id: '', marca_ids: [], linea_ids: [], tonos: [], sin_tono: false, material_familias: [], color_familias: [] })}>
+              <CabeceraPill active={!marcaIdsActual.length} onClick={() => aplicar(cascadaDimensiones({ marca_id: '', marca_ids: [] }))}>
                 Todas
               </CabeceraPill>
               {marcas.map((m, idx) => {
@@ -643,17 +644,12 @@ export function FiltrosCatalogo({
                   <CabeceraPill
                     key={filterItemKey('marca', m, idx)}
                     active={selected}
-                    onClick={() => aplicar({
+                    onClick={() => aplicar(cascadaDimensiones({
                       marca_id: '',
                       marca_ids: selected
                         ? marcaIdsActual.filter((id) => id !== m.id)
                         : [...marcaIdsActual, m.id],
-                      linea_ids: [],
-                      tonos: [],
-                      sin_tono: false,
-                      material_familias: [],
-                      color_familias: [],
-                    })}
+                    }))}
                   >
                     {labelMarcaCatalogo(m.label)}
                   </CabeceraPill>
@@ -672,7 +668,7 @@ export function FiltrosCatalogo({
           return (
         <FilterRow label={tipoPeUi ? 'Tipo · diccionario PE' : 'Tipo · multi'}>
           <ScrollPillsRow>
-            <CabeceraPill active={!tipoGruposSel.length} onClick={() => aplicar({ tipo_grupos: [] })}>
+            <CabeceraPill active={!tipoGruposSel.length} onClick={() => aplicar(cascadaDimensiones({ tipo_grupos: [] }))}>
               Todos
             </CabeceraPill>
             {opcionesTipo.map((t) => {
@@ -685,7 +681,7 @@ export function FiltrosCatalogo({
                     const next = sel
                       ? tipoGruposSel.filter((x) => x !== t.id)
                       : [...tipoGruposSel, t.id]
-                    aplicar({ tipo_grupos: next })
+                    aplicar(cascadaDimensiones({ tipo_grupos: next }))
                   }}
                 >
                   {tipoPeUi ? labelPeTipoDiccionario(t.id) : t.label}
@@ -699,7 +695,7 @@ export function FiltrosCatalogo({
 
         <FilterRow label="Género · multi">
           <ScrollPillsRow>
-            <CabeceraPill active={!generoIdsActual.length} onClick={() => aplicar({ genero_codigo: '', genero_codigos: [] })}>
+            <CabeceraPill active={!generoIdsActual.length} onClick={() => aplicar(cascadaDimensiones({ genero_codigo: '', genero_codigos: [] }))}>
               Todos
             </CabeceraPill>
             {generosLista.map(g => {
@@ -708,12 +704,12 @@ export function FiltrosCatalogo({
               <CabeceraPill
                 key={g.codigo}
                 active={selected}
-                onClick={() => aplicar({
+                onClick={() => aplicar(cascadaDimensiones({
                   genero_codigo: '',
                   genero_codigos: selected
                     ? generoIdsActual.filter((c) => c !== g.codigo)
                     : [...generoIdsActual, g.codigo],
-                })}
+                }))}
               >
                 {g.label}
               </CabeceraPill>

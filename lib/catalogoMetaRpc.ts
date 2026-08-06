@@ -1,6 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
 import { formatQuincenaCorta } from '@/lib/datoDuroCabecera'
 import {
+  buildColoresFromRows,
+  buildFiltrosFromRows,
+  buildTonosDisponiblesFromRows,
   dedupeFilterItemsByLabel,
   generoCodigosActivos,
   mergeTiposCatalogoTodos,
@@ -10,6 +13,7 @@ import {
   isCatalogoOrigenPe,
   isCatalogoOrigenTodos,
 } from '@/lib/catalogoFilters'
+import type { StockRow } from '@/app/catalogo-types'
 import { quincenasIdsFromDatoDuroCp } from '@/lib/datoDuroCpFiltro'
 import { calzadoExcluyeCarterasPorDefecto, esMarcaFantasmaFiltro } from '@/lib/filtros/filtro-tipo-canonico'
 import {
@@ -56,13 +60,14 @@ export function filtersForFacetUniverse(filters: CatalogoFilterStateExtended): C
   }
 }
 
-function rpcParams(filters: CatalogoFilterStateExtended, esPe: boolean) {
+function rpcParamsV199(filters: CatalogoFilterStateExtended, esPe: boolean) {
   const marcas = filters.marca_ids?.length
     ? filters.marca_ids
     : filters.marca_id ? [Number(filters.marca_id)] : []
   const estilos = filters.grupo_estilo_ids?.length
     ? filters.grupo_estilo_ids
     : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
+  const generos = generoCodigosActivos(filters)
   const quincenaIds = quincenasIdsFromDatoDuroCp(filters.dato_duro_cp).length
     ? quincenasIdsFromDatoDuroCp(filters.dato_duro_cp)
     : filters.quincenas?.length
@@ -70,43 +75,37 @@ function rpcParams(filters: CatalogoFilterStateExtended, esPe: boolean) {
       : null
   return {
     p_es_pe: esPe,
-    // Cascada línea/color/tono — grilla usa .in() multi; meta legacy solo 1 FK.
-    p_marca_id: marcas.length === 1 ? marcas[0] : null,
+    p_marca_ids: marcas.length ? marcas : null,
     p_linea_ids: filters.linea_ids?.length ? filters.linea_ids : null,
-    p_grupo_estilo_id: estilos.length === 1 ? estilos[0] : null,
+    p_grupo_estilo_ids: estilos.length ? estilos : null,
     p_tipo_ids: filters.tipo_ids?.filter((id) => id > 0).length
       ? filters.tipo_ids.filter((id) => id > 0)
       : null,
-    p_genero_codigo: (() => {
-      const gens = generoCodigosActivos(filters)
-      return gens.length === 1 ? gens[0] : null
-    })(),
+    p_genero_codigos: generos.length ? generos : null,
     p_ramo_tipo: filters.ramo_tipo || null,
     p_deposito: filters.deposito_codigo?.trim() || null,
     p_quincena_ids: quincenaIds,
   }
 }
 
-const EMPTY_META: CatalogoMetaRpc = {
-  marcas: [],
-  lineas: [],
-  estilos: [],
-  tipos: [],
-  generos: [],
-  colores: [],
-  quincenas: [],
-  tonos: [],
+/** MIG-181 — fallback si MIG-199 aún no aplicada en Supabase. */
+function rpcParamsLegacy181(filters: CatalogoFilterStateExtended, esPe: boolean) {
+  const v = rpcParamsV199(filters, esPe)
+  return {
+    p_es_pe: v.p_es_pe,
+    p_marca_id: v.p_marca_ids?.length === 1 ? v.p_marca_ids[0] : null,
+    p_linea_ids: v.p_linea_ids,
+    p_grupo_estilo_id: v.p_grupo_estilo_ids?.length === 1 ? v.p_grupo_estilo_ids[0] : null,
+    p_tipo_ids: v.p_tipo_ids,
+    p_genero_codigo: v.p_genero_codigos?.length === 1 ? v.p_genero_codigos[0] : null,
+    p_ramo_tipo: v.p_ramo_tipo,
+    p_deposito: v.p_deposito,
+    p_quincena_ids: v.p_quincena_ids,
+  }
 }
 
-async function fetchMetaRpcOnce(
-  filters: CatalogoFilterStateExtended,
-  esPe: boolean,
-): Promise<CatalogoMetaRpc | null> {
-  const { data, error } = await getSupabaseAdmin().rpc('rimec_catalogo_meta', rpcParams(filters, esPe))
-  if (error) {
-    console.error('[catalogoMetaRpc]', esPe ? 'PE' : 'CP', error.message)
-    return null
-  }
+
+function normalizeMetaRpcRaw(data: CatalogoMetaRpc | null): CatalogoMetaRpc {
   const raw = (data ?? {}) as CatalogoMetaRpc
   return {
     marcas: normalizeFilterItems(raw.marcas ?? []),
@@ -123,31 +122,102 @@ async function fetchMetaRpcOnce(
   }
 }
 
-/** Facetas multi-select: listas completas sin auto-estrechar; cascada solo Color/Tono. */
-async function fetchMetaRpc(
+function mergeMetaRpcParts(parts: CatalogoMetaRpc[]): CatalogoMetaRpc {
+  const empty: CatalogoMetaRpc = {
+    marcas: [],
+    lineas: [],
+    estilos: [],
+    tipos: [],
+    generos: [],
+    colores: [],
+    quincenas: [],
+    tonos: [],
+  }
+  return parts.reduce((acc, part) => {
+    return {
+      marcas: mergeItems(acc.marcas, part.marcas),
+      lineas: mergeItems(acc.lineas, part.lineas),
+      estilos: mergeItems(acc.estilos, part.estilos),
+      tipos: mergeItems(acc.tipos, part.tipos),
+      generos: mergeGeneros(acc.generos, part.generos),
+      colores: [...new Set([...acc.colores, ...part.colores])].sort((x, y) =>
+        x.localeCompare(y, 'es'),
+      ),
+      quincenas: mergeItems(
+        acc.quincenas.map((q) => ({ id: q.id, label: q.label })),
+        part.quincenas.map((q) => ({ id: q.id, label: q.label })),
+      ).map((x) => ({ id: x.id, label: x.label })),
+      tonos: [...new Set([...acc.tonos, ...part.tonos])].sort((x, y) =>
+        x.localeCompare(y, 'es'),
+      ),
+    }
+  }, empty)
+}
+
+async function rpcMetaLegacyOrV199(
   filters: CatalogoFilterStateExtended,
   esPe: boolean,
 ): Promise<CatalogoMetaRpc | null> {
-  const [universe, cascade] = await Promise.all([
-    fetchMetaRpcOnce(filtersForFacetUniverse(filters), esPe),
-    fetchMetaRpcOnce(filters, esPe),
-  ])
-  if (!universe && !cascade) return null
-  const u = universe ?? EMPTY_META
-  const c = cascade ?? EMPTY_META
-  return {
-    marcas: u.marcas,
-    estilos: u.estilos,
-    tipos: u.tipos,
-    generos: u.generos,
-    lineas: u.lineas,
-    quincenas: u.quincenas.length ? u.quincenas : c.quincenas,
-    colores: c.colores,
-    tonos: c.tonos,
+  const admin = getSupabaseAdmin()
+  // MIG-199 opcional — legacy MIG-181 sigue siendo canónico en prod hasta migrar.
+  const legacy = await admin.rpc('rimec_catalogo_meta', rpcParamsLegacy181(filters, esPe))
+  let data = legacy.data as CatalogoMetaRpc | null
+  if (legacy.error) {
+    const v199 = await admin.rpc('rimec_catalogo_meta', rpcParamsV199(filters, esPe))
+    if (v199.error) {
+      console.error('[catalogoMetaRpc]', esPe ? 'PE' : 'CP', v199.error.message)
+      return null
+    }
+    data = v199.data as CatalogoMetaRpc | null
   }
+  return normalizeMetaRpcRaw(data)
 }
 
-function tieneFiltrosCascadaMeta(filters: CatalogoFilterStateExtended): boolean {
+async function fetchMetaRpcOnce(
+  filters: CatalogoFilterStateExtended,
+  esPe: boolean,
+): Promise<CatalogoMetaRpc | null> {
+  const marcaIds = filters.marca_ids?.length
+    ? filters.marca_ids
+    : filters.marca_id
+      ? [Number(filters.marca_id)]
+      : []
+  // Legacy MIG-181 solo acepta 1 marca — multi → 1 RPC por id y merge (evita universo 841).
+  if (marcaIds.length > 1) {
+    const parts = await Promise.all(
+      marcaIds.map((id) =>
+        rpcMetaLegacyOrV199(
+          { ...filters, marca_id: String(id), marca_ids: [id] },
+          esPe,
+        ),
+      ),
+    )
+    const ok = parts.filter((p): p is CatalogoMetaRpc => Boolean(p))
+    if (!ok.length) return null
+    return mergeMetaRpcParts(ok)
+  }
+  return rpcMetaLegacyOrV199(filters, esPe)
+}
+
+/** Dimensión sidebar (AB-CR · Marca · Género · quincena…) activa — acota meta desde stock. */
+function tieneFiltrosDimensionMeta(filters: CatalogoFilterStateExtended): boolean {
+  return (
+    (filters.tipo_ids?.length ?? 0) > 0 ||
+    (filters.marca_ids?.length ?? 0) > 0 ||
+    Boolean(filters.marca_id) ||
+    (filters.grupo_estilo_ids?.length ?? 0) > 0 ||
+    Boolean(filters.grupo_estilo_id) ||
+    generoCodigosActivos(filters).length > 0 ||
+    (filters.dato_duro_cp?.length ?? 0) > 0 ||
+    (filters.preventas?.length ?? 0) > 0 ||
+    Boolean(filters.deposito_codigo?.trim()) ||
+    (filters.quincenas?.length ?? 0) > 0 ||
+    (filters.tipo_grupos?.length ?? 0) > 0
+  )
+}
+
+/** Molécula (Línea · Material · Color · Tono) — cascada hacia hoja. */
+function tieneFiltrosMoleculaMeta(filters: CatalogoFilterStateExtended): boolean {
   return (
     (filters.linea_ids?.length ?? 0) > 0 ||
     (filters.colores?.length ?? 0) > 0 ||
@@ -158,13 +228,26 @@ function tieneFiltrosCascadaMeta(filters: CatalogoFilterStateExtended): boolean 
   )
 }
 
-/** Landing TODOS+Calzado: 1 RPC/origen; cascada solo si hay Color/Tono/Línea activos. */
-async function fetchMetaRpcEfficient(
+export function tieneFiltrosAcotarMeta(filters: CatalogoFilterStateExtended): boolean {
+  return tieneFiltrosDimensionMeta(filters) || tieneFiltrosMoleculaMeta(filters)
+}
+
+export { tieneFiltrosMoleculaMeta }
+
+/** @deprecated alias interno */
+function tieneFiltrosCascadaMeta(filters: CatalogoFilterStateExtended): boolean {
+  return tieneFiltrosAcotarMeta(filters)
+}
+
+/** Facetas acotadas por stock vivo cuando hay filtro activo; sin filtros = universo completo. */
+async function fetchMetaRpc(
   filters: CatalogoFilterStateExtended,
   esPe: boolean,
 ): Promise<CatalogoMetaRpc | null> {
-  if (tieneFiltrosCascadaMeta(filters)) return fetchMetaRpc(filters, esPe)
-  return fetchMetaRpcOnce(filtersForFacetUniverse(filters), esPe)
+  if (!tieneFiltrosAcotarMeta(filters)) {
+    return fetchMetaRpcOnce(filtersForFacetUniverse(filters), esPe)
+  }
+  return fetchMetaRpcOnce(filters, esPe)
 }
 
 function mergeItems(a: { id: number; label: string }[], b: { id: number; label: string }[]) {
@@ -221,22 +304,98 @@ function finalizeMeta(
   return stripAccesoriosFromMetaIfCalzado(meta, filters)
 }
 
-/** Ley siamese 2026-07-29 — Estilo/Género = FK Administrador Pilares (no distinct stock). */
+/** TODOS+Calzado: 1 RPC/origen si landing; cascada si dimensión o molécula activa. */
+async function fetchMetaRpcEfficient(
+  filters: CatalogoFilterStateExtended,
+  esPe: boolean,
+): Promise<CatalogoMetaRpc | null> {
+  if (tieneFiltrosAcotarMeta(filters)) return fetchMetaRpc(filters, esPe)
+  return fetchMetaRpcOnce(filtersForFacetUniverse(filters), esPe)
+}
+
+/** Ley siamese — landing sin filtros: orden maestras. Con cascada activa: stock manda (no inflar). */
 async function applyMaestrasTrianguloPilares(
   meta: CatalogoMetaRpc | null,
   filters: CatalogoFilterStateExtended,
 ): Promise<CatalogoMetaRpc | null> {
   if (!meta) return null
   if (esRamoAccesorios(filters.ramo_tipo)) return meta
+
+  const acotar = tieneFiltrosAcotarMeta(filters)
+  if (acotar) {
+    return finalizeMeta(meta, filters)
+  }
+
   const { loadMaestrasTrianguloCatalogo } = await import('@/lib/pilares/loadMaestrasTriangulo')
   const maestras = await loadMaestrasTrianguloCatalogo(filters.ramo_tipo)
-  if (!maestras) return meta
-  let next: CatalogoMetaRpc = {
+  if (!maestras) return finalizeMeta(meta, filters)
+
+  const next: CatalogoMetaRpc = {
     ...meta,
-    estilos: maestras.estilos,
-    generos: maestras.generos,
+    estilos: maestras.estilos.length ? maestras.estilos : meta.estilos,
+    generos: maestras.generos.length ? maestras.generos : meta.generos,
   }
   return finalizeMeta(next, filters) ?? next
+}
+
+/** Dimensión sola — meta Estilo/Marca/Tipo sin molécula (evita linea_ids obsoletos en URL). */
+export function filtersForMetaDimension(filters: CatalogoFilterStateExtended): CatalogoFilterStateExtended {
+  return {
+    ...filters,
+    grupo_estilo_id: '',
+    grupo_estilo_ids: [],
+    linea_ids: [],
+    material_familias: [],
+    color_familias: [],
+    colores: [],
+    tonos: [],
+    sin_tono: false,
+  }
+}
+
+/** Dimensión + Estilo — acota Línea/Color/Tono; sin línea/material/color hoja. */
+export function filtersForMetaEstilo(filters: CatalogoFilterStateExtended): CatalogoFilterStateExtended {
+  return {
+    ...filters,
+    linea_ids: [],
+    material_familias: [],
+    color_familias: [],
+    colores: [],
+    tonos: [],
+    sin_tono: false,
+  }
+}
+
+export function tieneFiltrosEstiloMeta(filters: CatalogoFilterStateExtended): boolean {
+  return (filters.grupo_estilo_ids?.length ?? 0) > 0 || Boolean(filters.grupo_estilo_id)
+}
+
+/** Meta sidebar en capas: dimensión → estilo → molécula completa. */
+export async function fetchCatalogoMetaViaRpcCascada(
+  filters: CatalogoFilterStateExtended,
+): Promise<CatalogoMetaRpc | null> {
+  const dim = await fetchCatalogoMetaViaRpc(filtersForMetaDimension(filters))
+  if (!dim) return null
+  if (!tieneFiltrosEstiloMeta(filters) && !tieneFiltrosMoleculaMeta(filters)) {
+    return dim
+  }
+  const est = await fetchCatalogoMetaViaRpc(filtersForMetaEstilo(filters))
+  if (!est) return dim
+  const merged: CatalogoMetaRpc = {
+    ...dim,
+    lineas: est.lineas,
+    colores: est.colores,
+    tonos: est.tonos,
+  }
+  if (!tieneFiltrosMoleculaMeta(filters)) return merged
+  const full = await fetchCatalogoMetaViaRpc(filters)
+  if (!full) return merged
+  return {
+    ...merged,
+    lineas: full.lineas.length ? full.lineas : merged.lineas,
+    colores: full.colores.length ? full.colores : merged.colores,
+    tonos: full.tonos.length ? full.tonos : merged.tonos,
+  }
 }
 
 /** Meta sidebar vía RPC SQL (CAT-LAT-T2) — fallback null → scan legacy. */
@@ -348,5 +507,30 @@ export function metaRpcToFiltrosResponse(meta: CatalogoMetaRpc) {
     colores: meta.colores,
     quincenas: meta.quincenas,
     tonosDisponibles: meta.tonos,
+  }
+}
+
+/** tipo_grupos no vive en RPC SQL — acota meta desde filas filtradas en memoria. */
+export function acotarMetaRpcDesdeFilas(
+  meta: CatalogoMetaRpc,
+  rows: StockRow[],
+  ramo_tipo?: string,
+): CatalogoMetaRpc {
+  const f = buildFiltrosFromRows(rows, ramo_tipo)
+  const idSet = (items: { id: number }[]) => new Set(items.map((x) => x.id))
+  const marcaIds = idSet(f.todasMarcas)
+  const lineaIds = idSet(f.todasLineas)
+  const estiloIds = idSet(f.todosEstilos)
+  const tipoIds = idSet(f.todosTipos)
+  const genCodigos = new Set(f.todosGeneros.map((g) => g.codigo))
+  return {
+    marcas: meta.marcas.filter((m) => marcaIds.has(m.id)),
+    lineas: meta.lineas.filter((l) => lineaIds.has(l.id)),
+    estilos: meta.estilos.filter((e) => estiloIds.has(e.id)),
+    tipos: meta.tipos.filter((t) => tipoIds.has(t.id)),
+    generos: meta.generos.filter((g) => genCodigos.has(g.codigo)),
+    colores: buildColoresFromRows(rows),
+    quincenas: meta.quincenas,
+    tonos: buildTonosDisponiblesFromRows(rows),
   }
 }

@@ -9,11 +9,24 @@ import {
   PE_TIPO1_MEDIAS_ID,
 } from '@/lib/filtros/pe-modulo-medias'
 import {
+  ABCR_ESCOLAR_ITEM,
+  esFilaEscolar,
+  PE_TIPO1_ESCOLAR_ID,
+} from '@/lib/filtros/pe-modulo-escolar'
+import {
   accesoriosSubtipoOpcionesSidebar,
   esLabelModuloAccesorios,
 } from '@/lib/filtros/modulo-accesorios'
 
-const TEMPORADA_ORDER = ['ABIERTO', 'ACT ROPAS', 'CERRADO', 'INVIERNO', 'VERANO'] as const
+/** Orden sidebar AB-CR — ESCOLAR (d45=08) convive con CERRADO/ABIERTO. */
+const TEMPORADA_ORDER = [
+  'ABIERTO',
+  'ACT ROPAS',
+  'CERRADO',
+  'ESCOLAR',
+  'INVIERNO',
+  'VERANO',
+] as const
 
 export function mergePeAbcrTipo1Items(
   tipos: { id: number; label: string }[],
@@ -33,6 +46,9 @@ export function mergePeAbcrTipo1Items(
   if (!byLabel.has('MEDIAS')) byLabel.set('MEDIAS', { ...ABCR_MEDIAS_ITEM })
   else byLabel.set('MEDIAS', { id: PE_TIPO1_MEDIAS_ID, label: 'MEDIAS' })
 
+  // Siempre visible (stock puede tipar solo CERRADO en tipo_1_id).
+  byLabel.set('ESCOLAR', { ...ABCR_ESCOLAR_ITEM })
+
   const upper = (label: string) => canonPeTipo1Valorizado(label) || String(label).trim().toUpperCase()
 
   const temporada = TEMPORADA_ORDER.filter((k) => byLabel.has(k)).map((k) => ({
@@ -41,7 +57,11 @@ export function mergePeAbcrTipo1Items(
   }))
 
   const rest = [...byLabel.entries()]
-    .filter(([k]) => !TEMPORADA_ORDER.includes(k as (typeof TEMPORADA_ORDER)[number]) && k !== 'MEDIAS')
+    .filter(
+      ([k]) =>
+        !TEMPORADA_ORDER.includes(k as (typeof TEMPORADA_ORDER)[number]) &&
+        k !== 'MEDIAS',
+    )
     .map(([, v]) => ({ ...v, label: upper(v.label) }))
     .sort((a, b) => a.label.localeCompare(b.label, 'es'))
 
@@ -58,6 +78,7 @@ export function rowMatchesPeAbcrTipo1(
     tipo_1_id?: number | null
     tipo_1?: string | null
     descp_tipo_1?: string | null
+    sdrm_tipo1?: string | null
     marca?: string | null
     sdrm_marca?: string | null
     cod_grupo?: string | null
@@ -68,9 +89,16 @@ export function rowMatchesPeAbcrTipo1(
 ): boolean {
   if (!tipo1Ids.length) return true
   for (const id of tipo1Ids) {
+    if (id === PE_TIPO1_ESCOLAR_ID && esFilaEscolar(row)) return true
     if (id === PE_TIPO1_MEDIAS_ID && esFilaMedias(row)) return true
-    if (id > 0 && Number(row.tipo_1_id) === id) return true
-    if (id > 0 && esLabelMedias(row.tipo_1 ?? row.descp_tipo_1) && id === PE_TIPO1_MEDIAS_ID) return true
+    if (id > 0 && Number(row.tipo_1_id) === id) {
+      // CERRADO/ABIERTO FK: no mezclar filas ESCOLAR (chip propio).
+      if (esFilaEscolar(row)) continue
+      return true
+    }
+    if (id > 0 && esLabelMedias(row.tipo_1 ?? row.descp_tipo_1) && id === PE_TIPO1_MEDIAS_ID) {
+      return true
+    }
   }
   return false
 }

@@ -75,6 +75,21 @@ export type CatalogoMetaFetchOpts = {
   applySql?: (query: any) => any
 }
 
+/** Meta sidebar — columnas faceta. PE suma flags comerciales (tipo_grupos LIQ/Promo). */
+const CATALOGO_META_SELECT_CP = `
+  marca_id, descp_marca,
+  linea_id, linea_codigo, referencia_id, referencia_codigo,
+  grupo_estilo_id, descp_grupo_estilo,
+  tipo_1_id, descp_tipo_1, descp_caso, caso_id,
+  descp_color, nombre, material_code, color_code,
+  color_tono_canon, genero_codigo, descp_genero,
+  origen_tipo, quincena_desc, quincena_arribo_id, pp_id,
+  deposito_nombre,
+  cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
+`.replace(/\s+/g, ' ').trim()
+
+const CATALOGO_META_SELECT_PE = `${CATALOGO_META_SELECT_CP}, es_liquidacion, es_promo, cadena_comercial, cod_grupo`
+
 /** Meta sidebar — CP: 2 páginas · PE: escaneo completo (~12k filas post MIG-143). */
 export function fetchCatalogoMetaRows<T>(
   supabase: SupabaseClient,
@@ -85,17 +100,7 @@ export function fetchCatalogoMetaRows<T>(
   return fetchAllPagesFromView<T>(
     supabase,
     view,
-    `
-      marca_id, descp_marca,
-      linea_id, linea_codigo, referencia_id, referencia_codigo,
-      grupo_estilo_id, descp_grupo_estilo,
-      tipo_1_id, descp_tipo_1,
-      descp_color, nombre, material_code, color_code,
-      color_tono_canon, genero_codigo, descp_genero,
-      origen_tipo, quincena_desc, quincena_arribo_id, pp_id,
-      deposito_nombre,
-      cajas_disponibles, saldo_pares, cantidad_pares, pares_vendidos, pares_por_caja, cantidad_cajas
-    `,
+    view === 'v_stock_pe_rimec' ? CATALOGO_META_SELECT_PE : CATALOGO_META_SELECT_CP,
     undefined,
     maxPages,
     opts?.applySql,

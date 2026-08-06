@@ -41,9 +41,9 @@ import {
   rowMatchesAccesoriosSubtipo,
   type FilaAccesoriosSignals,
 } from '@/lib/filtros/modulo-accesorios'
-import { esFilaMedias, PE_TIPO1_MEDIAS_ID } from '@/lib/filtros/pe-modulo-medias'
+import { PE_TIPO1_ESCOLAR_ID } from '@/lib/filtros/pe-modulo-escolar'
 import { isAbcrSyntheticTipoId } from '@/lib/filtros/modulo-accesorios'
-import { mergePeAbcrTipo1Items } from '@/lib/filtros/pe-abcr-tipo1'
+import { mergePeAbcrTipo1Items, rowMatchesPeAbcrTipo1 } from '@/lib/filtros/pe-abcr-tipo1'
 
 export type { FamiliaPilarItem, TipoGrupoId }
 
@@ -450,11 +450,12 @@ export function applyMemoryFilters(
   }
 
   if (filters.tipo_ids.length) {
+    // Accesorios (-1/-2); ESCOLAR (-8) va por rowMatchesPeAbcrTipo1.
     const synthKeys = filters.tipo_ids
-      .filter((id) => id < 0)
+      .filter((id) => id < 0 && id !== PE_TIPO1_ESCOLAR_ID)
       .map((id) => accesoriosSubtipoFromSyntheticId(id))
       .filter((k): k is string => Boolean(k))
-    const fkIds = filters.tipo_ids.filter((id) => id > 0)
+    const abcrIds = filters.tipo_ids.filter((id) => id > 0 || id === PE_TIPO1_ESCOLAR_ID)
     out = out.filter((r) => {
       const signals = {
         ...accesoriosSignalsFromRow(r),
@@ -465,20 +466,20 @@ export function applyMemoryFilters(
         cod_grupo: r.cod_grupo,
       }
       if (synthKeys.length && !rowMatchesAccesoriosSubtipo(signals, synthKeys)) return false
-      if (!fkIds.length) return synthKeys.length > 0
-      const fkOk = fkIds.some((id) => {
-        if (id === PE_TIPO1_MEDIAS_ID) {
-          return esFilaMedias({
-            marca: r.descp_marca,
-            sdrm_marca: r.sdrm_marca,
-            cod_grupo: r.cod_grupo,
-            linea_codigo: r.linea_codigo,
-            descp_tipo_1: r.descp_tipo_1,
-          })
-        }
-        return Number(r.tipo_1_id) === id
-      })
-      return fkOk
+      if (!abcrIds.length) return synthKeys.length > 0
+      return rowMatchesPeAbcrTipo1(
+        {
+          tipo_1_id: r.tipo_1_id,
+          tipo_1: r.descp_tipo_1,
+          descp_tipo_1: r.descp_tipo_1,
+          sdrm_tipo1: r.sdrm_tipo1,
+          marca: r.descp_marca,
+          sdrm_marca: r.sdrm_marca,
+          cod_grupo: r.cod_grupo,
+          linea_codigo: r.linea_codigo,
+        },
+        abcrIds,
+      )
     })
   }
 

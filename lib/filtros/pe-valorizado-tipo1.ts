@@ -14,6 +14,7 @@ export const PE_TIPO1_VALORIZADO_ALIASES: Readonly<Record<string, string>> = {
   ÓCULOS: 'LENTES',
   MEDIAS: 'MEDIAS',
   MEDIA: 'MEDIAS',
+  ESCOLAR: 'ESCOLAR',
 }
 
 export type PeTipo1ResolveSignals = {
@@ -29,6 +30,7 @@ export function resolvePeTipo1Canon(sig: PeTipo1ResolveSignals): string {
 
   if (esMarcaMedias(sig.marca) || codGrupoEsMedias(sig.cod_grupo)) return 'MEDIAS'
   if (raw === 'MEDIAS' || raw === 'MEDIA') return 'MEDIAS'
+  if (raw === 'ESCOLAR') return 'ESCOLAR'
 
   if (raw === 'ACCESORIOS') {
     if (t0 === 'CALZADOS' || t0 === 'CALZADO') return 'MEDIAS'

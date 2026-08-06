@@ -115,3 +115,16 @@ export function resetCascadaAlCambiarRamo(): CascadaPatch {
     colores: [],
   }
 }
+
+/** Dimensión (AB-CR · Marca · Género) → limpia molécula Estilo→Color. CABECERA holding. */
+export function cascadaDimensiones(patch: CascadaPatch = {}): CascadaPatch {
+  return {
+    ...patch,
+    grupo_estilo_id: '',
+    grupo_estilo_ids: [],
+    linea_ids: [],
+    material_familias: [],
+    color_familias: [],
+    colores: [],
+  }
+}

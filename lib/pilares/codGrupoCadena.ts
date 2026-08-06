@@ -1,6 +1,6 @@
 /**
  * Cadena comercial desde COD.GRUPO (10 dígitos Carlos).
- * Calzado pos 5–6 (índice 4–5): 01 REGULAR · 02 PROMOCIONAL · 04 LIQUIDACION · 06 COMUN
+ * Calzado pos 5–6 (índice 4–5): 01 REGULAR · 02 PROMOCIONAL · 04 LIQUIDACION · 06 COMUN · 08 REGULAR (ESCOLAR AB-CR)
  * Confecciones pos 7–8 (índice 6–7): 03 PROMOCIONAL · 04 LIQUIDACION
  * Fuente: report `cod-grupo-decode.ts` + MIG-171 `grupo_digito_mapa`.
  */
@@ -37,6 +37,6 @@ export function cadenaComercialDesdeCodGrupo(
   if (d45 === '04') return 'LIQUIDACION'
   if (d45 === '02') return 'PROMOCIONAL'
   if (d45 === '06') return 'COMUN'
-  if (d45 === '01') return 'REGULAR'
+  if (d45 === '01' || d45 === '08') return 'REGULAR' // 08 = ESCOLAR (AB-CR), cadena REGULAR
   return null
 }

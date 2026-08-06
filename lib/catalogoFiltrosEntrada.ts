@@ -8,6 +8,7 @@ export function hasSidebarFilters(f: CatalogoFilterState): boolean {
       (f.marca_ids?.length ?? 0) > 0 ||
       (f.grupo_estilo_ids?.length ?? 0) > 0 ||
       f.genero_codigo ||
+      (f.genero_codigos?.length ?? 0) > 0 ||
       f.buscar?.trim() ||
       f.linea_ids.length ||
       f.tipo_ids.length ||

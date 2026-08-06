@@ -8,6 +8,7 @@ import {
   cascadaLinea,
   cascadaMaterial,
   cascadaColor,
+  cascadaDimensiones,
   toggleEstiloCascada,
   toggleLineaCascada,
   toggleMaterialCascada,
@@ -904,13 +905,13 @@ export function CatalogoFiltrosSidebar({
           }
           selected={filtros.tipo_ids}
           onToggle={(id) => {
-            patch({
-              tipo_ids: toggleId(filtros.tipo_ids, id),
-              material_familias: [],
-              color_familias: [],
-            })
+            patch(
+              cascadaDimensiones({
+                tipo_ids: toggleId(filtros.tipo_ids, id),
+              }),
+            )
           }}
-          onClear={() => patch({ tipo_ids: [], material_familias: [], color_familias: [] })}
+          onClear={() => patch(cascadaDimensiones({ tipo_ids: [] }))}
         />
 
         <MultiSelectGroup
@@ -918,26 +919,15 @@ export function CatalogoFiltrosSidebar({
           items={opciones.marcas.map((m) => ({ ...m, label: labelMarcaCatalogo(m.label) }))}
           selected={marcaIds}
           onToggle={(id) =>
-            patch({
-              marca_id: '',
-              marca_ids: toggleId(marcaIds, id),
-              linea_ids: [],
-              tonos: [],
-              sin_tono: false,
-              material_familias: [],
-              color_familias: [],
-            })
+            patch(
+              cascadaDimensiones({
+                marca_id: '',
+                marca_ids: toggleId(marcaIds, id),
+              }),
+            )
           }
           onClear={() =>
-            patch({
-              marca_id: '',
-              marca_ids: [],
-              linea_ids: [],
-              tonos: [],
-              sin_tono: false,
-              material_familias: [],
-              color_familias: [],
-            })
+            patch(cascadaDimensiones({ marca_id: '', marca_ids: [] }))
           }
           maxH="max-h-44"
         />
@@ -946,25 +936,29 @@ export function CatalogoFiltrosSidebar({
           <PeTipoDiccionarioMultiSelectGroup
             selected={parsePeTipoSelected(tipoGrupos)}
             onToggle={(id) =>
-              patch({
-                tipo_grupos: togglePeTipoDiccionario(parsePeTipoSelected(tipoGrupos), id) as TipoGrupoId[],
-              })
+              patch(
+                cascadaDimensiones({
+                  tipo_grupos: togglePeTipoDiccionario(parsePeTipoSelected(tipoGrupos), id) as TipoGrupoId[],
+                }),
+              )
             }
-            onClear={() => patch({ tipo_grupos: [] })}
+            onClear={() => patch(cascadaDimensiones({ tipo_grupos: [] }))}
           />
         ) : tipoGrupoOpcionesVisibles(filtros.ramo_tipo).length > 0 ? (
         <TipoMultiSelectGroup
           selected={tipoGrupos.filter((g): g is TipoGrupoId => g !== 'comun')}
           opciones={tipoGrupoOpcionesVisibles(filtros.ramo_tipo)}
           onToggle={(id) =>
-            patch({
-              tipo_grupos: sanitizeTipoGruposParaRamo(
-                toggleTipoGrupo(tipoGrupos.filter((g): g is TipoGrupoId => g !== 'comun'), id),
-                filtros.ramo_tipo,
-              ),
-            })
+            patch(
+              cascadaDimensiones({
+                tipo_grupos: sanitizeTipoGruposParaRamo(
+                  toggleTipoGrupo(tipoGrupos.filter((g): g is TipoGrupoId => g !== 'comun'), id),
+                  filtros.ramo_tipo,
+                ),
+              }),
+            )
           }
-          onClear={() => patch({ tipo_grupos: [] })}
+          onClear={() => patch(cascadaDimensiones({ tipo_grupos: [] }))}
         />
         ) : null}
 
@@ -972,7 +966,7 @@ export function CatalogoFiltrosSidebar({
           <AcordeonHeader
             title={`Género${MULTI_HINT}`}
             count={generoIds.length}
-            onClear={() => patch({ genero_codigo: '', genero_codigos: [] })}
+            onClear={() => patch(cascadaDimensiones({ genero_codigo: '', genero_codigos: [] }))}
           />
           <div className="border-t border-slate-100 p-1.5">
             <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="group" aria-label="Género · multi-selección">
@@ -991,10 +985,12 @@ export function CatalogoFiltrosSidebar({
                         type="checkbox"
                         checked={on}
                         onChange={() =>
-                          patch({
-                            genero_codigo: '',
-                            genero_codigos: toggleCodigo(generoIds, g.codigo),
-                          })
+                          patch(
+                            cascadaDimensiones({
+                              genero_codigo: '',
+                              genero_codigos: toggleCodigo(generoIds, g.codigo),
+                            }),
+                          )
                         }
                         className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-rimec-azul focus:ring-rimec-azul/30"
                       />

@@ -20,6 +20,7 @@ import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
 import { getLineaCasoMapCached } from '@/lib/casoBibliotecaLoader'
 import { calzadoExcluyeCarterasPorDefecto } from '@/lib/filtros/filtro-tipo-canonico'
 import { peTieneSubfamiliaAccesorios } from '@/lib/filtros/modulo-accesorios'
+import { peSoloFiltroEscolar } from '@/lib/filtros/pe-modulo-escolar'
 import {
   enrichTarjetasPeDescuentoComercial,
   fetchPeDescuentoComercialMap,
@@ -116,6 +117,15 @@ async function fetchStockBatchCalzadoTodos(
   rowFrom: number,
   rowTo: number,
 ): Promise<StockRow[]> {
+  // ESCOLAR solo PE — no mezclar página CP (Vizzano) que “congela” la grilla.
+  if (peSoloFiltroEscolar(filters.tipo_ids)) {
+    return fetchStockBatchFromView(
+      'v_stock_pe_rimec',
+      peCalzadoFilters(filters),
+      rowFrom,
+      rowTo,
+    ).catch(() => [] as StockRow[])
+  }
   const [cpRows, peRows] = await Promise.all([
     fetchStockBatchFromView(
       'v_stock_rimec',
@@ -222,6 +232,7 @@ async function fetchStockBatchFromView(
                   applyNonOrigenSqlFilters(query, filtersForPeSql(filters), {
                     allowLiquidacion: true,
                     skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
+                    peView: true,
                   }),
                   filters,
                 ),

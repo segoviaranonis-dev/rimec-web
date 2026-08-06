@@ -208,10 +208,11 @@ function filtersConOrigenInmediato(
     quincenas: live.quincenas,
     preventas: live.preventas,
     dato_duro_cp: live.dato_duro_cp,
-    // Marca/Tipo live — evita grilla con BR SPORT mientras deferred aún no lleva marca_ids.
+    // Marca/Tipo/AB-CR live — evita grilla vieja mientras deferred no lleva marca_ids/tipo_ids (ESCOLAR -8).
     marca_id: live.marca_id,
     marca_ids: live.marca_ids,
     tipo_grupos: live.tipo_grupos,
+    tipo_ids: live.tipo_ids,
   }
 }
 
@@ -685,6 +686,8 @@ export function CatalogoClient({
       setRowFrom(0)
       setExcludeKeys([])
       setHasMore(true)
+      // Filtro estrecho (ej. ESCOLAR): no dejar grilla anterior “dormida” mientras carga.
+      if (hasSidebarFilters(activeFilters)) setProductos([])
     }
 
     // Con cache → instantáneo; refresh silencioso en background (nunca bloquear 30 s).

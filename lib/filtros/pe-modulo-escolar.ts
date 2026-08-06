@@ -41,3 +41,22 @@ export function esFilaEscolar(row: FilaEscolarSignals): boolean {
   if (esLabelEscolar(row.descp_tipo_1) || esLabelEscolar(row.tipo_1)) return true
   return false
 }
+
+export function peTieneFiltroEscolar(tipoIds: readonly number[] | undefined): boolean {
+  return (tipoIds ?? []).includes(PE_TIPO1_ESCOLAR_ID)
+}
+
+/** Solo chip ESCOLAR (sin FK tipo_1) — PE-only; CP no tipifica escolar. */
+export function peSoloFiltroEscolar(tipoIds: readonly number[] | undefined): boolean {
+  const ids = tipoIds ?? []
+  if (!peTieneFiltroEscolar(ids)) return false
+  return !ids.some((id) => id > 0)
+}
+
+/**
+ * SQL PE densos — PostgREST.
+ * `sdrm_tipo1` ESCOLAR · o COD.GRUPO 10 dígitos con d45=`08` (`____08____`).
+ */
+export function applyPeEscolarSqlFilter(query: any): any {
+  return query.or('sdrm_tipo1.ilike.ESCOLAR,cod_grupo.like.____08____')
+}

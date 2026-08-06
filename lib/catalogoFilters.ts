@@ -41,7 +41,11 @@ import {
   rowMatchesAccesoriosSubtipo,
   type FilaAccesoriosSignals,
 } from '@/lib/filtros/modulo-accesorios'
-import { PE_TIPO1_ESCOLAR_ID } from '@/lib/filtros/pe-modulo-escolar'
+import {
+  applyPeEscolarSqlFilter,
+  PE_TIPO1_ESCOLAR_ID,
+  peTieneFiltroEscolar,
+} from '@/lib/filtros/pe-modulo-escolar'
 import { isAbcrSyntheticTipoId } from '@/lib/filtros/modulo-accesorios'
 import { mergePeAbcrTipo1Items, rowMatchesPeAbcrTipo1 } from '@/lib/filtros/pe-abcr-tipo1'
 
@@ -242,7 +246,7 @@ export function applyTipoGruposSqlFilter(
 export function applyNonOrigenSqlFilters(
   query: any,
   filters: CatalogoFilterStateExtended,
-  opts?: { allowLiquidacion?: boolean; skipTipoGruposSql?: boolean },
+  opts?: { allowLiquidacion?: boolean; skipTipoGruposSql?: boolean; peView?: boolean },
 ): any {
   let q = query
   const marcaIds = filters.marca_ids?.length
@@ -259,7 +263,22 @@ export function applyNonOrigenSqlFilters(
   if (quincenaSql.length) q = q.in('quincena_arribo_id', quincenaSql)
   if (estiloIds.length) q = q.in('grupo_estilo_id', estiloIds)
   const tipoFkIds = filters.tipo_ids.filter((id) => id > 0)
-  if (tipoFkIds.length) q = q.in('tipo_1_id', tipoFkIds)
+  const escolar = peTieneFiltroEscolar(filters.tipo_ids)
+  // ESCOLAR (-8) no es FK: densificar en SQL PE (sdrm_tipo1 / d45=08). CP no tipifica escolar.
+  if (opts?.peView && escolar) {
+    if (tipoFkIds.length) {
+      q = q.or(
+        `tipo_1_id.in.(${tipoFkIds.join(',')}),sdrm_tipo1.ilike.ESCOLAR,cod_grupo.like.____08____`,
+      )
+    } else {
+      q = applyPeEscolarSqlFilter(q)
+    }
+  } else if (escolar && !tipoFkIds.length) {
+    // Vista CP + solo ESCOLAR → vacío (no barrer universo en memoria).
+    q = q.eq('tipo_1_id', -999_999)
+  } else if (tipoFkIds.length) {
+    q = q.in('tipo_1_id', tipoFkIds)
+  }
   if (filters.colores.length) {
     const cols = filters.colores.map(c => c.trim()).filter(Boolean)
     if (cols.length) q = q.in('descp_color', cols)

@@ -43,6 +43,7 @@ async function extremoPrecioVista(
         applyNonOrigenSqlFilters(query, filters, {
           allowLiquidacion: true,
           skipTipoGruposSql: Boolean(filters.tipo_grupos?.length),
+          peView: true,
         }),
         filters,
       ),

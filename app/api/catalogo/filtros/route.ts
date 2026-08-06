@@ -26,6 +26,7 @@ import { cajasDisponiblesDeFila } from '@/lib/disponibilidad'
 import type { StockRow } from '@/app/catalogo-types'
 import { enrichCatalogoRows } from '@/lib/catalogoEnrich'
 import { fetchCatalogoMetaViaRpcCascada, metaRpcToFiltrosResponse, acotarMetaRpcDesdeFilas } from '@/lib/catalogoMetaRpc'
+import { peSoloFiltroEscolar } from '@/lib/filtros/pe-modulo-escolar'
 import { supabase } from '@/lib/supabase'
 import { unstable_cache } from 'next/cache'
 import { getSession } from '@/lib/auth/session'
@@ -41,11 +42,31 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
       quincenas: [],
     }
 
+    const peSqlOpts = { allowLiquidacion: true as const, peView: true as const }
+
     if (filters.ramo_tipo === 'CONFECCIONES' || filters.ramo_tipo === 'ACCESORIOS') {
       const peRes = await fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
         applySql: q =>
           applyPeDepositoQuery(
-            applyNonOrigenSqlFilters(q, peFilters, { allowLiquidacion: true }),
+            applyNonOrigenSqlFilters(q, peFilters, peSqlOpts),
+            filters,
+          ),
+      })
+      if (peRes.error) throw new Error(peRes.error.message)
+      const vendibles = (peRes.data ?? []).filter(r => cajasDisponiblesDeFila(r) > 0)
+      const enriched = await enrichCatalogoRows(vendibles as StockRow[])
+      return applyMemoryFilters(enriched, filters)
+    }
+
+    // ESCOLAR solo PE — no escanear CP (vacío forzado rompía cascada molécula).
+    if (peSoloFiltroEscolar(filters.tipo_ids)) {
+      const peRes = await fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
+        applySql: q =>
+          applyPeCommercialSqlFilters(
+            applyPeDepositoQuery(
+              applyNonOrigenSqlFilters(q, peFilters, peSqlOpts),
+              filters,
+            ),
             filters,
           ),
       })
@@ -71,7 +92,7 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
         applySql: q =>
           applyPeCommercialSqlFilters(
             applyPeDepositoQuery(
-              applyNonOrigenSqlFilters(q, peFilters, { allowLiquidacion: true }),
+              applyNonOrigenSqlFilters(q, peFilters, peSqlOpts),
               filters,
             ),
             filters,
@@ -94,13 +115,16 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
   const { data, error } = await fetchCatalogoMetaRows<StockRow>(supabase, view, {
     applySql: q => {
       if (view === 'v_stock_pe_rimec') {
-        return           applyPeCommercialSqlFilters(
-            applyPeDepositoQuery(
-              applyNonOrigenSqlFilters(q, { ...filters, quincenas: [] }, { allowLiquidacion: true }),
-              filters,
-            ),
+        return applyPeCommercialSqlFilters(
+          applyPeDepositoQuery(
+            applyNonOrigenSqlFilters(q, { ...filters, quincenas: [] }, {
+              allowLiquidacion: true,
+              peView: true,
+            }),
             filters,
-          )
+          ),
+          filters,
+        )
       }
       return applySqlFiltersToQuery(q, { ...filters, cadena_comercial: '' })
     },
@@ -206,7 +230,10 @@ export async function GET(req: NextRequest) {
           })
           materialFamilias = buildMaterialFamiliasFromRows(rows)
           colorFamilias = buildColorFamiliasFromRows(rows)
-          metaFinal = acotarMetaRpcDesdeFilas(metaFinal, rows, filters.ramo_tipo)
+          // Filas 0 (bug ESCOLAR sin peView) no deben vaciar Estilo/Línea → «Sin opciones».
+          if (rows.length > 0) {
+            metaFinal = acotarMetaRpcDesdeFilas(metaFinal, rows, filters.ramo_tipo)
+          }
         } catch (e) {
           console.error('[catalogo/filtros] cascada scan/acotar', e)
         }

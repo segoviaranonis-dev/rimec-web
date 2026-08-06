@@ -516,6 +516,7 @@ export function acotarMetaRpcDesdeFilas(
   rows: StockRow[],
   ramo_tipo?: string,
 ): CatalogoMetaRpc {
+  if (!rows.length) return meta
   const f = buildFiltrosFromRows(rows, ramo_tipo)
   const idSet = (items: { id: number }[]) => new Set(items.map((x) => x.id))
   const marcaIds = idSet(f.todasMarcas)

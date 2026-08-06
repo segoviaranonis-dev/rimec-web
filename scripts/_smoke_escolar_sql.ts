@@ -47,6 +47,16 @@ async function main() {
       String(r.cod_grupo ?? '').slice(4, 6) === '08',
   )
   if (!rows.length || !allEsc) throw new Error('FAIL_ESCOLAR_SQL')
+
+  // Sin peView (bug meta cascada) → vacío forzado
+  let qBad = sb
+    .from('v_stock_pe_rimec')
+    .select('id')
+    .gt('cajas_disponibles', 0)
+  qBad = applyNonOrigenSqlFilters(qBad, filters as any, { allowLiquidacion: true })
+  const bad = await qBad.limit(5)
+  console.log('SIN_PEVIEW_COUNT', (bad.data ?? []).length)
+
   console.log('PASS_ESCOLAR_SQL')
 }
 

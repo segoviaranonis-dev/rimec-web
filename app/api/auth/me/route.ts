@@ -16,6 +16,17 @@ export async function GET() {
 
   const catalogoScope = resolveCatalogoRamoScope(session.name)
 
+  // Bitácora: presencia (LOGIN día / HEARTBEAT) — await para no perder el evento
+  try {
+    const { registrarPresenciaRimecWeb } = await import('@/lib/bitacoraPresencia')
+    await registrarPresenciaRimecWeb({
+      id_usuario: session.id_usuario,
+      descp_usuario: session.name,
+    })
+  } catch {
+    /* no bloquea me */
+  }
+
   return NextResponse.json({
     user: {
       ...session,

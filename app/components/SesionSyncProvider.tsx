@@ -13,7 +13,7 @@
 
 import { useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useSesion } from '@/store/sesionVenta'
+import { scheduleCarritoHydrate, useSesion } from '@/store/sesionVenta'
 
 interface MeResponse {
   user: { id_usuario: number; name: string; role: string } | null
@@ -41,6 +41,11 @@ export function SesionSyncProvider({ children }: { children: React.ReactNode }) 
           descp_vendedor: data.user.name,
         })
         await cargarDesdeBD()
+        // Bitácora presencia (refuerzo del /me)
+        void fetch('/api/auth/bitacora-presencia', {
+          method: 'POST',
+          credentials: 'include',
+        })
       } catch (err) {
         console.warn('[SesionSyncProvider] init falló:', err)
       }
@@ -50,12 +55,25 @@ export function SesionSyncProvider({ children }: { children: React.ReactNode }) 
     }
   }, [cargarDesdeBD, setVendedor])
 
-  // 3. Realtime: re-sincroniza ante cambios de cualquier dispositivo.
+  // Heartbeat Bitácora cada 3 min mientras hay vendedor
+  useEffect(() => {
+    const id = vendedor?.id_vendedor
+    if (!id) return
+    const t = setInterval(() => {
+      void fetch('/api/auth/bitacora-presencia', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    }, 3 * 60 * 1000)
+    return () => clearInterval(t)
+  }, [vendedor?.id_vendedor])
+
+  // 3. Realtime: re-sincroniza ante cambios (debounce — anti-race GET vacío).
   useEffect(() => {
     const id = vendedor?.id_vendedor
     if (!id) return
 
-    const refrescar = () => { void cargarDesdeBD() }
+    const refrescar = () => { scheduleCarritoHydrate() }
 
     const channel = supabase
       .channel(`carrito-${id}`)
@@ -74,7 +92,7 @@ export function SesionSyncProvider({ children }: { children: React.ReactNode }) 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [vendedor?.id_vendedor, cargarDesdeBD])
+  }, [vendedor?.id_vendedor])
 
   return <>{children}</>
 }

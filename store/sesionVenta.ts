@@ -131,6 +131,8 @@ export interface SesionVenta {
   hydrating:         boolean
   /** True cuando ya hubo al menos un fetch desde la BD. */
   hydrated:          boolean
+  /** Último error al hidratar (null = OK). No vacía el carrito local. */
+  hydrateError:      string | null
   /** Snapshot de validación más reciente (`carrito_validar` RPC). */
   validacion: {
     estado: 'IDLE' | 'OK' | 'DIFERENCIAS' | 'BLOQUEADO' | 'ERROR'
@@ -409,8 +411,10 @@ function itemFromBD(meta: Map<number, ItemCarritoMeta>, row: CarritoItemBD, list
  */
 const META_CACHE: Map<number, ItemCarritoMeta> = new Map()
 
-/** Evita GET /carrito/sesion en cada tap — agrupa sync FI. */
+/** Evita GET /carrito/sesion en cada tap — agrupa sync FI + Realtime. */
 let cargarDesdeBDTimer: ReturnType<typeof setTimeout> | null = null
+let hydrateGen = 0
+
 function scheduleCargarDesdeBD(get: () => SesionVenta) {
   if (typeof window === 'undefined') return
   if (cargarDesdeBDTimer) clearTimeout(cargarDesdeBDTimer)
@@ -418,6 +422,11 @@ function scheduleCargarDesdeBD(get: () => SesionVenta) {
     cargarDesdeBDTimer = null
     void get().cargarDesdeBD()
   }, 2000)
+}
+
+/** Realtime / multi-tab: debounce hydrate (no pisar con GET viejos). */
+export function scheduleCarritoHydrate() {
+  scheduleCargarDesdeBD(() => useSesion.getState())
 }
 
 function persistMeta(item: ItemCarritoMeta) {
@@ -459,6 +468,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
   activatedAt:       null,
   hydrating:         false,
   hydrated:          false,
+  hydrateError:      null,
   validacion: {
     estado: 'IDLE',
     token: null,
@@ -521,6 +531,7 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       vendedor: s.vendedor,
       hydrated: true,
       hydrating: false,
+      hydrateError: null,
       validacion:
         sesion?.validacion_estado === 'OK' && sesion?.validacion_token
           ? {
@@ -537,13 +548,20 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
 
   cargarDesdeBD: async () => {
     if (typeof window === 'undefined') return
-    set({ hydrating: true })
+    const gen = ++hydrateGen
+    set({ hydrating: true, hydrateError: null })
     try {
       const data = await carritoGet()
-      get().aplicarSnapshot(data.sesion, data.items)
+      // Solo aplicar si este GET es el más reciente (anti-race Realtime/multi-tab).
+      if (gen !== hydrateGen) return
+      // Snapshot vacío solo con HTTP 200 explícito (BD sin filas).
+      get().aplicarSnapshot(data.sesion, data.items ?? [])
     } catch (err) {
-      console.warn('[sesionVenta] cargarDesdeBD falló:', err)
-      set({ hydrating: false, hydrated: true })
+      if (gen !== hydrateGen) return
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[sesionVenta] cargarDesdeBD falló — se conserva carrito local:', msg)
+      // CRÍTICO: no aplicar vacío. Si ya había items/sesión, se mantienen.
+      set({ hydrating: false, hydrated: true, hydrateError: msg })
     }
   },
 
@@ -558,28 +576,37 @@ export const useSesion = create<SesionVenta>()((set, get) => ({
       descuentos: descuentos.slice(0, 4),
       descuentos_lote: {},
     })
+    // Rehidratar desde BD — NUNCA dejar carrito:{} como estado final (perdía items BZZP).
     set({
       cliente,
       vendedor,
       plazo,
       listaPrecioId: listaId,
       descuentos: descuentos.slice(0, 4),
-      descuentosPorLote: {},
       activa: true,
       activatedAt: new Date().toISOString(),
-      carrito: {},
       validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
     })
+    await get().cargarDesdeBD()
   },
 
   desactivar: async () => {
-    try { await carritoDeleteSesion() } catch (e) { console.warn('[sesionVenta] desactivar:', e) }
+    try {
+      await carritoDeleteSesion()
+    } catch (e) {
+      console.warn('[sesionVenta] desactivar falló — no se limpia UI:', e)
+      set({
+        hydrateError: e instanceof Error ? e.message : 'No se pudo cerrar la venta en el servidor',
+      })
+      throw e
+    }
     set({
       cliente: null, plazo: null,
       activa: false, activatedAt: null,
       carrito: {}, descuentos: [], descuentosPorLote: {},
       facturas: [], todasPreAutorizadas: true,
       observacionPe: '', fechaEntregaCliente: '',
+      hydrateError: null,
       validacion: { estado: 'IDLE', token: null, expiraEn: null, items: [] },
     })
   },

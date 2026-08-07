@@ -123,7 +123,10 @@ async function asJson<T>(res: Response): Promise<T> {
 
 export async function carritoGet(): Promise<CarritoGetResponse> {
   const res = await fetch('/api/carrito/sesion', { cache: 'no-store', credentials: 'include' })
-  if (res.status === 401) return { sesion: null, items: [] }
+  // NUNCA tratar 401 como carrito vacío — eso borraba la UI con datos aún en BD (BZZP).
+  if (res.status === 401) {
+    throw new Error('no-session')
+  }
   return asJson<CarritoGetResponse>(res)
 }
 

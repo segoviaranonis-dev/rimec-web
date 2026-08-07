@@ -43,6 +43,7 @@ export default function CarritoPage() {
   const carrito             = useSesion(s => s.carrito)
   const desactivar          = useSesion(s => s.desactivar)
   const activa              = useSesion(s => s.activa)
+  const hydrateError        = useSesion(s => s.hydrateError)
   const setCajas            = useSesion(s => s.setCajas)
   const eliminarItem        = useSesion(s => s.eliminarItem)
   const eliminarItems       = useSesion(s => s.eliminarItems)
@@ -109,6 +110,32 @@ export default function CarritoPage() {
 
   // Cualquier mutación del carrito limpia el token (lo hace el store).
   // Si el usuario cierra venta sin confirmar, volver al catálogo.
+  if (hydrateError && (!activa || Object.keys(carrito).length === 0)) {
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 0' }}>
+        <p style={{ fontSize: 48, marginBottom: 12 }}>⚠️</p>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: AZUL, marginBottom: 8 }}>
+          No se pudo cargar el carrito
+        </h1>
+        <p style={{ color: '#64748B', marginBottom: 8, maxWidth: 420, marginInline: 'auto' }}>
+          El pedido puede seguir en el servidor. No se borró nada. Probá de nuevo.
+        </p>
+        <p style={{ color: '#94A3B8', fontSize: 12, marginBottom: 24 }}>{hydrateError}</p>
+        <button
+          type="button"
+          onClick={() => void cargarDesdeBD()}
+          style={{
+            display: 'inline-block', padding: '14px 28px', borderRadius: 12,
+            backgroundColor: AZUL, color: 'white', fontWeight: 700, border: 'none',
+            cursor: 'pointer', fontSize: 16,
+          }}
+        >
+          Reintentar
+        </button>
+      </div>
+    )
+  }
+
   if (!activa || Object.keys(carrito).length === 0) {
     const logueado = Boolean(vendedor?.id_vendedor)
     return (

@@ -24,12 +24,25 @@ export function HeaderSesionVenta({ compact = false, trailing }: Props) {
   const listaPrecioId = useSesion((s) => s.listaPrecioId)
   const activatedAt = useSesion((s) => s.activatedAt)
   const desactivar = useSesion((s) => s.desactivar)
+  const nItems = useSesion((s) => Object.keys(s.carrito).length)
   const router = useRouter()
 
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  function pedirCerrarVenta(motivo: string) {
+    if (nItems > 0) {
+      const ok = window.confirm(
+        `${motivo}\n\nHay ${nItems} referencia(s) en el carrito.\nSi cerrás, se BORRAN del pedido.\n\n¿Confirmás?`,
+      )
+      if (!ok) return
+    }
+    void desactivar().catch(() => {
+      window.alert('No se pudo cerrar la venta en el servidor. El carrito se mantiene.')
+    })
+  }
 
   if (!activa) return null
 
@@ -140,9 +153,7 @@ export function HeaderSesionVenta({ compact = false, trailing }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => {
-              void desactivar()
-            }}
+            onClick={() => pedirCerrarVenta('Cerrar venta')}
             title="Cerrar la sesión de venta (sigue logueado como vendedor)"
             style={{
               padding: compact ? '5px 10px' : '8px 16px',
@@ -201,9 +212,7 @@ export function HeaderSesionVenta({ compact = false, trailing }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => {
-                void desactivar()
-              }}
+              onClick={() => pedirCerrarVenta('Venta nueva')}
               style={{
                 padding: '6px 10px',
                 borderRadius: 8,

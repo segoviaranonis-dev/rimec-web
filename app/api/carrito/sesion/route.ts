@@ -113,6 +113,18 @@ export async function PUT(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { error: bitErr } = await sb.from('bitacora_acceso_web').insert({
+    id_usuario: session.id_usuario,
+    app: 'rimec-web',
+    evento: 'VENTA_ACTIVA',
+    detalle: {
+      cliente_id: body.cliente_id,
+      cliente_nombre: body.cliente_nombre,
+    },
+  })
+  if (bitErr) console.error('[carrito/sesion] VENTA_ACTIVA:', bitErr.message)
+
   return NextResponse.json({ sesion: data })
 }
 
@@ -150,8 +162,34 @@ export async function DELETE() {
   if (!session) return NextResponse.json({ error: 'no-session' }, { status: 401 })
 
   const sb = getSupabaseAdmin()
-  await sb.from('carrito_item').delete().eq('id_usuario', session.id_usuario)
+  const { error: errItems } = await sb
+    .from('carrito_item')
+    .delete()
+    .eq('id_usuario', session.id_usuario)
+  if (errItems) {
+    console.error('[carrito/sesion DELETE] items:', errItems.message)
+    return NextResponse.json(
+      { error: `No se pudieron borrar ítems: ${errItems.message}` },
+      { status: 500 },
+    )
+  }
+
   const { error } = await sb.from('carrito_sesion').delete().eq('id_usuario', session.id_usuario)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[carrito/sesion DELETE] sesion:', error.message)
+    return NextResponse.json(
+      { error: `Ítems borrados pero sesión falló: ${error.message}` },
+      { status: 500 },
+    )
+  }
+
+  const { error: bitErr } = await sb.from('bitacora_acceso_web').insert({
+    id_usuario: session.id_usuario,
+    app: 'rimec-web',
+    evento: 'VENTA_CERRADA',
+    detalle: { via: 'delete-sesion' },
+  })
+  if (bitErr) console.error('[carrito/sesion] VENTA_CERRADA:', bitErr.message)
+
   return NextResponse.json({ ok: true })
 }

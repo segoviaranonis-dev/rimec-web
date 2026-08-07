@@ -52,6 +52,16 @@ export async function POST(request: Request) {
       role: categoriaNorm as RolePermitido,
     })
 
+    // Bitácora: await + log si falla (Supabase no hace throw)
+    const { registrarLoginRimecWeb } = await import('@/lib/bitacoraPresencia')
+    const okBit = await registrarLoginRimecWeb({
+      id_usuario: user.id_usuario,
+      descp_usuario: user.descp_usuario,
+    })
+    if (!okBit) {
+      console.error('[login] bitácora LOGIN no persistió para', user.descp_usuario, user.id_usuario)
+    }
+
     const catalogoScope = resolveCatalogoRamoScope(user.descp_usuario)
 
     return NextResponse.json({

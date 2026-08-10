@@ -1,6 +1,6 @@
 /**
  * Cascada Molécula catálogo RIMEC Web.
- * Estilo → Línea → Material → Color (familias).
+ * Estilo → Línea → Referencia → Material → Color (L-R-M-C · siamese AM).
  * Devuelve Partial<CatalogoFilterState> para merge via patch/aplicar.
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
@@ -12,12 +12,13 @@ export function toggleId(list: number[], id: number): number[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
 }
 
-/** Estilos set (multi) → limpia Línea + Material + Color. */
+/** Estilos set (multi) → limpia L + R + M + C. */
 export function cascadaEstilo(grupo_estilo_ids: number[]): CascadaPatch {
   return {
     grupo_estilo_id: '',
     grupo_estilo_ids,
     linea_ids: [],
+    referencia_ids: [],
     material_familias: [],
     color_familias: [],
     colores: [],
@@ -29,19 +30,35 @@ export function toggleEstiloCascada(actual: number[], id: number): CascadaPatch 
   return cascadaEstilo(toggleId(actual, id))
 }
 
-/** Línea set → limpia Material + Color. */
+/** Línea set → limpia Referencia + Material + Color. */
 export function cascadaLinea(linea_ids: number[]): CascadaPatch {
   return {
     linea_ids,
+    referencia_ids: [],
     material_familias: [],
     color_familias: [],
     colores: [],
   }
 }
 
-/** Toggle Línea → limpia Material + Color. */
+/** Toggle Línea → limpia Referencia + Material + Color. */
 export function toggleLineaCascada(linea_ids: number[], id: number): CascadaPatch {
   return cascadaLinea(toggleId(linea_ids, id))
+}
+
+/** Referencia set → limpia Material + Color. */
+export function cascadaReferencia(referencia_ids: number[]): CascadaPatch {
+  return {
+    referencia_ids,
+    material_familias: [],
+    color_familias: [],
+    colores: [],
+  }
+}
+
+/** Toggle Referencia → limpia Material + Color. */
+export function toggleReferenciaCascada(referencia_ids: number[], id: number): CascadaPatch {
+  return cascadaReferencia(toggleId(referencia_ids, id))
 }
 
 /** Material set → limpia Color. */
@@ -106,6 +123,7 @@ export function resetCascadaAlCambiarRamo(): CascadaPatch {
     marca_id: '',
     marca_ids: [],
     linea_ids: [],
+    referencia_ids: [],
     tipo_ids: [],
     grupo_estilo_id: '',
     grupo_estilo_ids: [],
@@ -116,13 +134,14 @@ export function resetCascadaAlCambiarRamo(): CascadaPatch {
   }
 }
 
-/** Dimensión (AB-CR · Marca · Género) → limpia molécula Estilo→Color. CABECERA holding. */
+/** Dimensión (AB-CR · Marca · Género) → limpia molécula Estilo→L→R→M→C. CABECERA holding. */
 export function cascadaDimensiones(patch: CascadaPatch = {}): CascadaPatch {
   return {
     ...patch,
     grupo_estilo_id: '',
     grupo_estilo_ids: [],
     linea_ids: [],
+    referencia_ids: [],
     material_familias: [],
     color_familias: [],
     colores: [],

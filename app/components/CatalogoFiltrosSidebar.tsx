@@ -6,11 +6,13 @@ import { tituloAbcrSidebar, tiposMetaModuloAccesorios, esRamoAccesorios } from '
 import {
   cascadaEstilo,
   cascadaLinea,
+  cascadaReferencia,
   cascadaMaterial,
   cascadaColor,
   cascadaDimensiones,
   toggleEstiloCascada,
   toggleLineaCascada,
+  toggleReferenciaCascada,
   toggleMaterialCascada,
   toggleColorCascada,
   resetCascadaAlCambiarRamo,
@@ -43,6 +45,7 @@ export type CatalogoFiltrosOpciones = {
   estilos: FilterItem[]
   marcas: FilterItem[]
   lineas: FilterItem[]
+  referencias?: FilterItem[]
   tipos: FilterItem[]
   generos: GeneroItem[]
   materialFamilias: FamiliaPilarItem[]
@@ -72,6 +75,7 @@ export const CATALOGO_FILTROS_VACIOS: CatalogoFilterState = {
   grupo_estilo_ids: [],
   marca_ids: [],
   linea_ids: [],
+  referencia_ids: [],
   tipo_ids: [],
   colores: [],
   quincenas: [],
@@ -106,6 +110,7 @@ function hayFiltrosActivos(f: CatalogoFilterState, empty: CatalogoFilterState): 
     Boolean(f.grupo_estilo_id) ||
     Boolean(f.marca_id) ||
     f.linea_ids.length > 0 ||
+    (f.referencia_ids?.length ?? 0) > 0 ||
     f.tipo_ids.length > 0 ||
     (f.tipo_grupos?.length ?? 0) > 0 ||
     Boolean(f.genero_codigo) ||
@@ -602,9 +607,11 @@ export function CatalogoFiltrosSidebar({
     (origen !== 'TODOS' ? 1 : 0) +
     (filtros.dato_duro_cp?.length ?? 0)
 
+  const refIds = filtros.referencia_ids ?? []
   const badgeMol =
     estiloIds.length +
     filtros.linea_ids.length +
+    refIds.length +
     materialFam.length +
     colorFam.length
 
@@ -1008,13 +1015,13 @@ export function CatalogoFiltrosSidebar({
 
       <BloqueColapsable
         title="Molécula"
-        railLabel="Estilo · Línea · Mat · Color"
+        railLabel="L · R · M · C"
         badge={badgeMol}
         open={bloqueMolOpen}
         onToggle={() => setBloqueMolOpen((v) => !v)}
       >
         <p className="text-[10px] text-slate-500">
-          Cascada: Estilo → Línea → Material → Color · familias texto
+          Cascada: Estilo → Línea → Referencia → Material → Color · L-R-M-C 100%
         </p>
 
         <MultiSelectGroup
@@ -1034,6 +1041,15 @@ export function CatalogoFiltrosSidebar({
           selected={filtros.linea_ids}
           onToggle={(id) => patch(toggleLineaCascada(filtros.linea_ids, id))}
           onClear={() => patch(cascadaLinea([]))}
+          maxH="max-h-48"
+        />
+
+        <MultiSelectGroup
+          title={`Referencia${MULTI_HINT}`}
+          items={opciones.referencias ?? []}
+          selected={refIds}
+          onToggle={(id) => patch(toggleReferenciaCascada(refIds, id))}
+          onClear={() => patch(cascadaReferencia([]))}
           maxH="max-h-48"
         />
 
@@ -1063,10 +1079,12 @@ export function CatalogoFiltrosSidebar({
 export {
   cascadaEstilo,
   cascadaLinea,
+  cascadaReferencia,
   cascadaMaterial,
   cascadaColor,
   toggleEstiloCascada,
   toggleLineaCascada,
+  toggleReferenciaCascada,
   toggleMaterialCascada,
   toggleColorCascada,
 }

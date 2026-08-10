@@ -257,6 +257,7 @@ export function applyNonOrigenSqlFilters(
     : filters.grupo_estilo_id ? [Number(filters.grupo_estilo_id)] : []
   if (marcaIds.length) q = q.in('marca_id', marcaIds)
   if (filters.linea_ids.length) q = q.in('linea_id', filters.linea_ids)
+  if (filters.referencia_ids?.length) q = q.in('referencia_id', filters.referencia_ids)
   const quincenaSql = quincenasIdsFromDatoDuroCp(filters.dato_duro_cp).length
     ? quincenasIdsFromDatoDuroCp(filters.dato_duro_cp)
     : filters.quincenas
@@ -616,6 +617,7 @@ export function mergeTiposCatalogoTodos(
 
 export function buildFiltrosFromRows(rows: StockRow[], ramo_tipo?: string) {
   const lineas = new Map<number, string>()
+  const referencias = new Map<number, string>()
   const marcas = new Map<number, string>()
   const estilos = new Map<number, string>()
   const tiposPe = new Map<number, string>()
@@ -623,6 +625,12 @@ export function buildFiltrosFromRows(rows: StockRow[], ramo_tipo?: string) {
   for (const r of rows) {
     if (r.linea_id) {
       lineas.set(r.linea_id, String(r.linea_codigo || '').trim() || `Línea ${r.linea_id}`)
+    }
+    if (r.referencia_id) {
+      referencias.set(
+        r.referencia_id,
+        String(r.referencia_codigo || '').trim() || `Ref ${r.referencia_id}`,
+      )
     }
     const marLabel = String(r.descp_marca ?? '').trim()
     if (marLabel && !esMarcaFantasmaFiltro(marLabel)) {
@@ -650,6 +658,7 @@ export function buildFiltrosFromRows(rows: StockRow[], ramo_tipo?: string) {
   )
   return {
     todasLineas: toItems(lineas),
+    todasReferencias: toItems(referencias),
     todasMarcas: toItems(marcas),
     todosEstilos: toItems(estilos),
     todosTipos,
@@ -682,6 +691,7 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
     marca_ids: (sp.get('marca_ids') ?? legacyMarca)
       .split(',').filter(Boolean).map(Number),
     linea_ids: (sp.get('linea_ids') ?? '').split(',').filter(Boolean).map(Number),
+    referencia_ids: (sp.get('referencia_ids') ?? '').split(',').filter(Boolean).map(Number),
     tipo_ids: (sp.get('tipo_ids') ?? '').split(',').filter(Boolean).map(Number),
     colores: (sp.get('colores') ?? '').split(',').filter(Boolean),
     quincenas: (sp.get('quincenas') ?? '').split(',').filter(Boolean).map(Number),

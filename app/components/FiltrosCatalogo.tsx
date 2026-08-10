@@ -88,6 +88,8 @@ export type CatalogoFilterState = {
   grupo_estilo_ids?: number[]
   marca_ids?: number[]
   linea_ids: number[]
+  /** Cascada L→R→M→C · multi Referencia (siamese AM) */
+  referencia_ids?: number[]
   tipo_ids: number[]
   colores: string[]
   quincenas: number[]
@@ -368,7 +370,7 @@ export function FiltrosCatalogo({
   if (soloCabecera) {
     const limpiarFiltros = () => {
       const empty: CatalogoFilterState = {
-        grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
+        grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], referencia_ids: [], tipo_ids: [], colores: [], quincenas: [],
         origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
         genero_codigo: '', genero_codigos: [], tonos: [], sin_tono: false, buscar: '',
         tipo_grupos: [], material_familias: [], color_familias: [],
@@ -488,7 +490,7 @@ export function FiltrosCatalogo({
           <button
             onClick={() => {
               const empty: CatalogoFilterState = {
-                grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], tipo_ids: [], colores: [], quincenas: [],
+                grupo_estilo_id: '', marca_id: '', grupo_estilo_ids: [], marca_ids: [], linea_ids: [], referencia_ids: [], tipo_ids: [], colores: [], quincenas: [],
                 origen_tipo: 'TODOS', ramo_tipo: 'CALZADO', deposito_codigo: '',
                 genero_codigo: '', genero_codigos: [], tonos: [], sin_tono: false, buscar: '',
                 tipo_grupos: [], material_familias: [], color_familias: [],

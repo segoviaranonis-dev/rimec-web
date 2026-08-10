@@ -11,6 +11,7 @@ export function hasSidebarFilters(f: CatalogoFilterState): boolean {
       (f.genero_codigos?.length ?? 0) > 0 ||
       f.buscar?.trim() ||
       f.linea_ids.length ||
+      (f.referencia_ids?.length ?? 0) > 0 ||
       f.tipo_ids.length ||
       f.colores.length ||
       f.quincenas.length ||

@@ -14,6 +14,7 @@ export type SharedCatalogFilterSlice = Pick<
   | 'grupo_estilo_ids'
   | 'marca_ids'
   | 'linea_ids'
+  | 'referencia_ids'
   | 'tipo_ids'
   | 'colores'
   | 'genero_codigo'
@@ -29,6 +30,7 @@ export type SharedCatalogFilterSlice = Pick<
 function isSharedFieldEmpty(key: keyof SharedCatalogFilterSlice, value: unknown): boolean {
   if (
     key === 'linea_ids' ||
+    key === 'referencia_ids' ||
     key === 'grupo_estilo_ids' ||
     key === 'marca_ids' ||
     key === 'tipo_ids' ||
@@ -53,6 +55,7 @@ export function extractSharedCatalogFilters(filters: CatalogoFilterState): Share
     grupo_estilo_ids: [...(filters.grupo_estilo_ids ?? [])],
     marca_ids: [...(filters.marca_ids ?? [])],
     linea_ids: [...(filters.linea_ids ?? [])],
+    referencia_ids: [...(filters.referencia_ids ?? [])],
     tipo_ids: [...(filters.tipo_ids ?? [])],
     colores: [...(filters.colores ?? [])],
     genero_codigo: filters.genero_codigo ?? '',
@@ -103,6 +106,9 @@ export function readSharedCatalogFilters(): SharedCatalogFilterSlice | null {
         : [],
       linea_ids: Array.isArray(parsed.linea_ids)
         ? parsed.linea_ids.map(Number).filter((n) => !Number.isNaN(n))
+        : [],
+      referencia_ids: Array.isArray(parsed.referencia_ids)
+        ? parsed.referencia_ids.map(Number).filter((n) => !Number.isNaN(n))
         : [],
       tipo_ids: Array.isArray(parsed.tipo_ids)
         ? parsed.tipo_ids.map(Number).filter((n) => !Number.isNaN(n))
@@ -160,6 +166,7 @@ export function mergeSharedIntoFilters(fromUrl: CatalogoFilterState): CatalogoFi
     grupo_estilo_ids: pick('grupo_estilo_ids'),
     marca_ids: pick('marca_ids'),
     linea_ids: pick('linea_ids'),
+    referencia_ids: pick('referencia_ids'),
     tipo_ids: pick('tipo_ids'),
     colores: pick('colores'),
     genero_codigo: pick('genero_codigo'),
@@ -186,6 +193,7 @@ export function applySharedSliceToFilters(
     grupo_estilo_ids: [...(slice.grupo_estilo_ids ?? [])],
     marca_ids: [...(slice.marca_ids ?? [])],
     linea_ids: [...slice.linea_ids],
+    referencia_ids: [...(slice.referencia_ids ?? [])],
     tipo_ids: [...slice.tipo_ids],
     colores: [...slice.colores],
     genero_codigo: slice.genero_codigo,

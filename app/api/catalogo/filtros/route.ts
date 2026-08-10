@@ -207,6 +207,7 @@ export async function GET(req: NextRequest) {
       let metaFinal = rpcMeta
       let materialFamilias: Awaited<ReturnType<typeof buildMaterialFamiliasFromRows>> = []
       let colorFamilias: Awaited<ReturnType<typeof buildColorFamiliasFromRows>> = []
+      let todasReferencias: { id: number; label: string }[] = []
       // Cascada CHUSAR: cualquier dimensión activa debe acotar meta (Marca→Línea…).
       // Antes solo Estilo/Línea/tipo_grupos → Marca ACTVITTA dejaba Línea en ~841.
       const needRowsScan =
@@ -214,6 +215,7 @@ export async function GET(req: NextRequest) {
         (filters.grupo_estilo_ids?.length ?? 0) > 0 ||
         Boolean(filters.grupo_estilo_id) ||
         (filters.linea_ids?.length ?? 0) > 0 ||
+        (filters.referencia_ids?.length ?? 0) > 0 ||
         (filters.material_familias?.length ?? 0) > 0 ||
         (filters.color_familias?.length ?? 0) > 0 ||
         (filters.marca_ids?.length ?? 0) > 0 ||
@@ -229,11 +231,13 @@ export async function GET(req: NextRequest) {
         try {
           const rows = await rowsForFiltrosLegacy({
             ...filters,
+            referencia_ids: [],
             material_familias: [],
             color_familias: [],
           })
           materialFamilias = buildMaterialFamiliasFromRows(rows)
           colorFamilias = buildColorFamiliasFromRows(rows)
+          todasReferencias = buildFiltrosFromRows(rows, filters.ramo_tipo).todasReferencias
           // Filas 0 (bug ESCOLAR sin peView) no deben vaciar Estilo/Línea → «Sin opciones».
           if (rows.length > 0) {
             metaFinal = acotarMetaRpcDesdeFilas(metaFinal, rows, filters.ramo_tipo)
@@ -242,7 +246,7 @@ export async function GET(req: NextRequest) {
           console.error('[catalogo/filtros] cascada scan/acotar', e)
         }
       }
-      const payload = metaRpcToFiltrosResponse(metaFinal)
+      const payload = metaRpcToFiltrosResponse(metaFinal, { todasReferencias })
       // Hotfix: no escanear 6k+ filas en TODOS — bloqueaba prod (>10s) y dejaba filtros vacíos.
       let paresDatoDuro: Awaited<ReturnType<typeof paresDatoDuroParaFiltros>> = []
       if (isCatalogoOrigenCp(filters)) {
@@ -272,6 +276,7 @@ export async function GET(req: NextRequest) {
 
     const facetFilters: CatalogoFilterStateExtended = {
       ...filters,
+      referencia_ids: [],
       material_familias: [],
       color_familias: [],
     }

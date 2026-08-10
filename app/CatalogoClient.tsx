@@ -119,6 +119,7 @@ function etiquetaCambioFiltro(prev: CatalogoFilterState, next: CatalogoFilterSta
   if (cambio('grupo_estilo_ids') || cambio('grupo_estilo_id')) return `Estilo${cantidad(next.grupo_estilo_ids)}`
   if (cambio('genero_codigos') || cambio('genero_codigo')) return `Género${cantidad(next.genero_codigos?.length ? next.genero_codigos : next.genero_codigo ? [next.genero_codigo] : [])}`
   if (cambio('linea_ids')) return `Línea${cantidad(next.linea_ids)}`
+  if (cambio('referencia_ids')) return `Referencia${cantidad(next.referencia_ids)}`
   if (cambio('tipo_ids')) return `${tituloAbcrSidebar(next.ramo_tipo)}${cantidad(next.tipo_ids)}`
   if (cambio('material_familias')) return `Material${cantidad(next.material_familias)}`
   if (cambio('color_familias') || cambio('colores')) {
@@ -146,6 +147,7 @@ function filterToSearchParams(filters: CatalogoFilterState) {
   if (filters.grupo_estilo_ids?.length) params.set('grupo_estilo_ids', filters.grupo_estilo_ids.join(','))
   if (filters.marca_ids?.length) params.set('marca_ids', filters.marca_ids.join(','))
   if (filters.linea_ids.length) params.set('linea_ids', filters.linea_ids.join(','))
+  if (filters.referencia_ids?.length) params.set('referencia_ids', filters.referencia_ids.join(','))
   if (filters.tipo_ids.length) params.set('tipo_ids', filters.tipo_ids.join(','))
   if (filters.colores.length) params.set('colores', filters.colores.join(','))
   if (filters.quincenas.length) params.set('quincenas', filters.quincenas.join(','))
@@ -289,11 +291,19 @@ export function CatalogoClient({
 
   const [filtrosMeta, setFiltrosMeta] = useState<{
     todasLineas: FilterItem[]
+    todasReferencias: FilterItem[]
     todasMarcas: FilterItem[]
     todosEstilos: FilterItem[]
     todosTipos: FilterItem[]
     todosGeneros: GeneroItem[]
-  }>({ todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] })
+  }>({
+    todasLineas: [],
+    todasReferencias: [],
+    todasMarcas: [],
+    todosEstilos: [],
+    todosTipos: [],
+    todosGeneros: [],
+  })
   const [materialFamilias, setMaterialFamilias] = useState<FamiliaPilarItem[]>([])
   const [colorFamilias, setColorFamilias] = useState<FamiliaPilarItem[]>([])
   const [tonoCatalog, setTonoCatalog] = useState<ColorEstandar[]>(COLORES_ESTANDAR_DEFAULT)
@@ -465,12 +475,22 @@ export function CatalogoClient({
           precioRango?: PrecioRangoCatalogo | null
         }>(r)
         if (cancelled || json.error) return
-        const meta = json.filtros ?? { todasLineas: [], todasMarcas: [], todosEstilos: [], todosTipos: [], todosGeneros: [] }
+        const meta = json.filtros ?? {
+          todasLineas: [],
+          todasReferencias: [],
+          todasMarcas: [],
+          todosEstilos: [],
+          todosTipos: [],
+          todosGeneros: [],
+        }
         const mergeFacet = (prev: FilterItem[], next: FilterItem[]) =>
           normalizeFilterItems([...prev, ...next])
         const cascadaActiva = hasSidebarFilters(filters)
         let nextMeta = {
           todasLineas: normalizeFilterItems(meta.todasLineas ?? []),
+          todasReferencias: normalizeFilterItems(
+            (meta as { todasReferencias?: FilterItem[] }).todasReferencias ?? [],
+          ),
           todasMarcas: normalizeFilterItems(
             (meta.todasMarcas ?? []).filter((m) => !esMarcaFantasmaFiltro(m.label)),
           ),
@@ -513,6 +533,9 @@ export function CatalogoClient({
           todasLineas: cascadaActiva
             ? nextMeta.todasLineas
             : mergeFacet(prev.todasLineas, nextMeta.todasLineas),
+          todasReferencias: cascadaActiva
+            ? nextMeta.todasReferencias
+            : mergeFacet(prev.todasReferencias, nextMeta.todasReferencias),
           todasMarcas: cascadaActiva
             ? nextMeta.todasMarcas
             : mergeFacet(prev.todasMarcas, nextMeta.todasMarcas),
@@ -540,6 +563,9 @@ export function CatalogoClient({
         }
 
         const lineaIdsValid = new Set((meta.todasLineas as FilterItem[]).map(l => l.id))
+        const refIdsValid = new Set(
+          ((meta as { todasReferencias?: FilterItem[] }).todasReferencias ?? []).map((r) => r.id),
+        )
         const estiloIdsValid = new Set((meta.todosEstilos as FilterItem[]).map(e => e.id))
         if (lineaIdsValid.size > 0) {
           const invalidLineas = filters.linea_ids.filter(id => !lineaIdsValid.has(id))
@@ -547,6 +573,18 @@ export function CatalogoClient({
             setFilters(prev => ({
               ...prev,
               linea_ids: prev.linea_ids.filter(id => lineaIdsValid.has(id)),
+              referencia_ids: (prev.referencia_ids ?? []).filter((id) =>
+                refIdsValid.size ? refIdsValid.has(id) : true,
+              ),
+            }))
+          }
+        }
+        if (refIdsValid.size > 0) {
+          const invalidRefs = (filters.referencia_ids ?? []).filter((id) => !refIdsValid.has(id))
+          if (invalidRefs.length) {
+            setFilters((prev) => ({
+              ...prev,
+              referencia_ids: (prev.referencia_ids ?? []).filter((id) => refIdsValid.has(id)),
             }))
           }
         }
@@ -680,6 +718,9 @@ export function CatalogoClient({
       if (cached.filtrosMeta && !hasSidebarFilters(activeFilters)) {
         setFiltrosMeta({
           todasLineas: normalizeFilterItems(cached.filtrosMeta.todasLineas ?? []),
+          todasReferencias: normalizeFilterItems(
+            (cached.filtrosMeta as { todasReferencias?: FilterItem[] }).todasReferencias ?? [],
+          ),
           todasMarcas: normalizeFilterItems(cached.filtrosMeta.todasMarcas ?? []),
           todosEstilos: normalizeFilterItems(cached.filtrosMeta.todosEstilos ?? []),
           todosTipos: normalizeFilterItems(cached.filtrosMeta.todosTipos ?? []),
@@ -970,6 +1011,7 @@ export function CatalogoClient({
     sameArray(filters.grupo_estilo_ids ?? [], initialFilters.grupo_estilo_ids ?? []) &&
     sameArray(filters.marca_ids ?? [], initialFilters.marca_ids ?? []) &&
     sameArray(filters.linea_ids, initialFilters.linea_ids) &&
+    sameArray(filters.referencia_ids ?? [], initialFilters.referencia_ids ?? []) &&
     sameArray(filters.tipo_ids, initialFilters.tipo_ids) &&
     sameArray(filters.colores, initialFilters.colores) &&
     sameArray(filters.quincenas, initialFilters.quincenas) &&
@@ -1080,6 +1122,7 @@ export function CatalogoClient({
                   estilos: filtrosMeta.todosEstilos,
                   marcas: filtrosMeta.todasMarcas,
                   lineas: filtrosMeta.todasLineas,
+                  referencias: filtrosMeta.todasReferencias,
                   tipos: filtrosMeta.todosTipos,
                   generos: filtrosMeta.todosGeneros,
                   materialFamilias: materialFamiliasUi,
@@ -1101,6 +1144,7 @@ export function CatalogoClient({
                 estilos: filtrosMeta.todosEstilos,
                 marcas: filtrosMeta.todasMarcas,
                 lineas: filtrosMeta.todasLineas,
+                referencias: filtrosMeta.todasReferencias,
                 tipos: filtrosMeta.todosTipos,
                 generos: filtrosMeta.todosGeneros,
                 materialFamilias: materialFamiliasUi,

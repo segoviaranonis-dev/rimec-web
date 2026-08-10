@@ -43,6 +43,7 @@ export function filtersForFacetUniverse(filters: CatalogoFilterStateExtended): C
     grupo_estilo_id: '',
     grupo_estilo_ids: [],
     linea_ids: [],
+    referencia_ids: [],
     tipo_ids: [],
     material_familias: [],
     color_familias: [],
@@ -216,10 +217,11 @@ function tieneFiltrosDimensionMeta(filters: CatalogoFilterStateExtended): boolea
   )
 }
 
-/** Molécula (Línea · Material · Color · Tono) — cascada hacia hoja. */
+/** Molécula (Línea · Referencia · Material · Color · Tono) — cascada hacia hoja. */
 function tieneFiltrosMoleculaMeta(filters: CatalogoFilterStateExtended): boolean {
   return (
     (filters.linea_ids?.length ?? 0) > 0 ||
+    (filters.referencia_ids?.length ?? 0) > 0 ||
     (filters.colores?.length ?? 0) > 0 ||
     (filters.tonos?.length ?? 0) > 0 ||
     Boolean(filters.sin_tono) ||
@@ -495,10 +497,14 @@ async function fetchCatalogoMetaViaRpcRaw(
   return null
 }
 
-export function metaRpcToFiltrosResponse(meta: CatalogoMetaRpc) {
+export function metaRpcToFiltrosResponse(
+  meta: CatalogoMetaRpc,
+  extras?: { todasReferencias?: { id: number; label: string }[] },
+) {
   return {
     filtros: {
       todasLineas: meta.lineas,
+      todasReferencias: extras?.todasReferencias ?? [],
       todasMarcas: (meta.marcas ?? []).filter((m) => !esMarcaFantasmaFiltro(String(m?.label ?? ''))),
       todosEstilos: meta.estilos,
       todosTipos: meta.tipos,

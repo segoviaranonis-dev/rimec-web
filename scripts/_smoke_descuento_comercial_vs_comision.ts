@@ -82,6 +82,17 @@ ok('detección solo-comisión 2%/4%')
 {
   const out = resolverDescuentosFiPe({
     listaPrecioId: 3,
+    descuentosPrevios: [5, 20, 0, 0],
+    dictadoComercialPct: 17,
+    preAutorizado: false,
+  })
+  assert.deepEqual(out, [5, 20, 0, 0])
+  ok('LPC03: usuario controla D1=5 (no impone 10)')
+}
+
+{
+  const out = resolverDescuentosFiPe({
+    listaPrecioId: 3,
     descuentosPrevios: [0, 0, 0, 0],
     dictadoComercialPct: null,
     preAutorizado: false,

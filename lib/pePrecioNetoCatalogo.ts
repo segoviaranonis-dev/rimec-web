@@ -2,7 +2,7 @@
 
  * Precio neto PE en catálogo — paridad con factura interna (resolverDescuentosFiPe + cascada).
 
- * LPC03 (lista 3) no-PROMO: D1=10% fijo · D2=dictado comercial Guido.
+ * LPC03 (lista 3) no-PROMO: sugerencia D1=10% + D2=dictado Guido (catálogo; FI editable).
 
  * PROMOCIONAL: sin +10 % LPC03 (anti doble descuento).
 

@@ -30,32 +30,12 @@ export function EditorDescuentosFi({
   const [listaId, setListaId] = useState(factura.lista_precio_id)
   const [slots, setSlots] = useState(['', '', '', ''])
 
-  const esPromoFi =
-    String(factura.cadena_comercial ?? '').trim().toUpperCase() === 'PROMOCIONAL' ||
-    String(factura.caso ?? '').toUpperCase().includes('PROMOCIONAL')
-
   useEffect(() => {
     if (!abierto) return
     setListaId(factura.lista_precio_id)
     const norm = normalizarDescuentos4(factura.descuentos)
-    // LP03 +10 % solo si NO es PROMOCIONAL (anti doble descuento)
-    if (esPeLote && factura.lista_precio_id === 3 && !esPromoFi && Number(norm[0]) !== 10) {
-      norm[0] = 10
-    }
     setSlots(norm.map((d) => descuentoInputDisplay(d)))
-  }, [abierto, factura, esPeLote, esPromoFi])
-
-  useEffect(() => {
-    if (!abierto || !esPeLote || esPromoFi) return
-    if (listaId === 3) {
-      setSlots((prev) => {
-        if (prev[0] === '10') return prev
-        const next = [...prev]
-        next[0] = '10'
-        return next
-      })
-    }
-  }, [abierto, esPeLote, esPromoFi, listaId])
+  }, [abierto, factura])
 
   useEffect(() => {
     if (!abierto) return
@@ -123,7 +103,7 @@ export function EditorDescuentosFi({
         </p>
         {esPeLote && listaId === 3 ? (
           <p style={{ fontSize: 11, color: '#059669', margin: '0 0 8px', fontWeight: 600 }}>
-            LPC03: D1 = 10% fijo · D2 = descuento comercial dictado (Guido)
+            LPC03 · sugerencia Guido: D1 10% + D2 comercial — D1–D4 siempre editables
           </p>
         ) : null}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -134,7 +114,7 @@ export function EditorDescuentosFi({
                 type="text"
                 inputMode="decimal"
                 placeholder=""
-                disabled={guardando || (esPeLote && listaId === 3 && i === 0)}
+                disabled={guardando}
                 value={slots[i]}
                 onChange={(e) => {
                   const next = [...slots]
@@ -145,6 +125,7 @@ export function EditorDescuentosFi({
                   display: 'block', width: '100%', marginTop: 4, padding: '10px 6px',
                   borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 15, fontWeight: 700,
                   textAlign: 'center',
+                  backgroundColor: guardando ? '#F1F5F9' : 'white',
                 }}
               />
             </label>

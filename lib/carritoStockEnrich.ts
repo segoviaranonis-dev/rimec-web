@@ -3,6 +3,7 @@ import { PE_DET_ID_BASE } from '@/lib/prontaEntregaVenta'
 import { normalizarFilaStockVenta } from '@/lib/disponibilidad'
 import {
   fetchPeDescuentoComercialMap,
+  fetchPeDescuentoForMolecules,
   moleculeKeyPeDescuento,
 } from '@/lib/peDescuentoComercial'
 
@@ -223,7 +224,24 @@ export async function fetchCarritoStockByDetIds(
 
   try {
     if (opts?.withPeDescuento) {
-      const descMap = await fetchPeDescuentoComercialMap()
+      const molecules = [...map.values()]
+        .filter((row) => {
+          const ot = String(row.origen_tipo ?? '').toUpperCase()
+          return ot.includes('PRONTA') || Number(row.pp_id) < 0
+        })
+        .map((row) => ({
+          linea: String(row.linea_codigo ?? ''),
+          referencia: String(row.referencia_codigo ?? ''),
+          material: String(row.material_code ?? ''),
+          color: String(row.color_code ?? ''),
+        }))
+        .filter((m) => m.linea && m.referencia)
+
+      const descMap =
+        molecules.length > 0 && molecules.length <= 40
+          ? await fetchPeDescuentoForMolecules(molecules)
+          : await fetchPeDescuentoComercialMap()
+
       if (descMap.size > 0) {
         for (const row of map.values()) {
           const k = moleculeKeyPeDescuento(

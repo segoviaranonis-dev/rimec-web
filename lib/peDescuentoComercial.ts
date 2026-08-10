@@ -103,6 +103,49 @@ export async function fetchPeDescuentoComercialMap(opts?: {
   return run
 }
 
+type MoleculeRef = {
+  linea: string
+  referencia: string
+  material: string
+  color: string
+}
+
+/** Lookup puntual — evita scan masivo en carrito/validar (hotfix timeout 2026-08-10). */
+export async function fetchPeDescuentoForMolecules(
+  molecules: MoleculeRef[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  const unique = new Map<string, MoleculeRef>()
+  for (const m of molecules) {
+    const k = moleculeKeyPeDescuento(m.linea, m.referencia, m.material, m.color)
+    if (!unique.has(k)) unique.set(k, m)
+  }
+  if (!unique.size) return map
+
+  const sb = getSupabaseAdmin()
+  await Promise.all(
+    [...unique.values()].map(async (m) => {
+      const k = moleculeKeyPeDescuento(m.linea, m.referencia, m.material, m.color)
+      const { data, error } = await sb
+        .from('pe_descuento_comercial_molecula')
+        .select('descuento_pct')
+        .eq('linea_codigo', m.linea)
+        .eq('referencia_codigo', m.referencia)
+        .eq('material_code', m.material)
+        .eq('color_code', m.color)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+      if (error) {
+        console.warn('[peDescuentoComercial] lookup', k, error.message)
+        return
+      }
+      const pct = Number(data?.[0]?.descuento_pct)
+      if (Number.isFinite(pct) && pct > 0) map.set(k, pct)
+    }),
+  )
+  return map
+}
+
 export async function lookupPeDescuentoPct(input: {
   linea?: string | null
   referencia?: string | null

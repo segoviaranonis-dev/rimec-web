@@ -318,7 +318,10 @@ export async function validarCarritoPeApp(
   }
 
   try {
-    await asegurarFacturasDescuentosLote(sb, idUsuario)
+    const lotePrev = (sesion.descuentos_lote as { facturas?: unknown[] } | null)?.facturas
+    if (!lotePrev?.length) {
+      await asegurarFacturasDescuentosLote(sb, idUsuario)
+    }
   } catch (err) {
     console.warn('[validarCarritoPeApp] asegurarFacturas:', err)
   }

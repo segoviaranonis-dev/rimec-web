@@ -13,13 +13,29 @@ export async function POST() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'no-session' }, { status: 401 })
 
-  const sb = getSupabaseAdmin()
-  const mix = await clasificarCarritoPeCp(sb, session.id_usuario)
+  try {
+    const sb = getSupabaseAdmin()
+    const mix = await clasificarCarritoPeCp(sb, session.id_usuario)
 
-  if (mix.count === 0) {
-    return NextResponse.json({ success: false, estado: 'ERROR', detail: 'Carrito vacío' }, { status: 409 })
+    if (mix.count === 0) {
+      return NextResponse.json({ success: false, estado: 'ERROR', detail: 'Carrito vacío' }, { status: 409 })
+    }
+
+    const result = await validarCarritoPeApp(sb, session.id_usuario)
+    return NextResponse.json(result)
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err)
+    const timeout = /statement timeout|57014|canceling statement/i.test(raw)
+    console.error('[carrito/validar]', err)
+    return NextResponse.json(
+      {
+        success: false,
+        estado: 'ERROR',
+        detail: timeout
+          ? 'Validación demoró demasiado (timeout BD). Reintentá en 10s; si persiste avisá a Héctor.'
+          : raw,
+      },
+      { status: timeout ? 503 : 500 },
+    )
   }
-
-  const result = await validarCarritoPeApp(sb, session.id_usuario)
-  return NextResponse.json(result)
 }

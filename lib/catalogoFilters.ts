@@ -47,7 +47,12 @@ import {
   peTieneFiltroEscolar,
 } from '@/lib/filtros/pe-modulo-escolar'
 import { isAbcrSyntheticTipoId } from '@/lib/filtros/modulo-accesorios'
-import { mergePeAbcrTipo1Items, rowMatchesPeAbcrTipo1 } from '@/lib/filtros/pe-abcr-tipo1'
+import {
+  mergePeAbcrTipo1Items,
+  peAbcrSignalsFromRows,
+  rowMatchesPeAbcrTipo1,
+  type PeAbcrStockSignals,
+} from '@/lib/filtros/pe-abcr-tipo1'
 
 export type { FamiliaPilarItem, TipoGrupoId }
 
@@ -605,11 +610,15 @@ export function mergeTiposCatalogoTodos(
   cpTipos: { id: number; label: string }[],
   peTipos: { id: number; label: string }[],
   ramo_tipo?: string,
+  signals?: PeAbcrStockSignals | null,
 ): { id: number; label: string }[] {
   if (!calzadoExcluyeCarterasPorDefecto({ ramo_tipo } as CatalogoFilterStateExtended)) {
     return normalizeFilterItems([...cpTipos, ...peTipos])
   }
-  const peAbcr = mergePeAbcrTipo1Items(peTipos.filter((t) => !esLabelModuloAccesorios(t.label)))
+  const peAbcr = mergePeAbcrTipo1Items(
+    peTipos.filter((t) => !esLabelModuloAccesorios(t.label)),
+    signals,
+  )
   const peLabels = new Set(peAbcr.map((t) => String(t.label).trim().toUpperCase()))
   const cpExtra = cpTipos.filter((t) => !peLabels.has(String(t.label).trim().toUpperCase()))
   return [...peAbcr, ...normalizeFilterItems(cpExtra)]
@@ -655,6 +664,7 @@ export function buildFiltrosFromRows(rows: StockRow[], ramo_tipo?: string) {
     toItems(tiposCp),
     toItems(tiposPe),
     ramo_tipo,
+    peAbcrSignalsFromRows(rows),
   )
   return {
     todasLineas: toItems(lineas),

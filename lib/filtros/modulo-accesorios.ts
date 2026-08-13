@@ -141,19 +141,16 @@ export function accesoriosSubtipoOpcionesSidebar(
       label: ABCR_ACCESORIOS_SUBFILTROS.find((s) => s.key === key)!.label,
     })
   }
-  for (const s of ABCR_ACCESORIOS_SUBFILTROS) {
-    if (byKey.has(s.key)) continue
-    byKey.set(s.key, { id: ACCESORIOS_SUBTIPO_SYNTHETIC_ID[s.key]!, label: s.label })
-  }
-  return ABCR_ACCESORIOS_SUBFILTROS.map((s) => byKey.get(s.key)!)
+  // Sin rellenar CARTERAS/LENTES fantasma — solo lo que vino en `tipos` (stock).
+  return ABCR_ACCESORIOS_SUBFILTROS.map((s) => byKey.get(s.key)).filter(
+    (x): x is { id: number; label: string } => Boolean(x),
+  )
 }
 
 export function tiposMetaModuloAccesorios(
   tipos: { id: number; label: string }[],
 ): { id: number; label: string }[] {
-  const fromMeta = accesoriosSubtipoOpcionesSidebar(tipos.filter((t) => esLabelModuloAccesorios(t.label)))
-  if (fromMeta.some((t) => t.id > 0)) return fromMeta
-  return accesoriosSubtipoOpcionesSidebar([])
+  return accesoriosSubtipoOpcionesSidebar(tipos.filter((t) => esLabelModuloAccesorios(t.label)))
 }
 
 export type AccesoriosSubtipoKey = 'CARTERAS' | 'LENTES'
@@ -210,4 +207,4 @@ export function peTieneSubfamiliaAccesorios(tipo1Ids: readonly number[]): boolea
   )
 }
 
-export { mergePeAbcrTipo1Items } from '@/lib/filtros/pe-abcr-tipo1'
+export { mergePeAbcrTipo1Items, peAbcrSignalsFromRows, rowMatchesPeAbcrTipo1 } from '@/lib/filtros/pe-abcr-tipo1'

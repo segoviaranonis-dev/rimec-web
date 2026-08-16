@@ -289,8 +289,8 @@ function TarjetaProntaEntrega() {
 
 export default function EstadisticasPage() {
   return (
-    <div className="-mx-4 md:-mx-8 lg:-mx-12 -mt-3 md:-mt-5 min-h-[calc(100vh-4rem)] bg-[#f1f5f9] text-slate-900 px-4 md:px-8 lg:px-12 py-6">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+    <div className="-mx-3 sm:-mx-4 md:-mx-8 lg:-mx-12 -mt-3 md:-mt-5 min-h-[calc(100vh-4rem)] min-w-0 overflow-x-clip bg-[#f1f5f9] text-slate-900 px-3 sm:px-4 md:px-8 lg:px-12 py-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-rimec-azul">Estadísticas</h1>
           <p className="text-sm text-slate-600 mt-1">
@@ -299,7 +299,7 @@ export default function EstadisticasPage() {
         </div>
         <Link
           href="/"
-          className="text-sm font-semibold px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-rimec-azul"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-rimec-azul hover:bg-slate-50 sm:w-auto"
         >
           ← Catálogo
         </Link>

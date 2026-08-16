@@ -236,12 +236,20 @@ function Lightbox({ producto: p, initialIdx, initialTonoKey, onClose }: {
       : [p.linea_codigo, p.referencia_codigo, v.material_code, v.color_code].filter(Boolean).join('-'))
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style={{ backgroundColor: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(6px)' }}
-         onClick={onClose}>
-      <div className="relative flex flex-col bg-white rounded-2xl overflow-hidden w-full max-w-lg"
-           style={{ maxHeight: '92vh', boxShadow: '0 25px 80px rgba(0,0,0,0.45)' }}
-           onClick={e => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
+      style={{
+        backgroundColor: 'rgba(15,23,42,0.88)',
+        backdropFilter: 'blur(6px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="relative flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-white sm:max-h-[min(92dvh,92vh)] sm:max-w-lg sm:rounded-2xl"
+        style={{ boxShadow: '0 25px 80px rgba(0,0,0,0.45)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
 
         <div className="relative w-full shrink-0 bg-white">
           <div className="cadena-hero-host mx-auto max-w-[440px]">
@@ -774,27 +782,41 @@ export function CatalogoGrid({
       </p>
 
       {!activa && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 50 }}>
-          <button onClick={() => setMostrarDialogo(true)} style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '16px 28px', borderRadius: 16,
-            backgroundColor: AZUL, color: 'white',
-            fontWeight: 700, fontSize: 16, border: 'none', cursor: 'pointer',
-            boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
-          }}>
+        <div
+          className="fixed z-50"
+          style={{
+            bottom: 'max(1rem, env(safe-area-inset-bottom, 0px))',
+            right: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+          }}
+        >
+          <button
+            onClick={() => setMostrarDialogo(true)}
+            className="flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-lg sm:gap-2.5 sm:px-7 sm:py-4 sm:text-base"
+            style={{
+              backgroundColor: AZUL,
+              boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
+            }}
+          >
             🔑 Activar venta
           </button>
         </div>
       )}
       {activa && cartCount > 0 && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 50 }}>
-          <a href="/carrito" style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '16px 28px', borderRadius: 16,
-            backgroundColor: AZUL, color: 'white',
-            fontWeight: 700, fontSize: 16, textDecoration: 'none',
-            boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
-          }}>
+        <div
+          className="fixed z-50 max-w-[calc(100vw-1.5rem)]"
+          style={{
+            bottom: 'max(1rem, env(safe-area-inset-bottom, 0px))',
+            right: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+          }}
+        >
+          <a
+            href="/carrito"
+            className="flex max-w-full items-center gap-2 truncate rounded-2xl px-3 py-3 text-xs font-bold text-white no-underline shadow-lg sm:gap-3 sm:px-7 sm:py-4 sm:text-base"
+            style={{
+              backgroundColor: AZUL,
+              boxShadow: '0 8px 28px rgba(30,64,175,0.45)',
+            }}
+          >
             🛒 {cartCount} ref · {totalCajas} cajas · {totalParesCarrito.toLocaleString('es-PY')} pares
           </a>
         </div>

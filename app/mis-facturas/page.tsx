@@ -175,16 +175,9 @@ export default function MisPreventasPage() {
   }
 
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', padding: '24px 16px' }}>
+    <div className="mx-auto w-full max-w-[980px] min-w-0 overflow-x-clip px-3 py-4 sm:px-4 sm:py-6">
       {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 20,
-        }}
-      >
+      <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 900, color: AZUL, marginBottom: 4 }}>
             Mis Preventas Confirmadas
@@ -196,14 +189,9 @@ export default function MisPreventasPage() {
         </div>
         <Link
           href="/"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-[10px] px-4 text-sm font-bold text-white no-underline sm:w-auto"
           style={{
-            padding: '10px 18px',
-            borderRadius: 10,
             backgroundColor: AZUL,
-            color: 'white',
-            fontWeight: 700,
-            textDecoration: 'none',
-            fontSize: 14,
           }}
         >
           ← Catálogo

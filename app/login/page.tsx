@@ -50,7 +50,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4"
          style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1e3a8a 100%)' }}>
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-white rounded-2xl shadow-2xl p-5 sm:p-8">
           {/* Logo/Header */}
           <div className="text-center mb-8">
             <div className="inline-block bg-gradient-to-r from-blue-600 to-blue-800 rounded-full p-4 mb-4">

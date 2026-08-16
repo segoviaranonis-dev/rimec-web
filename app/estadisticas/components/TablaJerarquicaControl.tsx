@@ -138,8 +138,8 @@ export function TablaJerarquicaControl({ arbol, compact = false }: { arbol: Nodo
           </button>
         </div>
       )}
-      <div className="rounded-xl border border-slate-200 overflow-hidden overflow-x-auto bg-white">
-        <table className="w-full text-sm min-w-[480px]">
+      <div className="w-full max-w-full min-w-0 rounded-xl border border-slate-200 overflow-hidden overflow-x-auto bg-white -mx-1 sm:mx-0">
+        <table className="w-full text-sm min-w-[320px] sm:min-w-[480px]">
           <thead>
             <tr className="bg-slate-100 text-[10px] uppercase tracking-widest text-slate-600">
               <th className="text-left py-3 px-3 font-semibold">Estructura de análisis</th>

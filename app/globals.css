@@ -9,6 +9,14 @@
   --color-bazzar-naranja: #EA580C; /* Tablet depósito — stock p */
 }
 
+html {
+  overflow-x: clip;
+}
+body {
+  overflow-x: clip;
+  min-width: 0;
+}
+
 /* LIQ PE = oro casino (1.65s) · PROMO CP+PE = fucsia casino (1.65s) — colores distintos */
 @keyframes catalog-casino-pulse-fucsia {
   0%, 100% {

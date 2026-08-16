@@ -61,7 +61,7 @@ function SearchBar() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar marca, línea..."
-          className="w-56 text-sm border-0 border-b outline-none px-1 py-1 bg-transparent placeholder-gray-400"
+          className="w-[min(12rem,55vw)] text-sm border-0 border-b outline-none px-1 py-1 bg-transparent placeholder-gray-400 sm:w-56"
           style={{ borderColor: RIMEC_BLUE }}
         />
         <button
@@ -186,23 +186,33 @@ function IconEstadisticas({ className }: { className?: string }) {
 function OrigenNavBtn({
   href,
   active,
+  shortLabel,
   children,
 }: {
   href: string
   active: boolean
+  /** Texto corto en phone (<sm) */
+  shortLabel?: string
   children: React.ReactNode
 }) {
   return (
     <Link
       href={href}
-      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold tracking-wide transition-all ${
+      className={`inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold tracking-wide transition-all sm:min-h-0 sm:flex-none sm:gap-1.5 sm:px-4 sm:text-sm ${
         active
           ? 'bg-[#0F172A] text-white shadow-sm'
           : 'border border-slate-200 bg-white text-slate-700 hover:border-[#0EA5E9] hover:text-[#0EA5E9]'
       }`}
       aria-current={active ? 'page' : undefined}
     >
-      {children}
+      {shortLabel ? (
+        <>
+          <span className="sm:hidden">{shortLabel}</span>
+          <span className="hidden sm:inline">{children}</span>
+        </>
+      ) : (
+        children
+      )}
     </Link>
   )
 }
@@ -276,47 +286,36 @@ function HeaderShell({
       : 'Todos · Compra previa + Pronta entrega · Catálogo mayorista'
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 transition-all duration-300">
+    <header className="sticky top-0 z-40 overflow-x-clip bg-white/95 backdrop-blur-md border-b border-gray-100 transition-all duration-300">
       {!navOculto && (
         <>
           <div
-            className="text-white text-center text-[10px] tracking-[0.2em] uppercase py-2.5 px-4 font-medium"
+            className="text-white text-center text-[9px] tracking-[0.15em] uppercase py-2 px-3 font-medium sm:text-[10px] sm:tracking-[0.2em] sm:py-2.5 sm:px-4"
             style={{ backgroundColor: RIMEC_BLUE }}
           >
             {aviso}
           </div>
 
-          <div className="max-w-[1440px] mx-auto px-6 lg:px-12">
-            <div className="flex items-center justify-between h-16 gap-4">
-              <div className="flex items-center gap-4 shrink-0">
+          <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-12">
+            {/* Fila 1: logo + acciones */}
+            <div className="flex items-center justify-between h-12 gap-2 sm:h-14 sm:gap-4">
+              <div className="flex items-center gap-2 shrink-0 sm:gap-4">
                 <Link
                   href="/?origen_tipo=TODOS&ramo_tipo=CALZADO"
-                  className="font-serif text-2xl font-bold tracking-wide select-none"
+                  className="font-serif text-xl font-bold tracking-wide select-none sm:text-2xl"
                   style={{ color: RIMEC_BLUE }}
                 >
                   RIMEC
                 </Link>
                 <span
-                  className="text-[10px] font-medium uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm"
+                  className="hidden text-[10px] font-medium uppercase tracking-[0.15em] px-2 py-0.5 rounded-sm sm:inline"
                   style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
                 >
                   Mayorista
                 </span>
               </div>
 
-              <nav className="flex flex-1 items-center justify-center gap-2 sm:gap-3" aria-label="Origen de stock">
-                <OrigenNavBtn href={hrefTodos} active={esTodos}>
-                  ⧉ Todos
-                </OrigenNavBtn>
-                <OrigenNavBtn href={hrefCp} active={esCp}>
-                  🚢 Compra previa
-                </OrigenNavBtn>
-                <OrigenNavBtn href={hrefPe} active={esPe}>
-                  📦 Pronta entrega
-                </OrigenNavBtn>
-              </nav>
-
-              <div className="flex items-center gap-4 text-sm font-medium tracking-wide text-gray-800 shrink-0">
+              <div className="flex items-center gap-1.5 text-sm font-medium tracking-wide text-gray-800 shrink-0 sm:gap-3">
                 <button
                   type="button"
                   onClick={toggleNav}
@@ -327,14 +326,27 @@ function HeaderShell({
                 </button>
                 <SearchBar />
                 {user && <NotificationBell />}
-                <Link href="/carrito" className="hover:text-[#0EA5E9] transition-colors ml-2">
-                  Carrito
+                <Link
+                  href="/carrito"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-slate-50 hover:text-[#0EA5E9] transition-colors sm:min-h-0 sm:min-w-0 sm:px-1"
+                  aria-label="Carrito"
+                >
+                  <span className="sm:hidden" aria-hidden>
+                    🛒
+                  </span>
+                  <span className="hidden sm:inline">Carrito</span>
                 </Link>
-                <Link href="/pedidos" className="hover:text-[#0EA5E9] transition-colors">
+                <Link
+                  href="/pedidos"
+                  className="hidden hover:text-[#0EA5E9] transition-colors md:inline"
+                >
                   Pedidos
                 </Link>
                 {user && (
-                  <Link href="/mis-facturas" className="hover:text-[#0EA5E9] transition-colors">
+                  <Link
+                    href="/mis-facturas"
+                    className="hidden hover:text-[#0EA5E9] transition-colors lg:inline"
+                  >
                     Mis Facturas
                   </Link>
                 )}
@@ -343,7 +355,7 @@ function HeaderShell({
                   title="Estadísticas"
                   aria-label="Estadísticas"
                   aria-current={esEstadisticas ? 'page' : undefined}
-                  className={`inline-flex items-center justify-center p-1.5 rounded-lg transition-colors ${
+                  className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors sm:min-h-0 sm:min-w-0 sm:p-1.5 ${
                     esEstadisticas
                       ? 'text-[#0EA5E9] bg-sky-50 ring-1 ring-sky-200'
                       : 'text-gray-600 hover:text-[#0EA5E9] hover:bg-slate-50'
@@ -353,44 +365,70 @@ function HeaderShell({
                 </Link>
                 {user && (
                   <>
-                    <span className="text-xs text-gray-600 border-l pl-4 border-gray-300">{user.name}</span>
-                    <button onClick={handleLogout} className="text-xs hover:text-red-600 transition-colors">
-                      Cerrar sesión
+                    <span className="hidden text-xs text-gray-600 border-l pl-4 border-gray-300 xl:inline">
+                      {user.name}
+                    </span>
+                    <button
+                      onClick={handleLogout}
+                      className="text-[10px] hover:text-red-600 transition-colors sm:text-xs"
+                    >
+                      <span className="sm:hidden">Salir</span>
+                      <span className="hidden sm:inline">Cerrar sesión</span>
                     </button>
                   </>
                 )}
               </div>
             </div>
+
+            {/* Fila 2: origen stock — full width en móvil */}
+            <nav
+              className="flex w-full items-stretch gap-1.5 pb-2.5 sm:gap-3 sm:justify-center sm:pb-3"
+              aria-label="Origen de stock"
+            >
+              <OrigenNavBtn href={hrefTodos} active={esTodos} shortLabel="⧉ Todos">
+                ⧉ Todos
+              </OrigenNavBtn>
+              <OrigenNavBtn href={hrefCp} active={esCp} shortLabel="🚢 CP">
+                🚢 Compra previa
+              </OrigenNavBtn>
+              <OrigenNavBtn href={hrefPe} active={esPe} shortLabel="📦 PE">
+                📦 Pronta entrega
+              </OrigenNavBtn>
+            </nav>
           </div>
         </>
       )}
 
       {navOculto && (
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-12 flex items-center justify-between h-11 gap-3">
-          <Link href="/?origen_tipo=TODOS&ramo_tipo=CALZADO" className="font-serif text-lg font-bold" style={{ color: RIMEC_BLUE }}>
+        <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-12 flex flex-wrap items-center justify-between gap-2 py-2 sm:h-11 sm:flex-nowrap sm:gap-3 sm:py-0">
+          <Link
+            href="/?origen_tipo=TODOS&ramo_tipo=CALZADO"
+            className="font-serif text-lg font-bold"
+            style={{ color: RIMEC_BLUE }}
+          >
             RIMEC
           </Link>
-          <nav className="flex items-center gap-2" aria-label="Origen de stock">
-            <OrigenNavBtn href={hrefTodos} active={esTodos}>
+          <nav className="order-3 flex w-full items-stretch gap-1.5 sm:order-none sm:w-auto sm:gap-2" aria-label="Origen de stock">
+            <OrigenNavBtn href={hrefTodos} active={esTodos} shortLabel="⧉ Todos">
               ⧉ Todos
             </OrigenNavBtn>
-            <OrigenNavBtn href={hrefCp} active={esCp}>
+            <OrigenNavBtn href={hrefCp} active={esCp} shortLabel="🚢 CP">
               🚢 Compra previa
             </OrigenNavBtn>
-            <OrigenNavBtn href={hrefPe} active={esPe}>
+            <OrigenNavBtn href={hrefPe} active={esPe} shortLabel="📦 PE">
               📦 Pronta entrega
             </OrigenNavBtn>
           </nav>
-          <div className="flex items-center gap-3 text-xs font-medium">
+          <div className="flex items-center gap-2 text-xs font-medium sm:gap-3">
             <button
               type="button"
               onClick={toggleNav}
-              className="text-xs font-semibold text-gray-600 hover:text-[#0EA5E9] px-3 py-1 rounded-lg border border-gray-200"
+              className="text-xs font-semibold text-gray-600 hover:text-[#0EA5E9] px-2 py-1.5 rounded-lg border border-gray-200 sm:px-3"
             >
-              Mostrar menú ▼
+              Menú ▼
             </button>
-            <Link href="/carrito" className="hover:text-[#0EA5E9]">
-              Carrito
+            <Link href="/carrito" className="hover:text-[#0EA5E9]" aria-label="Carrito">
+              🛒
             </Link>
             {user && (
               <button type="button" onClick={handleLogout} className="hover:text-red-600">

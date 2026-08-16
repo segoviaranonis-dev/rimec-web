@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { headers } from 'next/headers'
 import { Urbanist, Playfair_Display } from 'next/font/google'
 import './globals.css'
@@ -21,6 +21,12 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: 'RIMEC — Catálogo Mayorista',
   description: 'Stock en tránsito y depósito para vendedores',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 }
 
 const EMPTY_HEADER = {
@@ -47,7 +53,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {isAuthShell ? (
             children
           ) : (
-            <main className="max-w-[1440px] mx-auto px-4 md:px-8 lg:px-12 py-3 md:py-5">
+            <main className="max-w-[1440px] mx-auto w-full min-w-0 overflow-x-clip px-3 sm:px-4 md:px-8 lg:px-12 py-3 md:py-5">
               {children}
             </main>
           )}

@@ -1107,9 +1107,9 @@ export function CatalogoClient({
       />
 
       <div className="mt-3 flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-2">
-        <div className="w-full shrink-0 pl-1 pr-1 lg:sticky lg:top-2 lg:w-auto lg:max-w-[32rem] lg:max-h-[calc(100vh-1rem)] lg:overflow-y-auto lg:pl-1 lg:pr-0">
-          <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm lg:hidden" open>
-            <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-rimec-azul [&::-webkit-details-marker]:hidden">
+        <div className="w-full min-w-0 shrink-0 pl-0 pr-0 lg:sticky lg:top-2 lg:w-auto lg:max-w-[32rem] lg:max-h-[calc(100vh-1rem)] lg:overflow-y-auto lg:pl-1 lg:pr-0">
+          <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm lg:hidden">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-rimec-azul [&::-webkit-details-marker]:hidden">
               ▾ Filtros · dimensiones + molécula
             </summary>
             <div className="border-t border-slate-100 p-2">
@@ -1157,7 +1157,7 @@ export function CatalogoClient({
           </div>
         </div>
 
-        <div className="relative min-h-[12rem] min-w-0 flex-1 pr-2 sm:pr-3">
+        <div className="relative min-h-[12rem] min-w-0 flex-1 overflow-x-clip pr-1 sm:pr-3">
       {loading && productos.length === 0 && !error && (
         <CatalogoGrillaSkeleton slots={CARD_PAGE_LIMIT} />
       )}

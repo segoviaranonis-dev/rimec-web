@@ -486,7 +486,7 @@ export default function CarritoPage() {
   })()
 
   return (
-    <div style={{ maxWidth: 780, margin: '0 auto' }}>
+    <div className="mx-auto w-full max-w-[780px] min-w-0 overflow-x-clip px-1 sm:px-0">
       <div style={{
         backgroundColor: '#EFF6FF', border: `2px solid ${AZUL}`,
         borderRadius: 16, padding: '20px 24px', marginBottom: 28,

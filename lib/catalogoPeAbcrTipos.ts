@@ -29,7 +29,7 @@ export async function loadPeAbcrTiposDesdeStock(
     let q = admin
       .from('v_stock_pe_rimec')
       .select(
-        'tipo_1_id, descp_tipo_1, sdrm_tipo1, descp_marca, sdrm_marca, cod_grupo, cajas_disponibles, linea_codigo',
+        'tipo_1_id, descp_tipo_1, sdrm_tipo1, descp_marca, sdrm_marca, cod_grupo, cajas_disponibles',
       )
       .gt('cajas_disponibles', 0)
       .range(page * PAGE, page * PAGE + PAGE - 1)
@@ -70,7 +70,6 @@ export async function loadPeAbcrTiposDesdeStock(
         marca: r.descp_marca,
         sdrm_marca: r.sdrm_marca,
         cod_grupo: r.cod_grupo,
-        linea_codigo: r.linea_codigo,
         cantidad: r.cajas_disponibles,
       })
     }

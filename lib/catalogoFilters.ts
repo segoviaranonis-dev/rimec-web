@@ -29,6 +29,7 @@ import {
   parsePeTipoSelected,
   rowMatchesPeTipoDiccionario,
 } from '@/lib/filtros/filtro-tipo-pe-diccionario'
+import { parseTipoGruposCsv } from '@/lib/filtros/tipo-grupos-url'
 import { labelMarcaCatalogo } from '@/lib/marcaBadge'
 import {
   accesoriosSubtipoFromSyntheticId,
@@ -50,9 +51,13 @@ import { isAbcrSyntheticTipoId } from '@/lib/filtros/modulo-accesorios'
 import {
   mergePeAbcrTipo1Items,
   peAbcrSignalsFromRows,
+  peAbcrCanonLabelForChipId,
+  peAbcrSqlLabelsForChipId,
   rowMatchesPeAbcrTipo1,
+  sanitizePeAbcrTipoIds,
   type PeAbcrStockSignals,
 } from '@/lib/filtros/pe-abcr-tipo1'
+import { canonPeTipo1Valorizado } from '@/lib/filtros/pe-valorizado-tipo1'
 
 export type { FamiliaPilarItem, TipoGrupoId }
 
@@ -184,10 +189,16 @@ export function applyGeneroRamoBuscarSql(query: any, filters: CatalogoFilterStat
     }
   }
 
-  const subfamiliaAbcr = peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
-  if (subfamiliaAbcr) {
+  const tipoIdsSql = sanitizePeAbcrTipoIds(filters.tipo_ids ?? [])
+  const subfamiliaAbcr = peTieneSubfamiliaAccesorios(tipoIdsSql)
+  const tieneTemporadaAbcr = tipoIdsSql.some(
+    (id) => id > 0 || id === PE_TIPO1_ESCOLAR_ID || id === -9,
+  )
+  // Solo CARTERAS/ANTEOJOS → densificar módulo. Mezcla con temporada → no AND en SQL
+  // (OR en memoria; si no, ABIERTO+CARTERAS = 0 filas).
+  if (subfamiliaAbcr && !tieneTemporadaAbcr) {
     q = applyModuloAccesoriosIncludeSql(q) as typeof q
-  } else if (calzadoExcluyeCarterasPorDefecto(filters)) {
+  } else if (!subfamiliaAbcr && calzadoExcluyeCarterasPorDefecto(filters)) {
     q = applyModuloAccesoriosExcludeSql(q) as typeof q
   }
 
@@ -223,7 +234,7 @@ export function applyGeneroRamoBuscarSql(query: any, filters: CatalogoFilterStat
 export function applyTipoGruposSqlFilter(
   query: any,
   tipoGrupos: TipoGrupoId[] | undefined,
-  opts?: { allowLiquidacion?: boolean },
+  opts?: { allowLiquidacion?: boolean; peView?: boolean },
 ): any {
   const sel = tipoGrupos ?? []
   if (!sel.length) return query
@@ -234,18 +245,44 @@ export function applyTipoGruposSqlFilter(
   }
   if (sel.includes('carteras')) parts.push('descp_caso.eq.CARTERAS')
   if (sel.includes('promo')) parts.push('descp_caso.eq.PROMOCIONAL')
+  if (sel.includes('chi')) {
+    // CP (v_stock_rimec): NO tiene cod_grupo — error 4.01.04.011bis.
+    parts.push('descp_caso.eq.CHINELO')
+    parts.push('descp_marca.eq.CHINELO')
+    if (opts?.peView) {
+      parts.push('cod_grupo.like.09%')
+    }
+  }
+  if (sel.includes('actual')) parts.push('descp_caso.eq.ACTUAL')
+  if (sel.includes('anterior')) parts.push('descp_caso.eq.ANTERIOR')
   if (wantsLiq) {
     parts.push('es_liquidacion.eq.true')
     parts.push('cadena_comercial.eq.LIQUIDACION')
   }
   if (!parts.length) return query
   let q = query.or(parts.join(','))
-  if (!wantsLiq) {
+  // es_liquidacion / cadena LIQ = solo vista PE (v_stock_rimec no tiene la columna).
+  if (opts?.peView && !wantsLiq) {
     q = q.or('es_liquidacion.eq.false,es_liquidacion.is.null')
   }
   // Nota: es_promo / cadena PROMOCIONAL se resuelven en applyMemoryFilters
   // (filtro-tipo-canonico) — CP no tiene columna es_promo.
   return q
+}
+
+/**
+ * Densificación CP cuando tipo_grupos está activo pero skipTipoGruposSql
+ * (memoria OR multi). Chip único CHINELO → SQL positivo (BCL + marca fantasma).
+ */
+export function applyCpTipoDensificacionSql(
+  query: any,
+  filters: CatalogoFilterStateExtended,
+): any {
+  const sel = filters.tipo_grupos ?? []
+  if (sel.length === 1 && sel[0] === 'chi') {
+    return query.or('descp_caso.eq.CHINELO,descp_marca.eq.CHINELO')
+  }
+  return query
 }
 
 export function applyNonOrigenSqlFilters(
@@ -268,13 +305,18 @@ export function applyNonOrigenSqlFilters(
     : filters.quincenas
   if (quincenaSql.length) q = q.in('quincena_arribo_id', quincenaSql)
   if (estiloIds.length) q = q.in('grupo_estilo_id', estiloIds)
-  const tipoFkIds = filters.tipo_ids.filter((id) => id > 0)
+  const tipoFkIds = sanitizePeAbcrTipoIds(filters.tipo_ids).filter((id) => id > 0)
   const escolar = peTieneFiltroEscolar(filters.tipo_ids)
   // ESCOLAR (-8) no es FK: densificar en SQL PE (sdrm_tipo1 / d45=08). CP no tipifica escolar.
   if (opts?.peView && escolar) {
     if (tipoFkIds.length) {
+      const labels = [...new Set(tipoFkIds.flatMap((id) => peAbcrSqlLabelsForChipId(id)))]
+      const labelOr =
+        labels.length > 0
+          ? labels.map((l) => `descp_tipo_1.eq.${l}`).join(',')
+          : `tipo_1_id.in.(${tipoFkIds.join(',')})`
       q = q.or(
-        `tipo_1_id.in.(${tipoFkIds.join(',')}),sdrm_tipo1.ilike.ESCOLAR,cod_grupo.like.____08____`,
+        `${labelOr},sdrm_tipo1.ilike.ESCOLAR,cod_grupo.like.____08____`,
       )
     } else {
       q = applyPeEscolarSqlFilter(q)
@@ -282,8 +324,17 @@ export function applyNonOrigenSqlFilters(
   } else if (escolar && !tipoFkIds.length) {
     // Vista CP + solo ESCOLAR → vacío (no barrer universo en memoria).
     q = q.eq('tipo_1_id', -999_999)
-  } else if (tipoFkIds.length) {
-    q = q.in('tipo_1_id', tipoFkIds)
+  } else if (
+    tipoFkIds.length &&
+    !peTieneSubfamiliaAccesorios(sanitizePeAbcrTipoIds(filters.tipo_ids ?? []))
+  ) {
+    // Alias BD (ACT ROPAS → chip ACT PRENDAS). tipo_1_id ambiguo.
+    const labels = [...new Set(tipoFkIds.flatMap((id) => peAbcrSqlLabelsForChipId(id)))]
+    if (labels.length === 1) {
+      q = q.eq('descp_tipo_1', labels[0])
+    } else if (labels.length > 1) {
+      q = q.in('descp_tipo_1', labels)
+    }
   }
   if (filters.colores.length) {
     const cols = filters.colores.map(c => c.trim()).filter(Boolean)
@@ -414,10 +465,15 @@ export function applyMemoryFilters(
       return String(r.cadena_comercial ?? '').toUpperCase() === cadena
     })
   }
-  const subfamiliaAbcr = peTieneSubfamiliaAccesorios(filters.tipo_ids ?? [])
-  if (subfamiliaAbcr || esRamoAccesorios(filters.ramo_tipo)) {
+  const tipoIdsMem = sanitizePeAbcrTipoIds(filters.tipo_ids ?? [])
+  const subfamiliaAbcr = peTieneSubfamiliaAccesorios(tipoIdsMem)
+  const tieneTemporadaAbcr = tipoIdsMem.some(
+    (id) => id > 0 || id === PE_TIPO1_ESCOLAR_ID || id === -9,
+  )
+  const soloSubfamiliaAbcr = subfamiliaAbcr && !tieneTemporadaAbcr
+  if (soloSubfamiliaAbcr || esRamoAccesorios(filters.ramo_tipo)) {
     out = out.filter((r) => esFilaModuloAccesorios(accesoriosSignalsFromRow(r), lineaCasoMap))
-  } else if (calzadoExcluyeCarterasPorDefecto(filters)) {
+  } else if (!subfamiliaAbcr && calzadoExcluyeCarterasPorDefecto(filters)) {
     out = out.filter(
       (r) => !esFilaModuloAccesorios(accesoriosSignalsFromRow(r), lineaCasoMap),
     )
@@ -464,6 +520,7 @@ export function applyMemoryFilters(
         es_promo: r.es_promo,
         cadena_comercial: r.cadena_comercial,
         cod_grupo: r.cod_grupo,
+        descp_marca: r.descp_marca,
       }
       if (origen === 'PRONTA_ENTREGA') {
         if (!peSel.length) return true
@@ -475,12 +532,16 @@ export function applyMemoryFilters(
   }
 
   if (filters.tipo_ids.length) {
-    // Accesorios (-1/-2); ESCOLAR (-8) va por rowMatchesPeAbcrTipo1.
-    const synthKeys = filters.tipo_ids
+    const tipoIds = sanitizePeAbcrTipoIds(filters.tipo_ids)
+    // Accesorios (-1/-2); ESCOLAR (-8) / temporada / OTROS → OR dentro de AB-CR (multi-select).
+    // Antes: synth AND abcr → CARTERAS+ABIERTO dejaba grilla vacía (badge 3 · MULTI 2).
+    const synthKeys = tipoIds
       .filter((id) => id < 0 && id !== PE_TIPO1_ESCOLAR_ID)
       .map((id) => accesoriosSubtipoFromSyntheticId(id))
       .filter((k): k is string => Boolean(k))
-    const abcrIds = filters.tipo_ids.filter((id) => id > 0 || id === PE_TIPO1_ESCOLAR_ID)
+    const abcrIds = tipoIds.filter(
+      (id) => id > 0 || id === PE_TIPO1_ESCOLAR_ID || id === -9 /* OTROS */,
+    )
     out = out.filter((r) => {
       const signals = {
         ...accesoriosSignalsFromRow(r),
@@ -490,21 +551,29 @@ export function applyMemoryFilters(
         sdrm_marca: r.sdrm_marca,
         cod_grupo: r.cod_grupo,
       }
-      if (synthKeys.length && !rowMatchesAccesoriosSubtipo(signals, synthKeys)) return false
-      if (!abcrIds.length) return synthKeys.length > 0
-      return rowMatchesPeAbcrTipo1(
-        {
-          tipo_1_id: r.tipo_1_id,
-          tipo_1: r.descp_tipo_1,
-          descp_tipo_1: r.descp_tipo_1,
-          sdrm_tipo1: r.sdrm_tipo1,
-          marca: r.descp_marca,
-          sdrm_marca: r.sdrm_marca,
-          cod_grupo: r.cod_grupo,
-          linea_codigo: r.linea_codigo,
-        },
-        abcrIds,
-      )
+      const hitSynth =
+        synthKeys.length > 0 && rowMatchesAccesoriosSubtipo(signals, synthKeys)
+      const hitAbcr =
+        abcrIds.length > 0 &&
+        rowMatchesPeAbcrTipo1(
+          {
+            tipo_1_id: r.tipo_1_id,
+            tipo_1: r.descp_tipo_1,
+            descp_tipo_1: r.descp_tipo_1,
+            sdrm_tipo1: r.sdrm_tipo1,
+            marca: r.descp_marca,
+            sdrm_marca: r.sdrm_marca,
+            cod_grupo: r.cod_grupo,
+            linea_codigo: r.linea_codigo,
+            estilo: r.descp_grupo_estilo,
+            descp_grupo_estilo: r.descp_grupo_estilo,
+          },
+          abcrIds,
+        )
+      if (synthKeys.length && abcrIds.length) return hitSynth || hitAbcr
+      if (synthKeys.length) return hitSynth
+      if (abcrIds.length) return hitAbcr
+      return false
     })
   }
 
@@ -605,7 +674,9 @@ export function normalizeFilterItems(items: { id: number; label: string }[]): { 
   )
 }
 
-/** Tipos sidebar calzado — PE AB-CR canónico + extras CP sin pisar PE. */
+/** Tipos sidebar calzado — PE AB-CR canónico (paridad Report PE · 2.3.5.9).
+ * No filtrar CARTERAS/ANTEOJOS antes del merge: PE los muestra en AB-CR aunque el ramo sea Calzado.
+ */
 export function mergeTiposCatalogoTodos(
   cpTipos: { id: number; label: string }[],
   peTipos: { id: number; label: string }[],
@@ -615,12 +686,16 @@ export function mergeTiposCatalogoTodos(
   if (!calzadoExcluyeCarterasPorDefecto({ ramo_tipo } as CatalogoFilterStateExtended)) {
     return normalizeFilterItems([...cpTipos, ...peTipos])
   }
-  const peAbcr = mergePeAbcrTipo1Items(
-    peTipos.filter((t) => !esLabelModuloAccesorios(t.label)),
-    signals,
-  )
+  // Canon PE: AB-CR = mergePeAbcr sobre tipos PE + señales stock (no strip accesorios).
+  const peAbcr = mergePeAbcrTipo1Items(peTipos, signals)
   const peLabels = new Set(peAbcr.map((t) => String(t.label).trim().toUpperCase()))
-  const cpExtra = cpTipos.filter((t) => !peLabels.has(String(t.label).trim().toUpperCase()))
+  // CP solo aporta labels que PE no tipifica (evitar inflar con basura CP).
+  const cpExtra = cpTipos.filter((t) => {
+    const u = String(t.label).trim().toUpperCase()
+    if (peLabels.has(u)) return false
+    if (esLabelModuloAccesorios(u)) return false
+    return true
+  })
   return [...peAbcr, ...normalizeFilterItems(cpExtra)]
 }
 
@@ -652,10 +727,16 @@ export function buildFiltrosFromRows(rows: StockRow[], ramo_tipo?: string) {
     }
     if (r.tipo_1_id) {
       const id = Number(r.tipo_1_id)
-      const lbl = String(r.descp_tipo_1 || '').trim() || `Tipo ${id}`
-      const dest =
-        normalizeOrigenCatalogo(r.origen_tipo) === 'PRONTA_ENTREGA' ? tiposPe : tiposCp
-      dest.set(id, lbl)
+      const raw = String(r.descp_tipo_1 || '').trim()
+      const lbl = canonPeTipo1Valorizado(raw)
+      if (!lbl || lbl === 'OTROS') {
+        // chip OTROS vía peAbcrSignalsFromRows
+      } else {
+        const dest =
+          normalizeOrigenCatalogo(r.origen_tipo) === 'PRONTA_ENTREGA' ? tiposPe : tiposCp
+        const ya = [...dest.entries()].find(([, L]) => canonPeTipo1Valorizado(L) === lbl)
+        if (!ya) dest.set(id, lbl)
+      }
     }
   }
   const toItems = (m: Map<number, string>) =>
@@ -702,7 +783,9 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
       .split(',').filter(Boolean).map(Number),
     linea_ids: (sp.get('linea_ids') ?? '').split(',').filter(Boolean).map(Number),
     referencia_ids: (sp.get('referencia_ids') ?? '').split(',').filter(Boolean).map(Number),
-    tipo_ids: (sp.get('tipo_ids') ?? '').split(',').filter(Boolean).map(Number),
+    tipo_ids: sanitizePeAbcrTipoIds(
+      (sp.get('tipo_ids') ?? '').split(',').filter(Boolean).map(Number),
+    ),
     colores: (sp.get('colores') ?? '').split(',').filter(Boolean),
     quincenas: (sp.get('quincenas') ?? '').split(',').filter(Boolean).map(Number),
     origen_tipo: normalizeOrigenCatalogo(sp.get('origen_tipo')),
@@ -722,12 +805,7 @@ export function parseCatalogoFiltersFromSearchParams(sp: URLSearchParams): Catal
     buscar: sp.get('buscar') ?? '',
     cadena_comercial: sp.get('cadena_comercial') ?? '',
     tipo_grupos: sanitizeTipoGruposParaRamo(
-      (sp.get('tipo_grupos') ?? '')
-        .split(',')
-        .filter(Boolean)
-        .filter((x): x is TipoGrupoId =>
-          x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
-        ),
+      parseTipoGruposCsv(sp.get('tipo_grupos')),
       ramoRaw === 'CONFECCIONES' ? 'CONFECCIONES' : 'CALZADO',
     ),
     material_familias: (sp.get('material_familias') ?? '').split(',').filter(Boolean),

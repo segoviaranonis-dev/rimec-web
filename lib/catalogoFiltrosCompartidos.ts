@@ -4,6 +4,7 @@
  */
 import type { CatalogoFilterState } from '@/app/components/FiltrosCatalogo'
 import type { TipoGrupoId } from '@/lib/filtros/filtro-tipo-canonico'
+import { parseTipoGruposList } from '@/lib/filtros/tipo-grupos-url'
 
 export const SHARED_CATALOG_FILTERS_STORAGE_KEY = 'rimec_catalog_shared_filters_v1'
 
@@ -81,12 +82,7 @@ export function persistSharedCatalogFilters(filters: CatalogoFilterState): void 
 }
 
 function parseTipoGrupos(raw: unknown): TipoGrupoId[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .map(String)
-    .filter((x): x is TipoGrupoId =>
-      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
-    )
+  return parseTipoGruposList(raw) as TipoGrupoId[]
 }
 
 export function readSharedCatalogFilters(): SharedCatalogFilterSlice | null {

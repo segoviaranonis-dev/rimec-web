@@ -6,18 +6,31 @@ export type VarianteTonoKey = {
   color_code?: string | null
   descp_color?: string | null
   tono_canon?: unknown
+  /** Curva caja cerrada PE — desambigua misma L+R+M+C con 2 gradas (1185-702). */
+  gradas_fmt?: string | null
 }
 
 /** Clave estable de tono entre lotes CP/PE (mismo color aunque cambie det_id). */
 export function tonoKeyDeVariante(v: VarianteTonoKey | null | undefined): string {
   if (!v) return ''
   const code = String(v.color_code ?? '').trim()
-  if (code) return `c:${code}`
-  const tono = parseTonoCanon(v.tono_canon)
-  const et = String(tono?.etiqueta ?? '').trim().toUpperCase()
-  if (et) return `t:${et}`
-  const descp = String(v.descp_color ?? '').trim().toUpperCase()
-  return descp ? `d:${descp}` : ''
+  const grada = String(v.gradas_fmt ?? '').trim()
+  // Curva importadora `34(…)39` — no talle suelto 638 (sin paréntesis).
+  const curvaCerrada = grada.includes('(')
+  let base = ''
+  if (code) base = `c:${code}`
+  else {
+    const tono = parseTonoCanon(v.tono_canon)
+    const et = String(tono?.etiqueta ?? '').trim().toUpperCase()
+    if (et) base = `t:${et}`
+    else {
+      const descp = String(v.descp_color ?? '').trim().toUpperCase()
+      base = descp ? `d:${descp}` : ''
+    }
+  }
+  if (!base) return ''
+  if (curvaCerrada) return `${base}|g:${grada}`
+  return base
 }
 
 export function indiceVariantePorTonoKey<T extends VarianteTonoKey>(

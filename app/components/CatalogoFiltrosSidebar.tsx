@@ -26,8 +26,8 @@ import {
   type TipoGrupoId,
 } from '@/lib/filtros/filtro-tipo-canonico'
 import {
-  PE_TIPO_DICCIONARIO_OPCIONES,
   parsePeTipoSelected,
+  peTipoOpcionesVisibles,
   togglePeTipoDiccionario,
   usaDiccionarioPeTipo,
   type PeTipoDiccionarioId,
@@ -325,40 +325,58 @@ function PeTipoDiccionarioMultiSelectGroup({
   selected,
   onToggle,
   onClear,
+  ramoTipo,
 }: {
   selected: PeTipoDiccionarioId[]
   onToggle: (id: PeTipoDiccionarioId) => void
   onClear: () => void
+  ramoTipo?: string | null
 }) {
   const n = selected.length
+  const opciones = peTipoOpcionesVisibles(ramoTipo)
   return (
     <details className="group rounded-lg border border-slate-200/90 bg-white">
       <AcordeonHeader title={`Tipo${MULTI_HINT}`} count={n} onClear={onClear} />
       <div className="border-t border-slate-100 p-1.5">
         <p className="px-1 pb-1 text-[10px] uppercase tracking-wide text-slate-500">
-          Diccionario pronta entrega · COD.GRUPO
+          Casos · diccionario PE · COD.GRUPO
         </p>
-        <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="group" aria-label="Tipo · diccionario PE">
-          {PE_TIPO_DICCIONARIO_OPCIONES.map((item) => {
+        <p className="px-1 pb-1.5 text-[9px] leading-snug text-slate-400">
+          LIQUIDACION y COMUN = herencia SDRM (sin fila BCL 654). Filtro CHINELO · badge tarjeta CHI (como LIQ/PRO).
+        </p>
+        <ul className="max-h-40 space-y-0.5 overflow-y-auto" role="group" aria-label="Casos (filtro Tipo) · diccionario PE">
+          {opciones.map((item) => {
             const on = selected.includes(item.id)
+            const isChi = item.id === 'chi'
             return (
               <li key={item.id}>
                 <label
                   className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs transition ${
-                    on
-                      ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
-                      : 'text-slate-700 hover:bg-slate-50'
+                    isChi
+                      ? on
+                        ? 'bg-sky-100/90 font-semibold text-sky-900 shadow-[0_0_0_1px_rgba(14,165,233,0.45)]'
+                        : 'text-sky-800/90 hover:bg-sky-50'
+                      : on
+                        ? 'bg-rimec-azul/10 font-semibold text-rimec-azul'
+                        : 'text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={on}
                     onChange={() => onToggle(item.id)}
-                    className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-rimec-azul focus:ring-rimec-azul/30"
+                    className={`h-3.5 w-3.5 shrink-0 rounded border-slate-300 focus:ring-rimec-azul/30 ${
+                      isChi ? 'text-sky-600' : 'text-rimec-azul'
+                    }`}
                   />
                   <span className="min-w-0 flex-1 truncate" title={item.label}>
                     {item.label}
                   </span>
+                  {isChi ? (
+                    <span className="catalog-pe-chi-badge shrink-0 rounded px-1 py-0.5 text-[7px] font-black tracking-wider">
+                      CHI
+                    </span>
+                  ) : null}
                 </label>
               </li>
             )
@@ -385,7 +403,10 @@ function TipoMultiSelectGroup({
     <details className="group rounded-lg border border-slate-200/90 bg-white">
       <AcordeonHeader title={`Tipo${MULTI_HINT}`} count={n} onClear={onClear} />
       <div className="border-t border-slate-100 p-1.5">
-        <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="group" aria-label="Tipo · multi-selección">
+        <p className="px-1 pb-1 text-[10px] uppercase tracking-wide text-slate-500">
+          Casos · biblioteca / PP
+        </p>
+        <ul className="max-h-36 space-y-0.5 overflow-y-auto" role="group" aria-label="Casos (filtro Tipo) · multi">
           {opciones.map((item) => {
             const on = selected.includes(item.id)
             return (
@@ -942,6 +963,7 @@ export function CatalogoFiltrosSidebar({
         {usaDiccionarioPeTipo(filtros.origen_tipo) && ramo !== 'ACCESORIOS' ? (
           <PeTipoDiccionarioMultiSelectGroup
             selected={parsePeTipoSelected(tipoGrupos)}
+            ramoTipo={filtros.ramo_tipo}
             onToggle={(id) =>
               patch(
                 cascadaDimensiones({

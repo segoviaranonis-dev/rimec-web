@@ -17,6 +17,8 @@ export const PORTADA_STEM_BY_MARCA: Record<string, string> = {
   BEIRA_RIO: 'beira-rio',
   'BR SPORT': 'br-sport',
   BR_SPORT: 'br-sport',
+  KYLY: 'kyly',
+  MILON: 'milon',
 }
 
 function resolveSupabaseUrl(raw: string | undefined): string | null {

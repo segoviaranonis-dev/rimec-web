@@ -4,6 +4,8 @@ import {
   esUsuarioSoloCalzado,
   esUsuarioSoloConfecciones,
 } from '@/lib/auth/catalogoScopeUsuario'
+import { parseTipoGruposCsv } from '@/lib/filtros/tipo-grupos-url'
+import { sanitizePeAbcrTipoIds } from '@/lib/filtros/pe-abcr-tipo1'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,13 +47,7 @@ export default async function HomePage({
   // Solo URL explícita — no auto-filtrar desde pe_catalogo_filtro_web al abrir catálogo.
   const cadenaComercial = cadenaUrl
 
-  const tipoGrupos = (params.tipo_grupos ?? '')
-    .split(',')
-    .filter(Boolean)
-    .filter(
-      (x): x is 'normal' | 'carteras' | 'promo' | 'liquidacion' | 'comun' =>
-        x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
-    )
+  const tipoGrupos = parseTipoGruposCsv(params.tipo_grupos)
 
   const parsePrecio = (raw: string | undefined): number | null => {
     if (!raw) return null
@@ -71,7 +67,9 @@ export default async function HomePage({
         marca_ids: (params.marca_ids ?? params.marca_id ?? '')
           .split(',').filter(Boolean).map(Number),
         linea_ids: params.linea_ids ? params.linea_ids.split(',').filter(Boolean).map(Number) : [],
-        tipo_ids: params.tipo_ids ? params.tipo_ids.split(',').filter(Boolean).map(Number) : [],
+        tipo_ids: sanitizePeAbcrTipoIds(
+          params.tipo_ids ? params.tipo_ids.split(',').filter(Boolean).map(Number) : [],
+        ),
         colores: params.colores ? params.colores.split(',').filter(Boolean) : [],
         quincenas: params.quincenas?.split(',').filter(Boolean).map(Number) ?? [],
         origen_tipo: params.origen_tipo ?? 'TODOS',

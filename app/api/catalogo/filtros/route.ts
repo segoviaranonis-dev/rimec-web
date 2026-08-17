@@ -90,7 +90,12 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
 
     const [cpRes, peRes] = await Promise.all([
       fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_rimec', {
-        applySql: q => applyNonOrigenSqlFilters(q, cpFilters),
+        // peView:false → chi sin cod_grupo (columna solo PE).
+        applySql: q =>
+          applyNonOrigenSqlFilters(q, cpFilters, {
+            allowLiquidacion: false,
+            peView: false,
+          }),
       }),
       fetchCatalogoMetaRows<StockRow>(supabase, 'v_stock_pe_rimec', {
         applySql: q =>
@@ -103,8 +108,16 @@ async function rowsForFiltrosLegacy(filters: CatalogoFilterStateExtended): Promi
           ),
       }),
     ])
-    if (cpRes.error) throw new Error(cpRes.error.message)
-    if (peRes.error) throw new Error(peRes.error.message)
+    // Cascada: un origen puede fallar; el otro sigue acotando (paridad grilla .catch).
+    if (cpRes.error && peRes.error) {
+      throw new Error(cpRes.error.message || peRes.error.message)
+    }
+    if (cpRes.error) {
+      console.error('[catalogo/filtros] CP meta scan', cpRes.error.message)
+    }
+    if (peRes.error) {
+      console.error('[catalogo/filtros] PE meta scan', peRes.error.message)
+    }
 
     const merged = [...(cpRes.data ?? []), ...(peRes.data ?? [])]
     const vendibles = merged.filter(r => cajasDisponiblesDeFila(r) > 0)

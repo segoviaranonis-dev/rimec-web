@@ -180,14 +180,54 @@ export function agruparTarjetasCatalogo(
     if (seen.has(item.det_id)) continue
 
     const card = cardMap.get(cardKey)!
+    const gradaFmtNuevo =
+      item.tipo_v2_id === 2 || String(item.ramo_tipo ?? '').toUpperCase() === 'CONFECCIONES'
+        ? gradasFmtFromRow({ grada: item.grada, grades_json: null }) || gradasFmtFromRow(item)
+        : gradasFmtFromRow(item)
+    const gradaCanon = String(gradaFmtNuevo ?? item.grada ?? '').trim()
+
+    // Misma L+R+M+C + mismo color pero CURVA distinta = otra línea vendible.
+    // Merge por color solo (4.01.07.007 saldo) NO debe borrar gradas — Gricelda 1185-702 · 577 moles.
     const dupColorIdx =
       item.tipo_v2_id === 2
         ? -1
-        : card.variantes.findIndex(
-            v => v.color_code === item.color_code && v.descp_color === item.descp_color,
-          )
+        : card.variantes.findIndex((v) => {
+            if (v.color_code !== item.color_code || v.descp_color !== item.descp_color) {
+              return false
+            }
+            const gExist = String(v.gradas_fmt ?? '').trim()
+            if (!gradaCanon && !gExist) return true
+            return gExist === gradaCanon
+          })
     if (dupColorIdx >= 0) {
-      card.variantes[dupColorIdx].cajas_disponibles += cajasDisp
+      const v = card.variantes[dupColorIdx]
+      const addSaldo = Number(item.saldo_pares ?? cajasDisp) || 0
+      const addCantCajas = Number(item.cantidad_cajas ?? 0) || 0
+      v.cajas_disponibles += cajasDisp
+      v.saldo_pares = (Number(v.saldo_pares) || 0) + addSaldo
+      v.cantidad_cajas = (Number(v.cantidad_cajas) || 0) + addCantCajas
+      // PE: 2 barcodes misma L+R+M+C+grada — si saldo≡cajas (uds Carlos), ppc=1 (no ×12)
+      if (
+        v.cajas_disponibles > 0 &&
+        v.saldo_pares != null &&
+        Math.abs(Number(v.saldo_pares) - v.cajas_disponibles) < 0.01
+      ) {
+        v.pares_por_caja = 1
+      } else {
+        v.pares_por_caja = resolveParesPorCaja({
+          pares_por_caja: v.pares_por_caja,
+          cantidad_cajas: v.cantidad_cajas,
+          cantidad_pares: v.saldo_pares,
+          saldo_pares: v.saldo_pares,
+          grades_json: item.grades_json,
+          grada: item.grada,
+          origen_tipo: item.origen_tipo,
+          det_id: v.det_id,
+          pp_id: v.pp_id,
+          tipo_v2_id: item.tipo_v2_id,
+          ramo_tipo: item.ramo_tipo,
+        })
+      }
       seen.add(item.det_id)
       continue
     }
@@ -220,10 +260,7 @@ export function agruparTarjetasCatalogo(
       color_hex: item.color_hex,
       tono_canon: item.color_tono_canon ?? null,
       // 638: preferir texto `grada` (1 talle) — grades_json PE a veces trae stock, no curva.
-      gradas_fmt:
-        item.tipo_v2_id === 2 || String(item.ramo_tipo ?? '').toUpperCase() === 'CONFECCIONES'
-          ? gradasFmtFromRow({ grada: item.grada, grades_json: null }) || gradasFmtFromRow(item)
-          : gradasFmtFromRow(item),
+      gradas_fmt: gradaFmtNuevo,
       imagen_nombre: item.imagen_url,
       imagen_color_excel: item.imagen_color_excel ?? null,
       imagen_url: imgs.imagen_url_thumb ?? imgs.imagen_url_flat ?? '',
@@ -233,20 +270,30 @@ export function agruparTarjetasCatalogo(
       imagen_candidates_thumb: imgs.imagen_candidates_thumb,
       imagen_candidates_hero: imgs.imagen_candidates_hero,
       cantidad_cajas: item.cantidad_cajas,
-      // PE y CP: grada real vía resolveParesPorCaja (ignora vista MIG-144 contaminada).
-      pares_por_caja: resolveParesPorCaja({
-        pares_por_caja: item.pares_por_caja,
-        cantidad_cajas: item.cantidad_cajas,
-        cantidad_pares: item.cantidad_pares,
-        saldo_pares: item.saldo_pares,
-        grades_json: item.grades_json,
-        grada: item.grada,
-        origen_tipo: item.origen_tipo,
-        det_id: item.det_id,
-        pp_id: item.pp_id,
-        tipo_v2_id: item.tipo_v2_id,
-        ramo_tipo: item.ramo_tipo,
-      }),
+      // PE uds Carlos: saldo≡cajas → ppc=1 (misma ley merge 4.01.07.007 · no solo al fusionar).
+      pares_por_caja: (() => {
+        const saldo = Number(item.saldo_pares ?? cajasDisp) || 0
+        if (
+          String(item.origen_tipo ?? '').includes('PRONTA') &&
+          cajasDisp > 0 &&
+          Math.abs(saldo - cajasDisp) < 0.01
+        ) {
+          return 1
+        }
+        return resolveParesPorCaja({
+          pares_por_caja: item.pares_por_caja,
+          cantidad_cajas: item.cantidad_cajas,
+          cantidad_pares: item.cantidad_pares,
+          saldo_pares: item.saldo_pares,
+          grades_json: item.grades_json,
+          grada: item.grada,
+          origen_tipo: item.origen_tipo,
+          det_id: item.det_id,
+          pp_id: item.pp_id,
+          tipo_v2_id: item.tipo_v2_id,
+          ramo_tipo: item.ramo_tipo,
+        })
+      })(),
       saldo_pares: item.saldo_pares,
       cajas_disponibles: cajasDisp,
       lpn: item.lpn,

@@ -19,9 +19,10 @@ import { calzadoExcluyeCarterasPorDefecto, esMarcaFantasmaFiltro } from '@/lib/f
 import {
   esLabelModuloAccesorios,
   esRamoAccesorios,
-  mergePeAbcrTipo1Items,
   tiposMetaModuloAccesorios,
 } from '@/lib/filtros/modulo-accesorios'
+import { loadPeAbcrTiposDesdeStock } from '@/lib/catalogoPeAbcrTipos'
+import { mergePeAbcrTipo1Items } from '@/lib/filtros/pe-abcr-tipo1'
 
 export type CatalogoMetaRpc = {
   marcas: { id: number; label: string }[]
@@ -280,11 +281,12 @@ function stripAccesoriosFromMetaIfCalzado(
 ): CatalogoMetaRpc {
   if (!calzadoExcluyeCarterasPorDefecto(filters)) return meta
   const isAcc = (label: string) => esLabelModuloAccesorios(label)
-  const tiposFiltrados = meta.tipos.filter((t) => !isAcc(t.label))
+  // Estilos: sí quitar módulo carteras/anteojos de la molécula.
+  // Tipos AB-CR: no re-merge aquí (sin señales pierde ESCOLAR/MEDIAS sintéticos).
+  // La lista tipificada la fija finalizeMetaConAbcrPe desde stock PE.
   return {
     ...meta,
     estilos: meta.estilos.filter((e) => !isAcc(e.label)),
-    tipos: mergePeAbcrTipo1Items(tiposFiltrados),
   }
 }
 
@@ -306,6 +308,38 @@ function finalizeMeta(
   return stripAccesoriosFromMetaIfCalzado(meta, filters)
 }
 
+/**
+ * PE gana AB-CR: tipifica desde v_stock_pe_rimec (no confiar solo en rimec_catalogo_meta).
+ * Aplica en Calzado + origen PE o TODOS. CP-only no toca.
+ */
+async function finalizeMetaConAbcrPe(
+  meta: CatalogoMetaRpc | null,
+  filters: CatalogoFilterStateExtended,
+): Promise<CatalogoMetaRpc | null> {
+  const base = finalizeMeta(meta, filters)
+  if (!base) return null
+  if (!calzadoExcluyeCarterasPorDefecto(filters)) return base
+  if (isCatalogoOrigenCp(filters)) return base
+  if (!isCatalogoOrigenPe(filters) && !isCatalogoOrigenTodos(filters)) return base
+
+  // Cascada con filtros: no inflar AB-CR con universo completo (paridad Report = filas acotadas).
+  if (tieneFiltrosAcotarMeta(filters)) {
+    return { ...base, tipos: mergePeAbcrTipo1Items(base.tipos) }
+  }
+
+  const peTipos = await loadPeAbcrTiposDesdeStock({
+    ...filters,
+    ramo_tipo: 'CALZADO',
+  })
+  if (!peTipos?.length) {
+    return { ...base, tipos: mergePeAbcrTipo1Items(base.tipos) }
+  }
+  return {
+    ...base,
+    tipos: peTipos,
+  }
+}
+
 /** TODOS+Calzado: 1 RPC/origen si landing; cascada si dimensión o molécula activa. */
 async function fetchMetaRpcEfficient(
   filters: CatalogoFilterStateExtended,
@@ -325,19 +359,19 @@ async function applyMaestrasTrianguloPilares(
 
   const acotar = tieneFiltrosAcotarMeta(filters)
   if (acotar) {
-    return finalizeMeta(meta, filters)
+    return finalizeMetaConAbcrPe(meta, filters)
   }
 
   const { loadMaestrasTrianguloCatalogo } = await import('@/lib/pilares/loadMaestrasTriangulo')
   const maestras = await loadMaestrasTrianguloCatalogo(filters.ramo_tipo)
-  if (!maestras) return finalizeMeta(meta, filters)
+  if (!maestras) return finalizeMetaConAbcrPe(meta, filters)
 
   const next: CatalogoMetaRpc = {
     ...meta,
     estilos: maestras.estilos.length ? maestras.estilos : meta.estilos,
     generos: maestras.generos.length ? maestras.generos : meta.generos,
   }
-  return finalizeMeta(next, filters) ?? next
+  return finalizeMetaConAbcrPe(next, filters)
 }
 
 /** Dimensión sola — meta Estilo/Marca/Tipo sin molécula (evita linea_ids obsoletos en URL). */

@@ -10,6 +10,7 @@ import { CatalogGrillaDeposito } from '@/components/catalog/CatalogGrillaDeposit
 import { CatalogTarjetaDeposito } from '@/components/catalog/CatalogTarjetaDeposito'
 import { PromoCasoBadge } from '@/components/catalog/PromoCasoBadge'
 import { PeProBadge } from '@/components/catalog/PeProBadge'
+import { PeChiBadge } from '@/components/catalog/PeChiBadge'
 import { ProductImage } from '@/components/ProductImage'
 import {
   origenBadgePillStyle,
@@ -21,7 +22,7 @@ import { origenBadgeText } from '@/lib/catalogoOrigen'
 import { resolveParesPorCaja, syntheticPpIdForPe, etiquetaProntaEntregaCatalogo } from '@/lib/prontaEntregaVenta'
 import { productImagePrimaryStem } from '@/lib/productImageProtocol'
 import { isConfecciones638Lote, stockEnLote, coloresUnicosEnLote, cantidadTallasConStock, subtitulo638Tarjeta, variantesColorUnicas, variantesPorColor, prendasDisponiblesVariante, unidadStockCorta } from '@/lib/confeccionesCatalogo'
-import { esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
+import { esChineloCaso, esLiquidacionPe, esPromoTarjeta, resolveCatalogShellVariant } from '@/lib/catalogoComercial'
 import { resolvePeVisualBadges } from '@/lib/catalogoPeVisual'
 import { warmPeDiccionarioClient } from '@/lib/peDiccionarioClient'
 import { PeDescComercialBadge } from '@/components/catalog/PeDescComercialBadge'
@@ -318,6 +319,7 @@ function Lightbox({ producto: p, initialIdx, initialTonoKey, onClose }: {
                     style={estiloBadgeMarca(p.descp_marca)}>
                 {p.descp_marca}
               </span>
+              {esChineloCaso(p) ? <PeChiBadge /> : null}
               {p.origen_tipo === 'PRONTA_ENTREGA' && esPromoTarjeta(p) ? <PeProBadge /> : null}
               {p.origen_tipo !== 'PRONTA_ENTREGA' && esPromoTarjeta(p) ? <PromoCasoBadge size="md" /> : null}
               <div className="min-w-0 truncate font-mono text-[11px] font-extrabold text-slate-800" title={nombreImagen}>
@@ -376,8 +378,9 @@ function Lightbox({ producto: p, initialIdx, initialTonoKey, onClose }: {
 function shellYBadgesPe(lote: TarjetaCatalogo, esFusion = false) {
   const peVis = resolvePeVisualBadges(lote)
   if (peVis) return peVis
+  const chi = esChineloCaso(lote) ? <PeChiBadge key="chi" /> : null
   return {
-    headerBadge: null as React.ReactNode,
+    headerBadge: chi as React.ReactNode,
     imageTopRightBadge: null as React.ReactNode,
     shellVariant: resolveCatalogShellVariant({
       esLiquidacion: esLiquidacionPe(lote),
@@ -559,11 +562,15 @@ function TarjetaProductoFusion({
   const peVis = lotePeHero ? resolvePeVisualBadges(lotePeHero) : null
   const esPromoFusion = p.lotes.some(l => esPromoTarjeta(l))
   const esLiquidacionFusion = p.lotes.some(l => esLiquidacionPe(l))
+  const esChiFusion = p.lotes.some(l => esChineloCaso(l))
   const shellVariant = peVis?.shellVariant ?? resolveCatalogShellVariant({
     esLiquidacion: esLiquidacionFusion,
     esPromo: esPromoFusion,
     esFusion: true,
   })
+  const headerBadgeFusion =
+    peVis?.headerBadge ??
+    (esChiFusion ? <PeChiBadge /> : null)
   const esPromoCp = peVis ? false : esPromoFusion
   const descPct = lotePeHero
     ? pctDescuentoDesdeTarjeta(lotePeHero, descuentoPctPorMol)
@@ -593,7 +600,7 @@ function TarjetaProductoFusion({
         stockUnidad={esConf ? 'prend' : 'p'}
         hideStockBadge
         shellVariant={shellVariant}
-        headerBadge={peVis?.headerBadge ?? null}
+        headerBadge={headerBadgeFusion}
         imageTopRightBadge={peVis?.imageTopRightBadge ?? null}
         imageTopLeftBadge={
           showDescBadge ? (

@@ -60,7 +60,7 @@ function normTipo1Token(raw: string | null | undefined): string {
 export function esLabelModuloAccesorios(raw: string | null | undefined): boolean {
   const t = normTipo1Token(raw)
   if (!t) return false
-  if (t === 'ACT ROPAS' || t === 'ACCESORIOS') return false
+  if (t === 'ACT ROPAS' || t === 'ACT PRENDAS' || t === 'ACCESORIOS' || t === 'PRENDAS') return false
   if (t === 'MEDIAS' || t === 'MEDIA') return false
   if (SET_LABELS.has(t)) return true
   if (t.includes('ANTEOJ') || t.includes('OCUL') || t.includes('LENT')) return true
@@ -137,7 +137,9 @@ export function accesoriosSubtipoOpcionesSidebar(
     }
     if (!key || byKey.has(key)) continue
     byKey.set(key, {
-      id: t.id,
+      // Única verdad AB-CR: siempre −1/−2 (nunca tipo_1_id BD).
+      // id=3 en PE es ambiguo (CARTERAS|CERRADO) y rompe peTieneSubfamiliaAccesorios.
+      id: ACCESORIOS_SUBTIPO_SYNTHETIC_ID[key]!,
       label: ABCR_ACCESORIOS_SUBFILTROS.find((s) => s.key === key)!.label,
     })
   }
@@ -184,7 +186,7 @@ export function subtipoAccesoriosKey(row: FilaAccesoriosSignals): AccesoriosSubt
     if (!t) continue
     if (t === 'LENTES' || t.includes('ANTEOJ') || t.includes('OCUL') || t.includes('LENT')) return 'LENTES'
     if (t === 'CARTERAS' || t === 'CARTERA') return 'CARTERAS'
-    if (t === 'ACT ROPAS' || t === 'ACCESORIOS') return null
+    if (t === 'ACT ROPAS' || t === 'ACT PRENDAS' || t === 'ACCESORIOS' || t === 'PRENDAS') return null
   }
   if (esFilaModuloAccesorios(row)) return 'CARTERAS'
   return null

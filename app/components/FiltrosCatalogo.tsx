@@ -15,8 +15,10 @@ import {
   tipoGrupoOpcionesVisibles,
   type TipoGrupoId,
 } from '@/lib/filtros/filtro-tipo-canonico'
+import { parseTipoGruposCsv } from '@/lib/filtros/tipo-grupos-url'
+import { sanitizePeAbcrTipoIds } from '@/lib/filtros/pe-abcr-tipo1'
 import {
-  PE_TIPO_DICCIONARIO_OPCIONES,
+  peTipoOpcionesVisibles,
   labelPeTipoDiccionario,
   usaDiccionarioPeTipo,
 } from '@/lib/filtros/filtro-tipo-pe-diccionario'
@@ -132,13 +134,7 @@ const RIMEC_CELESTE = '#0EA5E9'
 const RIMEC_ORANGE  = '#EA580C'
 
 function parseTipoGruposParam(raw: string | null): TipoGrupoId[] {
-  if (!raw) return []
-  return raw
-    .split(',')
-    .filter(Boolean)
-    .filter((x): x is TipoGrupoId =>
-      x === 'normal' || x === 'carteras' || x === 'promo' || x === 'liquidacion' || x === 'comun',
-    )
+  return parseTipoGruposCsv(raw) as TipoGrupoId[]
 }
 
 export function FiltrosCatalogo({
@@ -166,7 +162,7 @@ export function FiltrosCatalogo({
       : marcaIdActual ? [Number(marcaIdActual)] : [])
 
   const lineasSelIds = value?.linea_ids ?? (searchParams.get('linea_ids') ? searchParams.get('linea_ids')!.split(',').filter(Boolean).map(Number) : [])
-  const tiposSelIds  = value?.tipo_ids ?? (searchParams.get('tipo_ids') ? searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number) : [])
+  const tiposSelIds  = value?.tipo_ids ?? (searchParams.get('tipo_ids') ? sanitizePeAbcrTipoIds(searchParams.get('tipo_ids')!.split(',').filter(Boolean).map(Number)) : [])
   const colorsSel    = value?.colores ?? (searchParams.get('colores') ? searchParams.get('colores')!.split(',').filter(Boolean) : [])
   const quincenasSel = value?.quincenas ?? (searchParams.get('quincenas') ? searchParams.get('quincenas')!.split(',').filter(Boolean).map(Number) : [])
   const origenActual = value?.origen_tipo ?? searchParams.get('origen_tipo') ?? ''
@@ -664,11 +660,11 @@ export function FiltrosCatalogo({
         {(() => {
           const tipoPeUi = usaDiccionarioPeTipo(origenActual) && ramoActual !== 'ACCESORIOS'
           const opcionesTipo = tipoPeUi
-            ? PE_TIPO_DICCIONARIO_OPCIONES
+            ? peTipoOpcionesVisibles(ramoActual)
             : tipoGrupoOpcionesVisibles(ramoActual)
           if (!opcionesTipo.length) return null
           return (
-        <FilterRow label={tipoPeUi ? 'Tipo · diccionario PE' : 'Tipo · multi'}>
+        <FilterRow label={tipoPeUi ? 'Tipo · casos PE' : 'Tipo · casos'}>
           <ScrollPillsRow>
             <CabeceraPill active={!tipoGruposSel.length} onClick={() => aplicar(cascadaDimensiones({ tipo_grupos: [] }))}>
               Todos

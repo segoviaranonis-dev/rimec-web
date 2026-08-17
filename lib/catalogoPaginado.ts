@@ -10,6 +10,7 @@ import {
   applyNonOrigenSqlFilters,
   applyPeCommercialSqlFilters,
   applyPeDepositoQuery,
+  applyCpTipoDensificacionSql,
   applySqlFiltersToQuery,
   catalogoStockView,
   isCatalogoOrigenTodos,
@@ -250,7 +251,13 @@ async function fetchStockBatchFromView(
             ),
             filters,
           )
-        : applyPrecioSqlFilters(applySqlFiltersToQuery(query, filtersForCpSql(filters)), filters)
+        : applyPrecioSqlFilters(
+            applyCpTipoDensificacionSql(
+              applySqlFiltersToQuery(query, filtersForCpSql(filters)),
+              filters,
+            ),
+            filters,
+          )
     // Director: grilla L → R → M → C (ascendente).
     query = query
       .order('linea_codigo', { ascending: true })
@@ -302,6 +309,9 @@ function applyPeTipoExclusionesSql(query: any, filters: CatalogoFilterStateExten
   }
   if (sel.length === 1 && sel[0] === 'promo') {
     return q.or('es_promo.eq.true,cadena_comercial.eq.PROMOCIONAL')
+  }
+  if (sel.length === 1 && sel[0] === 'chi') {
+    return q.or('descp_caso.eq.CHINELO,cod_grupo.like.09%,descp_marca.eq.CHINELO')
   }
   if (!sel.includes('liquidacion')) {
     q = q.or('es_liquidacion.eq.false,es_liquidacion.is.null')

@@ -59,18 +59,20 @@ export function FiltroTonoPrecioFila({
 
         {tonoCatalog.length > 0 ? (
           <div
-            className="hidden lg:block h-9 w-px shrink-0 bg-gradient-to-b from-transparent via-slate-200 to-transparent"
+            className="hidden h-10 w-px shrink-0 bg-gradient-to-b from-transparent via-slate-200 to-transparent lg:block"
             aria-hidden
           />
         ) : null}
 
-        <FiltroPrecioRango
-          precioMin={precioMin}
-          precioMax={precioMax}
-          onAplicar={onPrecioAplicar}
-          rangoCatalogo={rangoPrecioSql}
-          inline
-        />
+        <div className="min-w-0 w-full lg:min-w-[22rem] lg:flex-1 lg:max-w-2xl">
+          <FiltroPrecioRango
+            precioMin={precioMin}
+            precioMax={precioMax}
+            onAplicar={onPrecioAplicar}
+            rangoCatalogo={rangoPrecioSql}
+            inline
+          />
+        </div>
       </div>
     </div>
   )

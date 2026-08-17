@@ -7,7 +7,10 @@ import {
   draftASqlParams,
   normalizarRangoDraft,
   parsePrecioInput,
+  sliderMoverHi,
+  sliderMoverLo,
   tecladoADraft,
+  tecladoMoverLado,
 } from '../lib/filtroPrecioRangoSync'
 
 const PISO = 24_700
@@ -76,7 +79,7 @@ assert(parsePrecioInput('') === null, 'parse vacío')
   assert(sql.precio_min === null && sql.precio_max === null, 'extremos null')
 }
 
-// 6) Slider path = teclado path (misma normalización)
+// 6) Slider path = teclado path (misma normalización en commit)
 {
   const desdeSlider = normalizarRangoDraft(53_000, 150_000, PISO, TOPE)
   const desdeTeclado = tecladoADraft('53.000', '150.000', PISO, TOPE, PISO, TOPE)
@@ -84,6 +87,28 @@ assert(parsePrecioInput('') === null, 'parse vacío')
   const a = draftASqlParams(desdeSlider.lo, desdeSlider.hi, PISO, TOPE)
   const b = draftASqlParams(desdeTeclado.lo, desdeTeclado.hi, PISO, TOPE)
   assert(a.precio_min === b.precio_min && a.precio_max === b.precio_max, 'misma consulta')
+}
+
+// 7) Slider independiente: mover lo NO mueve hi · hi llega a tope
+{
+  const hiFijo = 200_000
+  const loNuevo = sliderMoverLo(150_000, hiFijo, PISO, TOPE)
+  assert(loNuevo === 150_000, 'slider lo solo')
+  assert(hiFijo === 200_000, 'hi intacto al mover lo')
+  const loAlTopeHi = sliderMoverLo(999_999, hiFijo, PISO, TOPE)
+  assert(loAlTopeHi === hiFijo, 'lo no pasa hi')
+  const hiTope = sliderMoverHi(TOPE, 53_000, PISO, TOPE)
+  assert(hiTope === TOPE, 'hi llega a tope')
+  const hiNoBajaDeLo = sliderMoverHi(10_000, 53_000, PISO, TOPE)
+  assert(hiNoBajaDeLo === 53_000, 'hi no baja de lo')
+}
+
+// 8) Teclado un lado no arrastra el otro
+{
+  const m = tecladoMoverLado('min', '100000', 53_000, 200_000, PISO, TOPE)
+  assert(m != null && m.lo === 100_000 && m.hi === 200_000, 'teclado min solo')
+  const h = tecladoMoverLado('max', '300000', 53_000, 200_000, PISO, TOPE)
+  assert(h != null && h.lo === 53_000 && h.hi === 300_000, 'teclado max solo')
 }
 
 console.log('PASS_PRECIO_RANGO_SYNC')

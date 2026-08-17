@@ -20,7 +20,7 @@ export function formatPrecioGs(n: number | null): string {
   return n.toLocaleString('es-PY')
 }
 
-/** Ordena y clampa: lo ≤ hi dentro de [piso, tope]. */
+/** Ordena y clampa: lo ≤ hi dentro de [piso, tope]. Solo blur/commit si vinieron invertidos. */
 export function normalizarRangoDraft(
   loRaw: number,
   hiRaw: number,
@@ -30,6 +30,54 @@ export function normalizarRangoDraft(
   const lo = clampPrecio(Math.min(loRaw, hiRaw), piso, tope)
   const hi = clampPrecio(Math.max(loRaw, hiRaw), piso, tope)
   return { lo, hi }
+}
+
+/**
+ * Slider: mover SOLO el inferior. Nunca mueve hi.
+ * Ambos mangos deben usar min=piso max=tope en el DOM (pista completa).
+ */
+export function sliderMoverLo(
+  valor: number,
+  draftHi: number,
+  piso: number,
+  tope: number,
+): number {
+  return clampPrecio(Math.min(valor, draftHi), piso, tope)
+}
+
+/**
+ * Slider: mover SOLO el superior. Nunca mueve lo.
+ * Debe poder llegar a `tope`.
+ */
+export function sliderMoverHi(
+  valor: number,
+  draftLo: number,
+  piso: number,
+  tope: number,
+): number {
+  return clampPrecio(Math.max(valor, draftLo), piso, tope)
+}
+
+/**
+ * Teclado en un solo lado: no arrastra el otro extremo (evita el bug del slider).
+ * Si tipeás Desde > Hasta, Desde se clampa a Hasta (y viceversa).
+ */
+export function tecladoMoverLado(
+  lado: 'min' | 'max',
+  raw: string,
+  draftLo: number,
+  draftHi: number,
+  piso: number,
+  tope: number,
+): { lo: number; hi: number; txt: string } | null {
+  const parsed = parsePrecioInput(raw)
+  if (parsed == null) return null
+  if (lado === 'min') {
+    const lo = sliderMoverLo(parsed, draftHi, piso, tope)
+    return { lo, hi: draftHi, txt: formatPrecioGs(lo) }
+  }
+  const hi = sliderMoverHi(parsed, draftLo, piso, tope)
+  return { lo: draftLo, hi, txt: formatPrecioGs(hi) }
 }
 
 /**
